@@ -1,0 +1,6 @@
+@SieteVidasAPI_HostAddress = http://localhost:5136
+
+GET {{SieteVidasAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
