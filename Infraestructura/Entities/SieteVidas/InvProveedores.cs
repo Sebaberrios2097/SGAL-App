@@ -21,10 +21,4 @@ public partial class InvProveedores
 
     [InverseProperty("IdProveedorNavigation")]
     public virtual ICollection<InvOrdenCompra> InvOrdenCompra { get; set; } = new List<InvOrdenCompra>();
-
-    [InverseProperty("IdProveedorNavigation")]
-    public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
-
-    [InverseProperty("IdProveedorNavigation")]
-    public virtual ICollection<InvProductosProveedores> InvProductosProveedores { get; set; } = new List<InvProductosProveedores>();
 }

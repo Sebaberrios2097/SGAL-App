@@ -34,8 +34,6 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<InvProductos> InvProductos { get; set; }
 
-    public virtual DbSet<InvProductosProveedores> InvProductosProveedores { get; set; }
-
     public virtual DbSet<InvProveedores> InvProveedores { get; set; }
 
     public virtual DbSet<SiiCafFolios> SiiCafFolios { get; set; }
@@ -136,9 +134,9 @@ public partial class SieteVidasContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Orden_Compra");
 
-            entity.HasOne(d => d.IdProveedorNavigation).WithMany(p => p.InvOrdenDetalle)
+            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvOrdenDetalle)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Proveedores");
+                .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Productos");
         });
 
         modelBuilder.Entity<InvProductos>(entity =>
@@ -146,17 +144,6 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdCategoriaProductoNavigation).WithMany(p => p.InvProductos)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Productos_Inv_Categoria_Productos");
-        });
-
-        modelBuilder.Entity<InvProductosProveedores>(entity =>
-        {
-            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvProductosProveedores)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Inv_Productos_Proveedores_Inv_Productos");
-
-            entity.HasOne(d => d.IdProveedorNavigation).WithMany(p => p.InvProductosProveedores)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Inv_Productos_Proveedores_Inv_Proveedores");
         });
 
         modelBuilder.Entity<SiiCafFolios>(entity =>

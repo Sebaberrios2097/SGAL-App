@@ -46,7 +46,7 @@ public partial class InvProductos
     public virtual ICollection<InvDescuentosProductos> InvDescuentosProductos { get; set; } = new List<InvDescuentosProductos>();
 
     [InverseProperty("IdProductoNavigation")]
-    public virtual ICollection<InvProductosProveedores> InvProductosProveedores { get; set; } = new List<InvProductosProveedores>();
+    public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
 
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<VenDetalleVenta> VenDetalleVenta { get; set; } = new List<VenDetalleVenta>();

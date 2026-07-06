@@ -16,11 +16,8 @@ public partial class InvOrdenDetalle
     [Column("Id_Orden_Compra")]
     public int IdOrdenCompra { get; set; }
 
-    [Column("Id_Proveedor_Producto")]
-    public int IdProveedorProducto { get; set; }
-
-    [Column("Id_Proveedor")]
-    public int IdProveedor { get; set; }
+    [Column("Id_Producto")]
+    public int IdProducto { get; set; }
 
     public int Cantidad { get; set; }
 
@@ -33,7 +30,7 @@ public partial class InvOrdenDetalle
     [InverseProperty("InvOrdenDetalle")]
     public virtual InvOrdenCompra IdOrdenCompraNavigation { get; set; } = null!;
 
-    [ForeignKey("IdProveedor")]
+    [ForeignKey("IdProducto")]
     [InverseProperty("InvOrdenDetalle")]
-    public virtual InvProveedores IdProveedorNavigation { get; set; } = null!;
+    public virtual InvProductos IdProductoNavigation { get; set; } = null!;
 }
