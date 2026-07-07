@@ -46,8 +46,7 @@ namespace SieteVidasAPI.Controllers
                     FechaVenta = DateTime.Now,
                     MontoTotal = 0,
                     MontoNeto = 0,
-                    MontoIva = 0,
-                    IdEstadoBoleta = 1 // default state
+                    MontoIva = 0
                 };
 
                 _context.VenVentas.Add(sale);
@@ -139,6 +138,37 @@ namespace SieteVidasAPI.Controllers
                 await transaction.RollbackAsync();
                 return StatusCode(500, new { mensaje = "Error interno al procesar la venta.", detalle = ex.Message });
             }
+        }
+
+        [HttpGet("turn/{idTurno}")]
+        public async Task<IActionResult> GetSalesByTurn(int idTurno)
+        {
+            var sales = await _context.VenVentas
+                .Where(v => v.IdTurno == idTurno)
+                .OrderByDescending(v => v.FechaVenta)
+                .Select(v => new
+                {
+                    v.IdVenta,
+                    v.FechaVenta,
+                    v.MontoTotal,
+                    MetodosPago = v.VenMetodosPagoVenta.Select(mp => new
+                    {
+                        mp.IdMetodoPago,
+                        mp.IdMetodoPagoNavigation.NombreMetodoPago,
+                        mp.Monto
+                    }),
+                    Items = v.VenDetalleVenta.Select(d => new
+                    {
+                        d.IdProducto,
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.PrecioUnitario,
+                        d.Subtotal
+                    })
+                })
+                .ToListAsync();
+
+            return Ok(sales);
         }
     }
 }
