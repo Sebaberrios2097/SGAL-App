@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Infraestructura.Entities.SieteVidas;
+﻿using Infraestructura.Entities.SieteVidas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infraestructura.Context;

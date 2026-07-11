@@ -1,8 +1,8 @@
+using Infraestructura.Context;
+using Infraestructura.Data;
+using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Infraestructura.Context;
-using Infraestructura.Entities.SieteVidas;
-using Infraestructura.Entities.Sp;
 using SieteVidasAPI.DTOs;
 
 namespace SieteVidasAPI.Controllers
@@ -153,7 +153,7 @@ namespace SieteVidasAPI.Controllers
                 {
                     employee.IdUsuarioNavigation.Activo = false;
                     employee.IdUsuarioNavigation.FechaDesactivacion = DateTime.Now;
-                    
+
                     // Also deactivate all roles assigned
                     var userRoles = await _context.EmpRolesXusuario
                         .Where(rx => rx.IdUsuario == employee.IdUsuario && rx.Activo)

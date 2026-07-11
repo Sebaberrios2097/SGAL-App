@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace SieteVidasAPI.DTOs
 {
     public class TurnCloseDto

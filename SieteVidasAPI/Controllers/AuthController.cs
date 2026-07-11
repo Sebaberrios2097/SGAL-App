@@ -1,8 +1,7 @@
+using Infraestructura.Context;
+using Infraestructura.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Infraestructura.Context;
-using Infraestructura.Entities.SieteVidas;
-using Infraestructura.Entities.Sp;
 using SieteVidasAPI.DTOs;
 
 namespace SieteVidasAPI.Controllers

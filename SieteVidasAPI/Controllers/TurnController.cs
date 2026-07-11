@@ -1,11 +1,8 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Infraestructura.Context;
 using Infraestructura.Entities.SieteVidas;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -47,6 +44,46 @@ namespace SieteVidasAPI.Controllers
                     activeTurn.IdUsuario,
                     NombreUsuario = activeTurn.IdUsuarioNavigation.NombreUsuario,
                     activeTurn.FechaApertura
+                }
+            });
+        }
+
+        [HttpGet("last")]
+        public async Task<IActionResult> GetLastTurn([FromQuery] int idUsuario)
+        {
+            var lastTurn = await _context.TurTurno
+                .Include(t => t.IdEstadoTurnoNavigation)
+                .Where(t => t.IdUsuario == idUsuario)
+                .OrderByDescending(t => t.FechaApertura)
+                .FirstOrDefaultAsync();
+
+            if (lastTurn == null)
+            {
+                return Ok(new { HasLastTurn = false });
+            }
+
+            var totalSales = await _context.VenVentas
+                .Where(v => v.IdTurno == lastTurn.IdTurno)
+                .SumAsync(v => (int?)v.MontoTotal) ?? 0;
+
+            var salesCount = await _context.VenVentas
+                .Where(v => v.IdTurno == lastTurn.IdTurno)
+                .CountAsync();
+
+            return Ok(new
+            {
+                HasLastTurn = true,
+                TurnInfo = new
+                {
+                    lastTurn.IdTurno,
+                    lastTurn.IdEstadoTurno,
+                    EstadoNombre = lastTurn.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                    lastTurn.FechaApertura,
+                    lastTurn.FechaCierre,
+                    lastTurn.DiferenciaTotal,
+                    lastTurn.ObservacionCierre,
+                    TotalSales = totalSales,
+                    SalesCount = salesCount
                 }
             });
         }

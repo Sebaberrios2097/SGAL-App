@@ -1,5 +1,3 @@
-using System;
-
 namespace SieteVidasAPI.DTOs
 {
     public class DiscountDto

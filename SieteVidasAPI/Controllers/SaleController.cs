@@ -1,11 +1,8 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Infraestructura.Context;
 using Infraestructura.Entities.SieteVidas;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -113,15 +110,30 @@ namespace SieteVidasAPI.Controllers
                 sale.MontoIva = iva;
                 _context.Entry(sale).State = EntityState.Modified;
 
-                // Create payment method sale allocation
-                var paymentAlloc = new VenMetodosPagoVenta
+                // Validate payment methods sum
+                int sumPayments = dto.MetodosPago?.Sum(m => m.Monto) ?? 0;
+                if (sumPayments != total)
                 {
-                    IdVenta = sale.IdVenta,
-                    IdMetodoPago = dto.IdMetodoPago,
-                    Monto = total
-                };
+                    return BadRequest(new { mensaje = $"La suma de los métodos de pago (${sumPayments.ToString("N0")}) debe ser igual al total de la venta (${total.ToString("N0")})." });
+                }
 
-                _context.VenMetodosPagoVenta.Add(paymentAlloc);
+                // Create payment method sale allocations
+                if (dto.MetodosPago != null)
+                {
+                    foreach (var p in dto.MetodosPago)
+                    {
+                        if (p.Monto > 0)
+                        {
+                            var paymentAlloc = new VenMetodosPagoVenta
+                            {
+                                IdVenta = sale.IdVenta,
+                                IdMetodoPago = p.IdMetodoPago,
+                                Monto = p.Monto
+                            };
+                            _context.VenMetodosPagoVenta.Add(paymentAlloc);
+                        }
+                    }
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
