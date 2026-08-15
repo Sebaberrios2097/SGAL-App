@@ -62,6 +62,8 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<VenMetodosPagoVenta> VenMetodosPagoVenta { get; set; }
 
+    public virtual DbSet<VenOrdenesPoint> VenOrdenesPoint { get; set; }
+
     public virtual DbSet<VenVentas> VenVentas { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -236,6 +238,21 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenMetodosPagoVenta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Ven_Metodos_Pago_Venta_Ven_Ventas");
+        });
+
+        modelBuilder.Entity<VenOrdenesPoint>(entity =>
+        {
+            entity.ToTable("Ven_Ordenes_Point", tb => tb.HasComment("Órdenes de cobro enviadas a la terminal Mercado Pago Point. Permiten reconciliar cada venta con su pago y auditar los intentos que no llegaron a concretarse."));
+
+            entity.HasIndex(e => e.IdOrdenMp, "UQ_Ven_Ordenes_Point_Id_Orden_MP").IsUnique();
+
+            entity.HasIndex(e => e.ReferenciaExterna, "UQ_Ven_Ordenes_Point_Referencia_Externa").IsUnique();
+
+            entity.Property(e => e.FechaCreacion).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.FechaActualizacion).HasDefaultValueSql("(getdate())");
+
+            entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenOrdenesPoint)
+                .HasConstraintName("FK_Ven_Ordenes_Point_Ven_Ventas");
         });
 
         modelBuilder.Entity<VenVentas>(entity =>

@@ -3,6 +3,8 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.DTOs.Point;
+using SieteVidasAPI.Services;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -11,10 +13,20 @@ namespace SieteVidasAPI.Controllers
     public class SaleController : ControllerBase
     {
         private readonly SieteVidasContext _context;
+        private readonly ISaleLinesService _saleLines;
+        private readonly IPointSaleService _pointSales;
+        private readonly ISaleVoidService _saleVoid;
 
-        public SaleController(SieteVidasContext context)
+        public SaleController(
+            SieteVidasContext context,
+            ISaleLinesService saleLines,
+            IPointSaleService pointSales,
+            ISaleVoidService saleVoid)
         {
             _context = context;
+            _saleLines = saleLines;
+            _pointSales = pointSales;
+            _saleVoid = saleVoid;
         }
 
         [HttpPost]
@@ -39,7 +51,7 @@ namespace SieteVidasAPI.Controllers
                 var sale = new VenVentas
                 {
                     IdTurno = dto.IdTurno,
-                    IdEstadoVenta = 1, // 1 = Completada / Pagada
+                    IdEstadoVenta = EstadosVenta.Terminada,
                     FechaVenta = DateTime.Now,
                     MontoTotal = 0,
                     MontoNeto = 0,
@@ -49,57 +61,13 @@ namespace SieteVidasAPI.Controllers
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
-                int total = 0;
-
-                foreach (var item in dto.Items)
+                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items);
+                if (!lines.EsValido)
                 {
-                    var prod = await _context.InvProductos.FindAsync(item.IdProducto);
-                    if (prod == null || !prod.Activo)
-                    {
-                        return BadRequest(new { mensaje = $"El producto con ID {item.IdProducto} no existe o no está activo." });
-                    }
-
-                    // Stock check and deduction
-                    if (prod.Stock.HasValue)
-                    {
-                        if (prod.Stock.Value < item.Cantidad)
-                        {
-                            return BadRequest(new { mensaje = $"Stock insuficiente para el producto: {prod.NombreProducto}. Stock disponible: {prod.Stock.Value}." });
-                        }
-                        prod.Stock -= item.Cantidad;
-                        _context.Entry(prod).State = EntityState.Modified;
-                    }
-
-                    // Check for active discounts on this product
-                    int finalUnitPrice = prod.Precio;
-                    var activeDiscount = await _context.InvDescuentosProductos
-                        .FirstOrDefaultAsync(d => d.IdProducto == prod.IdProducto && d.Activo &&
-                                                  DateTime.Now >= d.FechaInicioDescuento &&
-                                                  (!d.FechaTerminoDescuento.HasValue || DateTime.Now <= d.FechaTerminoDescuento.Value));
-
-                    if (activeDiscount != null)
-                    {
-                        decimal discountVal = (prod.Precio * activeDiscount.PorcentajeDescuento) / 100m;
-                        finalUnitPrice = (int)Math.Round(prod.Precio - discountVal);
-                    }
-
-                    int subtotal = finalUnitPrice * item.Cantidad;
-                    total += subtotal;
-
-                    // Create sale detail
-                    var detail = new VenDetalleVenta
-                    {
-                        IdVenta = sale.IdVenta,
-                        IdProducto = prod.IdProducto,
-                        Cantidad = item.Cantidad,
-                        PrecioNormal = prod.Precio,
-                        PrecioUnitario = finalUnitPrice,
-                        Subtotal = subtotal,
-                        IndExento = false
-                    };
-
-                    _context.VenDetalleVenta.Add(detail);
+                    return BadRequest(new { mensaje = lines.Error });
                 }
+
+                int total = lines.Total;
 
                 // Compute Net & VAT
                 int neto = (int)Math.Round(total / 1.19);
@@ -152,17 +120,69 @@ namespace SieteVidasAPI.Controllers
             }
         }
 
+        /// <summary>
+        /// Registra la venta como pendiente de pago y envía el monto con tarjeta a la
+        /// terminal Point. La venta se confirma cuando Mercado Pago informa el resultado.
+        /// </summary>
+        [HttpPost("point")]
+        public async Task<IActionResult> CreatePointSale([FromBody] PointSaleStartDto dto, CancellationToken cancellationToken)
+        {
+            if (dto == null)
+            {
+                return BadRequest(new { mensaje = "La solicitud de venta no es válida." });
+            }
+
+            var result = await _pointSales.StartAsync(dto, cancellationToken);
+
+            return result.EsValido
+                ? Ok(result.Value)
+                : BadRequest(new { mensaje = result.Error });
+        }
+
+        /// <summary>
+        /// Consulta el estado del cobro en Mercado Pago y lo aplica a la venta.
+        /// El frontend lo usa como polling mientras el cliente paga en la terminal.
+        /// </summary>
+        [HttpPost("point/{idVenta}/sync")]
+        public async Task<IActionResult> SyncPointSale(int idVenta, CancellationToken cancellationToken)
+        {
+            var result = await _pointSales.SyncAsync(idVenta, cancellationToken);
+
+            return result.EsValido
+                ? Ok(result.Value)
+                : BadRequest(new { mensaje = result.Error });
+        }
+
+        /// <summary>
+        /// Anula una venta terminada. Si incluyó pago con tarjeta, primero reembolsa
+        /// en Mercado Pago: si la devolución falla, la venta no se anula.
+        /// </summary>
+        [HttpPost("{idVenta}/anular")]
+        public async Task<IActionResult> AnularVenta(int idVenta, [FromBody] SaleVoidDto? dto, CancellationToken cancellationToken)
+        {
+            var result = await _saleVoid.AnularAsync(idVenta, dto?.DevolverStock ?? true, cancellationToken);
+
+            return result.EsValido
+                ? Ok(result.Value)
+                : BadRequest(new { mensaje = result.Error });
+        }
+
         [HttpGet("turn/{idTurno}")]
         public async Task<IActionResult> GetSalesByTurn(int idTurno)
         {
+            // Las canceladas son intentos de cobro que nunca se concretaron: no son
+            // parte del historial de ventas del turno. Las anuladas sí se muestran,
+            // porque fueron ventas reales que después se revirtieron.
             var sales = await _context.VenVentas
-                .Where(v => v.IdTurno == idTurno)
+                .Where(v => v.IdTurno == idTurno && v.IdEstadoVenta != EstadosVenta.Cancelada)
                 .OrderByDescending(v => v.FechaVenta)
                 .Select(v => new
                 {
                     v.IdVenta,
                     v.FechaVenta,
                     v.MontoTotal,
+                    v.IdEstadoVenta,
+                    v.IdEstadoVentaNavigation.NombreEstadoVenta,
                     MetodosPago = v.VenMetodosPagoVenta.Select(mp => new
                     {
                         mp.IdMetodoPago,

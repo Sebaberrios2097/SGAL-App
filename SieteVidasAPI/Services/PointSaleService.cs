@@ -1,0 +1,334 @@
+using Infraestructura.Context;
+using Infraestructura.Entities.SieteVidas;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using SieteVidasAPI.Configuration;
+using SieteVidasAPI.DTOs.Point;
+
+namespace SieteVidasAPI.Services
+{
+    /// <summary>
+    /// Resultado de una operación de venta con Point. Separa el error de negocio
+    /// (que el controller devuelve como 400) del resultado exitoso.
+    /// </summary>
+    public class PointSaleResult<T>
+    {
+        public string? Error { get; init; }
+
+        public T? Value { get; init; }
+
+        public bool EsValido => Error == null;
+
+        public static PointSaleResult<T> Fallo(string error) => new() { Error = error };
+
+        public static PointSaleResult<T> Ok(T value) => new() { Value = value };
+    }
+
+    public interface IPointSaleService
+    {
+        /// <summary>Registra la venta como pendiente y envía el monto a la terminal.</summary>
+        Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Aplica a la venta el desenlace informado por Mercado Pago. Es idempotente:
+        /// recibir dos veces el mismo estado no vuelve a modificar la venta.
+        /// </summary>
+        Task HandleOrderUpdateAsync(PointOrder order, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Consulta el estado en Mercado Pago y lo aplica localmente. Permite operar
+        /// mientras no haya una URL pública configurada para los webhooks.
+        /// </summary>
+        Task<PointSaleResult<PointSaleStatusDto>> SyncAsync(int idVenta, CancellationToken cancellationToken = default);
+    }
+
+    public class PointSaleService : IPointSaleService
+    {
+        private readonly SieteVidasContext _context;
+        private readonly IPointService _pointService;
+        private readonly ISaleLinesService _saleLines;
+        private readonly MercadoPagoPointOptions _options;
+        private readonly ILogger<PointSaleService> _logger;
+
+        public PointSaleService(
+            SieteVidasContext context,
+            IPointService pointService,
+            ISaleLinesService saleLines,
+            IOptions<MercadoPagoPointOptions> options,
+            ILogger<PointSaleService> logger)
+        {
+            _context = context;
+            _pointService = pointService;
+            _saleLines = saleLines;
+            _options = options.Value;
+            _logger = logger;
+        }
+
+        public async Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, CancellationToken cancellationToken = default)
+        {
+            if (dto.Items == null || dto.Items.Count == 0)
+            {
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto.");
+            }
+
+            // El monto que va a la terminal es la porción pagada con tarjeta.
+            int montoDebito = dto.MetodosPago?.Where(m => m.IdMetodoPago == MetodosPago.Debito).Sum(m => m.Monto) ?? 0;
+            int montoCredito = dto.MetodosPago?.Where(m => m.IdMetodoPago == MetodosPago.Credito).Sum(m => m.Monto) ?? 0;
+            int montoTarjeta = montoDebito + montoCredito;
+
+            // Preselección del medio en la pantalla del lector: manda el monto mayor.
+            // El cliente puede cambiarla en la terminal, por eso es solo una sugerencia.
+            string tipoMedioPago = montoCredito > montoDebito ? "credit_card" : "debit_card";
+
+            if (montoTarjeta <= 0)
+            {
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta no incluye un monto a cobrar con tarjeta.");
+            }
+
+            var turn = await _context.TurTurno.FindAsync([dto.IdTurno], cancellationToken);
+            if (turn == null || turn.IdEstadoTurno != 1) // 1 = Abierto
+            {
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("El turno especificado no existe o no se encuentra abierto.");
+            }
+
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+            var sale = new VenVentas
+            {
+                IdTurno = dto.IdTurno,
+                IdEstadoVenta = EstadosVenta.PendienteDePago,
+                FechaVenta = DateTime.Now,
+                MontoTotal = 0,
+                MontoNeto = 0,
+                MontoIva = 0
+            };
+
+            _context.VenVentas.Add(sale);
+            await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
+
+            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, cancellationToken);
+            if (!lines.EsValido)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(lines.Error!);
+            }
+
+            int sumPayments = dto.MetodosPago?.Sum(m => m.Monto) ?? 0;
+            if (sumPayments != lines.Total)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(
+                    $"La suma de los métodos de pago (${sumPayments:N0}) debe ser igual al total de la venta (${lines.Total:N0}).");
+            }
+
+            int neto = (int)Math.Round(lines.Total / 1.19);
+            sale.MontoTotal = lines.Total;
+            sale.MontoNeto = neto;
+            sale.MontoIva = lines.Total - neto;
+            _context.Entry(sale).State = EntityState.Modified;
+
+            // Las asignaciones de pago se guardan desde ya: al confirmar solo cambia el estado.
+            foreach (var p in dto.MetodosPago!.Where(p => p.Monto > 0))
+            {
+                _context.VenMetodosPagoVenta.Add(new VenMetodosPagoVenta
+                {
+                    IdVenta = sale.IdVenta,
+                    IdMetodoPago = p.IdMetodoPago,
+                    Monto = p.Monto
+                });
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+
+            var referenciaExterna = $"SV{sale.IdVenta}_{DateTime.Now:yyyyMMddHHmmss}";
+            var terminalId = _options.TerminalId;
+
+            PointOrder order;
+            try
+            {
+                order = await _pointService.CreateOrderAsync(new PointOrderCreateDto
+                {
+                    Monto = montoTarjeta,
+                    ReferenciaExterna = referenciaExterna,
+                    Descripcion = dto.Descripcion ?? $"Venta {sale.IdVenta} - Siete Vidas",
+                    TipoMedioPago = tipoMedioPago
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Si la terminal no acepta la orden, la venta no debe quedar registrada.
+                await transaction.RollbackAsync(cancellationToken);
+                _logger.LogError(ex, "No se pudo crear la orden Point para la venta {IdVenta}.", sale.IdVenta);
+
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(
+                    ex is PointApiException pex && pex.ResponseBody != null
+                        ? $"La terminal rechazó el cobro: {pex.ResponseBody}"
+                        : "No se pudo enviar el cobro a la terminal.");
+            }
+
+            _context.VenOrdenesPoint.Add(new VenOrdenesPoint
+            {
+                IdOrdenMp = order.Id,
+                ReferenciaExterna = referenciaExterna,
+                IdVenta = sale.IdVenta,
+                IdTerminal = order.Config?.Point?.TerminalId ?? terminalId,
+                Monto = montoTarjeta,
+                Estado = order.Status ?? "created",
+                DetalleEstado = order.StatusDetail,
+                IdPagoMp = order.Transactions?.Payments?.FirstOrDefault()?.Id,
+                FechaCreacion = DateTime.Now,
+                FechaActualizacion = DateTime.Now
+            });
+
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+
+                // La orden ya está en la terminal pero la venta no se guardó: hay que retirarla.
+                _logger.LogError(ex, "Falló el commit de la venta {IdVenta}. Se intenta cancelar la orden {OrderId}.", sale.IdVenta, order.Id);
+                try
+                {
+                    await _pointService.CancelOrderAsync(order.Id, cancellationToken);
+                }
+                catch (Exception cancelEx)
+                {
+                    _logger.LogError(cancelEx,
+                        "No se pudo cancelar la orden {OrderId} tras el fallo. Requiere cancelación manual en la terminal.", order.Id);
+                }
+
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("No se pudo registrar la venta. El cobro fue retirado de la terminal.");
+            }
+
+            return PointSaleResult<PointSaleStartResultDto>.Ok(new PointSaleStartResultDto
+            {
+                IdVenta = sale.IdVenta,
+                IdOrden = order.Id,
+                ReferenciaExterna = referenciaExterna,
+                Estado = order.Status,
+                MontoTotal = lines.Total,
+                MontoTarjeta = montoTarjeta
+            });
+        }
+
+        public async Task HandleOrderUpdateAsync(PointOrder order, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(order.Id))
+            {
+                return;
+            }
+
+            var registro = await _context.VenOrdenesPoint
+                .FirstOrDefaultAsync(o => o.IdOrdenMp == order.Id, cancellationToken);
+
+            if (registro == null)
+            {
+                _logger.LogWarning("Se recibió el estado de la orden {OrderId}, que no está registrada en el sistema.", order.Id);
+                return;
+            }
+
+            var payment = order.Transactions?.Payments?.FirstOrDefault();
+            var estado = order.Status ?? registro.Estado;
+
+            registro.Estado = estado;
+            registro.DetalleEstado = order.StatusDetail;
+            registro.IdPagoMp = payment?.Id ?? registro.IdPagoMp;
+            registro.TipoMedioPago = payment?.PaymentMethod?.Type ?? registro.TipoMedioPago;
+            registro.MarcaTarjeta = payment?.PaymentMethod?.Id ?? registro.MarcaTarjeta;
+            registro.Cuotas = payment?.PaymentMethod?.Installments ?? registro.Cuotas;
+            registro.MontoPagado = ParseMonto(payment?.PaidAmount ?? order.TotalPaidAmount) ?? registro.MontoPagado;
+            registro.FechaActualizacion = DateTime.Now;
+
+            if (registro.IdVenta.HasValue)
+            {
+                var venta = await _context.VenVentas.FindAsync([registro.IdVenta.Value], cancellationToken);
+
+                // Solo se actúa sobre ventas pendientes: así el reproceso de un webhook no altera nada.
+                if (venta != null && venta.IdEstadoVenta == EstadosVenta.PendienteDePago)
+                {
+                    switch (estado)
+                    {
+                        case "processed":
+                            venta.IdEstadoVenta = EstadosVenta.Terminada;
+                            _logger.LogInformation("Venta {IdVenta} confirmada por la orden {OrderId}.", venta.IdVenta, order.Id);
+                            break;
+
+                        case "canceled":
+                        case "failed":
+                        case "expired":
+                            venta.IdEstadoVenta = EstadosVenta.Cancelada;
+                            await _saleLines.RestoreStockAsync(venta.IdVenta, cancellationToken);
+                            _logger.LogInformation("Venta {IdVenta} cancelada ({Estado}). Se devolvió el stock.", venta.IdVenta, estado);
+                            break;
+                    }
+
+                    if (venta.IdEstadoVenta != EstadosVenta.PendienteDePago)
+                    {
+                        _context.Entry(venta).State = EntityState.Modified;
+                    }
+                }
+                else if (venta != null && estado == "refunded")
+                {
+                    // El reembolso llega sobre una venta ya terminada: se anula sin tocar el stock,
+                    // porque el producto normalmente ya fue entregado.
+                    venta.IdEstadoVenta = EstadosVenta.Anulada;
+                    _context.Entry(venta).State = EntityState.Modified;
+                    _logger.LogInformation("Venta {IdVenta} anulada por reembolso de la orden {OrderId}.", venta.IdVenta, order.Id);
+                }
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        public async Task<PointSaleResult<PointSaleStatusDto>> SyncAsync(int idVenta, CancellationToken cancellationToken = default)
+        {
+            var registro = await _context.VenOrdenesPoint
+                .Where(o => o.IdVenta == idVenta)
+                .OrderByDescending(o => o.IdOrdenPoint)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (registro == null)
+            {
+                return PointSaleResult<PointSaleStatusDto>.Fallo($"La venta {idVenta} no tiene una orden de Point asociada.");
+            }
+
+            try
+            {
+                var order = await _pointService.GetOrderAsync(registro.IdOrdenMp, cancellationToken);
+                await HandleOrderUpdateAsync(order, cancellationToken);
+            }
+            catch (PointApiException ex)
+            {
+                _logger.LogError(ex, "No se pudo consultar la orden {OrderId} en Mercado Pago.", registro.IdOrdenMp);
+                return PointSaleResult<PointSaleStatusDto>.Fallo("No se pudo consultar el estado del cobro en Mercado Pago.");
+            }
+
+            var venta = await _context.VenVentas
+                .Include(v => v.IdEstadoVentaNavigation)
+                .FirstOrDefaultAsync(v => v.IdVenta == idVenta, cancellationToken);
+
+            return PointSaleResult<PointSaleStatusDto>.Ok(new PointSaleStatusDto
+            {
+                IdVenta = idVenta,
+                IdEstadoVenta = venta?.IdEstadoVenta ?? 0,
+                EstadoVenta = venta?.IdEstadoVentaNavigation?.NombreEstadoVenta,
+                IdOrden = registro.IdOrdenMp,
+                EstadoOrden = registro.Estado,
+                DetalleEstadoOrden = registro.DetalleEstado,
+                MontoPagado = registro.MontoPagado,
+                TipoMedioPago = registro.TipoMedioPago,
+                MarcaTarjeta = registro.MarcaTarjeta,
+                Cuotas = registro.Cuotas
+            });
+        }
+
+        private static int? ParseMonto(string? amount) =>
+            decimal.TryParse(amount, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+                ? (int)Math.Round(value)
+                : null;
+    }
+}

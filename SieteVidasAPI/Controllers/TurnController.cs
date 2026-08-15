@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Services;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -181,23 +182,29 @@ namespace SieteVidasAPI.Controllers
                                      where e.IdTurno == idTurno && e.IdTipoMovimiento == 1 // Apertura
                                      select e.Cantidad * d.Valor).SumAsync();
 
+            // Solo cuentan las ventas terminadas: las pendientes de pago, las canceladas
+            // por un cobro fallido y las anuladas no representan dinero en caja.
             var cashSales = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 1)
+                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 1
+                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                 .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
             var expectedCash = openingCash + cashSales;
 
             // 2. Calculate Card & Transfer Sales
             var expectedDebit = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 2)
+                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 2
+                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                 .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
             var expectedCredit = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 3)
+                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 3
+                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                 .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
             var expectedTransfer = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 4)
+                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 4
+                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                 .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
             var summary = new[]
@@ -239,22 +246,27 @@ namespace SieteVidasAPI.Controllers
                                          where e.IdTurno == dto.IdTurno && e.IdTipoMovimiento == 1 // Apertura
                                          select e.Cantidad * d.Valor).SumAsync();
 
+                // Igual que en el resumen: solo las ventas terminadas mueven dinero.
                 var cashSales = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 1)
+                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 1
+                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                     .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
                 var expectedCash = openingCash + cashSales;
 
                 var expectedDebit = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 2)
+                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 2
+                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                     .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
                 var expectedCredit = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 3)
+                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 3
+                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                     .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
                 var expectedTransfer = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 4)
+                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 4
+                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
                     .SumAsync(mp => (int?)mp.Monto) ?? 0;
 
                 // 2. Save close cash count to Tur_Turno_Desglose_Efectivo
