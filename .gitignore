@@ -363,6 +363,7 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /Database
+/frontend/
 
 # Environment files can contain production credentials
 .env

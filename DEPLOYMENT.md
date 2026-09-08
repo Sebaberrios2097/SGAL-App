@@ -1,8 +1,9 @@
 # Despliegue en Ubuntu con Docker
 
-La aplicación publica dos imágenes en GitHub Container Registry (GHCR): la API
-ASP.NET y el frontend React servido por Nginx. Cada `push` a `master` genera
-imágenes etiquetadas con el SHA del commit y actualiza el VPS por SSH.
+Este repositorio publica la API ASP.NET en GitHub Container Registry (GHCR).
+Cada `push` a `master` genera una imagen etiquetada con el SHA del commit y
+actualiza únicamente el servicio `api` del VPS por SSH. El frontend tiene su
+propio workflow en `SieteVidas_Frontend`.
 
 ## 1. Preparar el VPS una sola vez
 
@@ -58,18 +59,20 @@ es 22) y comprueba la huella antes de guardarla:
 ssh-keyscan -p 22 -H IP_DEL_VPS
 ```
 
-El workflow usa el `GITHUB_TOKEN` efímero para descargar las imágenes privadas;
-no hace falta crear un token personal de GitHub.
+El workflow usa el `GITHUB_TOKEN` efímero para publicar y descargar su propia
+imagen privada; no hace falta crear un token personal de GitHub.
 
 ## 4. Primer despliegue y actualizaciones
 
-Confirma que `frontend/` y los archivos de despliegue estén incluidos en el
-commit. Al subir el commit a `master`, el workflow:
+Al subir un commit a `master` de la API, el workflow:
 
-1. compila y publica ambas imágenes en GHCR;
+1. compila y publica la imagen de la API en GHCR;
 2. copia `compose.yaml` a `~/sietevidas`;
-3. descarga exactamente las imágenes del SHA publicado;
-4. recrea los contenedores sin tocar `.env`.
+3. descarga exactamente la imagen del SHA publicado;
+4. recrea únicamente el contenedor `api`, sin tocar `web` ni `.env`.
+
+Para el primer despliegue ejecuta primero este workflow y luego el workflow del
+frontend. Ambos repositorios deben tener los mismos secretos de `production`.
 
 La aplicación queda en el puerto indicado por `APP_PORT` (80 por defecto). Abre
 ese puerto en el firewall del VPS. Para HTTPS y un dominio, coloca Caddy o el
@@ -83,9 +86,9 @@ docker compose ps
 docker compose logs -f --tail=200
 ```
 
-Para volver manualmente a un commit anterior, usa su SHA publicado:
+Para volver manualmente la API a un commit anterior, usa su SHA publicado:
 
 ```bash
-IMAGE_TAG=SHA_ANTERIOR docker compose pull
-IMAGE_TAG=SHA_ANTERIOR docker compose up -d
+API_TAG=SHA_ANTERIOR docker compose pull api
+API_TAG=SHA_ANTERIOR docker compose up -d --no-deps api
 ```

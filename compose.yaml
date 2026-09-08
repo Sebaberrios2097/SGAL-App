@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/sebaberrios2097/sietevidasapi-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sebaberrios2097/sietevidasapi-api:${API_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env
@@ -10,7 +10,7 @@ services:
       - sietevidas
 
   web:
-    image: ghcr.io/sebaberrios2097/sietevidasapi-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/sebaberrios2097/sietevidas-frontend:${WEB_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - api
