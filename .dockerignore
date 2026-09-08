@@ -1,0 +1,16 @@
+**/.git
+**/.github
+**/.vs
+**/.codex
+**/.claude
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/*.user
+**/*.suo
+**/.env
+Database
+frontend
+DEPLOYMENT.md
+compose.yaml
