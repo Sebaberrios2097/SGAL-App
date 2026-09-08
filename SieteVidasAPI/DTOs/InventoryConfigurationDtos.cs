@@ -1,0 +1,79 @@
+namespace SieteVidasAPI.DTOs
+{
+    public class NamedCatalogDto
+    {
+        public string Nombre { get; set; } = string.Empty;
+    }
+
+    public class MeasurementUnitDto
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public string Abreviacion { get; set; } = string.Empty;
+        public string TipoMagnitud { get; set; } = string.Empty;
+        public decimal FactorConversionBase { get; set; }
+        public bool EsUnidadBase { get; set; }
+    }
+
+    public class CourtesyProductDto
+    {
+        public int IdProducto { get; set; }
+        public int CantidadDiaria { get; set; }
+    }
+
+    public class CourtesyPolicyDto
+    {
+        public int LimiteDiarioGlobal { get; set; }
+    }
+
+    public class RawMaterialDto
+    {
+        public int IdMarca { get; set; }
+        public int IdCategoriaMateria { get; set; }
+        public int IdUnidadMedida { get; set; }
+        public string NombreMaterial { get; set; } = string.Empty;
+        public string? Descripcion { get; set; }
+        public decimal Cantidad { get; set; }
+        public string? ImagenBase64 { get; set; }
+    }
+
+    public class RecipeUpdateDto
+    {
+        public List<RecipeMaterialDto> Materiales { get; set; } = new();
+    }
+
+    public class RecipeMaterialDto
+    {
+        public int IdMateriaPrima { get; set; }
+        public int IdUnidadMedida { get; set; }
+        public decimal CantidadRequerida { get; set; }
+    }
+
+    public class RawMaterialPresentationDto
+    {
+        public int IdMateriaPrima { get; set; }
+        public int IdUnidadMedida { get; set; }
+        public string NombrePresentacion { get; set; } = string.Empty;
+        public decimal CantidadContenido { get; set; }
+        public bool Activo { get; set; } = true;
+    }
+
+    public class RawMaterialStockEntryDto
+    {
+        public int CantidadPresentaciones { get; set; }
+    }
+
+    public class LogbookProductCreateDto
+    {
+        public int IdUsuario { get; set; }
+        public int IdTurno { get; set; }
+        public int IdProducto { get; set; }
+        public int Cantidad { get; set; }
+        public bool SolicitarComoCortesia { get; set; }
+        public string? Observacion { get; set; }
+    }
+
+    public class LogbookProductVoidDto
+    {
+        public int IdUsuario { get; set; }
+    }
+}

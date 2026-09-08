@@ -7,6 +7,7 @@ namespace SieteVidasAPI.DTOs
         public string? DescripcionProducto { get; set; }
         public int Precio { get; set; }
         public int? Stock { get; set; }
+        public bool RequiereReceta { get; set; }
         public string? ImagenBase64 { get; set; }
     }
 }

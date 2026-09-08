@@ -1,0 +1,190 @@
+using Infraestructura.Context;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SieteVidasAPI.Services;
+
+namespace SieteVidasAPI.Controllers;
+
+[ApiController]
+[Route("api/admin-dashboard")]
+public class AdminDashboardController : ControllerBase
+{
+    private readonly SieteVidasContext _context;
+
+    public AdminDashboardController(SieteVidasContext context)
+    {
+        _context = context;
+    }
+
+    [HttpGet("monthly-summary")]
+    public async Task<IActionResult> GetMonthlySummary([FromQuery] int year, [FromQuery] int month)
+    {
+        if (!TryGetMonthRange(year, month, out var start, out var end))
+            return BadRequest(new { mensaje = "El año o mes no es válido." });
+
+        var sales = _context.VenVentas.AsNoTracking()
+            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.FechaVenta >= start && x.FechaVenta < end);
+        var totals = await sales.GroupBy(_ => 1).Select(g => new
+        {
+            TotalVentas = g.Sum(x => x.MontoTotal),
+            CantidadVentas = g.Count(),
+            TicketPromedio = (decimal)g.Sum(x => x.MontoTotal) / g.Count()
+        }).FirstOrDefaultAsync();
+
+        var dailySales = await sales.GroupBy(x => x.FechaVenta.Day)
+            .Select(g => new { Dia = g.Key, Monto = g.Sum(x => x.MontoTotal), Cantidad = g.Count() })
+            .OrderBy(x => x.Dia).ToListAsync();
+
+        var paymentMethods = await _context.VenMetodosPagoVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new { x.IdMetodoPago, x.IdMetodoPagoNavigation.NombreMetodoPago })
+            .Select(g => new { g.Key.IdMetodoPago, g.Key.NombreMetodoPago, Monto = g.Sum(x => x.Monto) })
+            .OrderByDescending(x => x.Monto).ToListAsync();
+
+        var topProducts = await _context.VenDetalleVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new { x.IdProducto, x.IdProductoNavigation.NombreProducto })
+            .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
+            .OrderByDescending(x => x.Cantidad).ThenByDescending(x => x.Monto).Take(8).ToListAsync();
+
+        var topCategories = await _context.VenDetalleVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new
+            {
+                x.IdProductoNavigation.IdCategoriaProducto,
+                x.IdProductoNavigation.IdCategoriaProductoNavigation.NombreCategoriaProducto
+            })
+            .Select(g => new
+            {
+                g.Key.IdCategoriaProducto,
+                NombreCategoria = g.Key.NombreCategoriaProducto,
+                Cantidad = g.Sum(x => x.Cantidad),
+                Monto = g.Sum(x => x.Subtotal)
+            })
+            .OrderByDescending(x => x.Cantidad).ThenByDescending(x => x.Monto).Take(8).ToListAsync();
+
+        var turnCount = await _context.TurTurno.CountAsync(x => x.FechaApertura >= start && x.FechaApertura < end);
+        return Ok(new
+        {
+            Periodo = new { year, month, Dias = DateTime.DaysInMonth(year, month) },
+            TotalVentas = totals?.TotalVentas ?? 0,
+            CantidadVentas = totals?.CantidadVentas ?? 0,
+            TicketPromedio = totals?.TicketPromedio ?? 0,
+            CantidadTurnos = turnCount,
+            VentasDiarias = dailySales,
+            MetodosPago = paymentMethods,
+            ProductosMasVendidos = topProducts,
+            CategoriasMasVendidas = topCategories
+        });
+    }
+
+    [HttpGet("turn-records/calendar")]
+    public async Task<IActionResult> GetTurnCalendar([FromQuery] int year, [FromQuery] int month)
+    {
+        if (!TryGetMonthRange(year, month, out var start, out var end))
+            return BadRequest(new { mensaje = "El año o mes no es válido." });
+
+        var days = await _context.TurTurno.AsNoTracking()
+            .Where(x => x.FechaApertura >= start && x.FechaApertura < end)
+            .GroupBy(x => x.FechaApertura.Date)
+            .Select(g => new
+            {
+                Fecha = g.Key,
+                CantidadTurnos = g.Count(),
+                TurnosAbiertos = g.Count(x => x.IdEstadoTurno == 1),
+                CantidadBitacoras = g.Sum(x => x.TurBitacora.Count),
+                CantidadVentas = g.Sum(x => x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada)),
+                TotalVentas = g.Sum(x => x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0)
+            }).OrderBy(x => x.Fecha).ToListAsync();
+
+        return Ok(new { year, month, Dias = days });
+    }
+
+    [HttpGet("turn-records/day")]
+    public async Task<IActionResult> GetTurnDay([FromQuery] DateTime date)
+    {
+        var start = date.Date;
+        var end = start.AddDays(1);
+        var turns = await _context.TurTurno.AsNoTracking()
+            .Where(x => x.FechaApertura >= start && x.FechaApertura < end)
+            .OrderBy(x => x.FechaApertura)
+            .Select(x => new
+            {
+                x.IdTurno,
+                x.IdUsuario,
+                Usuario = x.IdUsuarioNavigation.NombreUsuario,
+                Empleado = x.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
+                    .Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
+                x.FechaApertura,
+                x.FechaCierre,
+                x.IdEstadoTurno,
+                Estado = x.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                x.DiferenciaTotal,
+                CantidadVentas = x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada),
+                TotalVentas = x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0,
+                Bitacoras = x.TurBitacora.Select(b => new
+                {
+                    b.IdBitacora,
+                    b.FechaCreacion,
+                    b.Observaciones,
+                    CantidadExtracciones = b.TurExtracciones.Count,
+                    CantidadConsumos = b.TurProductosBitacora.Count(p => p.Activo)
+                }).ToList()
+            }).ToListAsync();
+
+        return Ok(new { Fecha = start, Turnos = turns });
+    }
+
+    [HttpGet("turn-records/logbook/{idBitacora:int}")]
+    public async Task<IActionResult> GetLogbookDetail(int idBitacora)
+    {
+        var logbook = await _context.TurBitacora.AsNoTracking()
+            .AsSplitQuery()
+            .Where(x => x.IdBitacora == idBitacora)
+            .Select(x => new
+            {
+                x.IdBitacora,
+                x.IdTurno,
+                x.FechaCreacion,
+                x.Observaciones,
+                x.IdTurnoNavigation.FechaApertura,
+                x.IdTurnoNavigation.FechaCierre,
+                Estado = x.IdTurnoNavigation.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                Usuario = x.IdTurnoNavigation.IdUsuarioNavigation.NombreUsuario,
+                Empleado = x.IdTurnoNavigation.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
+                    .Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
+                Extracciones = x.TurExtracciones.OrderBy(e => e.IdExtraccion).Select(e => new
+                {
+                    e.IdExtraccion, e.Gramos, e.Segundos, e.Mililitros, e.Observaciones
+                }).ToList(),
+                ProductosConsumidos = x.TurProductosBitacora.OrderByDescending(p => p.FechaConsumo).Select(p => new
+                {
+                    p.IdProductosBitacora,
+                    p.IdProducto,
+                    p.IdProductoNavigation.NombreProducto,
+                    p.Cantidad,
+                    p.EsCortesia,
+                    p.FechaConsumo,
+                    p.Activo,
+                    p.Observacion
+                }).ToList()
+            }).FirstOrDefaultAsync();
+
+        return logbook == null
+            ? NotFound(new { mensaje = "Bitácora no encontrada." })
+            : Ok(logbook);
+    }
+
+    private static bool TryGetMonthRange(int year, int month, out DateTime start, out DateTime end)
+    {
+        start = default;
+        end = default;
+        if (year is < 2000 or > 2100 || month is < 1 or > 12) return false;
+        start = new DateTime(year, month, 1);
+        end = start.AddMonths(1);
+        return true;
+    }
+}

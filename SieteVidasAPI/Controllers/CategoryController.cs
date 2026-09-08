@@ -45,7 +45,6 @@ namespace SieteVidasAPI.Controllers
             var category = new InvCategoriaProductos
             {
                 NombreCategoriaProducto = dto.NombreCategoriaProducto,
-                RequiereReceta = dto.RequiereReceta,
                 FechaIngreso = DateTime.Now,
                 Activo = true
             };
@@ -79,7 +78,6 @@ namespace SieteVidasAPI.Controllers
             }
 
             category.NombreCategoriaProducto = dto.NombreCategoriaProducto;
-            category.RequiereReceta = dto.RequiereReceta;
             category.FechaModificacion = DateTime.Now;
 
             await _context.SaveChangesAsync();

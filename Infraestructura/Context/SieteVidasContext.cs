@@ -24,6 +24,8 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<InvCategoriaProductos> InvCategoriaProductos { get; set; }
 
+    public virtual DbSet<InvConfiguracionCortesia> InvConfiguracionCortesia { get; set; }
+
     public virtual DbSet<InvCategoriasMateria> InvCategoriasMateria { get; set; }
 
     public virtual DbSet<InvDescuentosProductos> InvDescuentosProductos { get; set; }
@@ -43,6 +45,8 @@ public partial class SieteVidasContext : DbContext
     public virtual DbSet<InvProductos> InvProductos { get; set; }
 
     public virtual DbSet<InvProductosCortesia> InvProductosCortesia { get; set; }
+
+    public virtual DbSet<InvPresentacionesMateriaPrima> InvPresentacionesMateriaPrima { get; set; }
 
     public virtual DbSet<InvProveedores> InvProveedores { get; set; }
 
@@ -68,6 +72,8 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<TurProductosBitacora> TurProductosBitacora { get; set; }
 
+    public virtual DbSet<TurProductosBitacoraMateriales> TurProductosBitacoraMateriales { get; set; }
+
     public virtual DbSet<TurTiposMovimientos> TurTiposMovimientos { get; set; }
 
     public virtual DbSet<TurTurno> TurTurno { get; set; }
@@ -77,6 +83,8 @@ public partial class SieteVidasContext : DbContext
     public virtual DbSet<TurTurnoDesgloseEfectivo> TurTurnoDesgloseEfectivo { get; set; }
 
     public virtual DbSet<VenDetalleVenta> VenDetalleVenta { get; set; }
+
+    public virtual DbSet<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; }
 
     public virtual DbSet<VenEstadosVentas> VenEstadosVentas { get; set; }
 
@@ -159,6 +167,21 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdRecetaNavigation).WithMany(p => p.InvMaterialesReceta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Recetas");
+
+            entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvMaterialesReceta)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Unidades_Medida");
+        });
+
+        modelBuilder.Entity<InvPresentacionesMateriaPrima>(entity =>
+        {
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvPresentacionesMateriaPrima)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Inv_Presentaciones_Materia_Prima_Inv_Materia_Prima");
+
+            entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvPresentacionesMateriaPrima)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Presentaciones_Materia_Prima_Inv_Unidades_Medida");
         });
 
         modelBuilder.Entity<InvOrdenCompra>(entity =>
@@ -264,6 +287,19 @@ public partial class SieteVidasContext : DbContext
                 .HasConstraintName("FK_Tur_Productos_Bitacora_Inv_Productos");
         });
 
+        modelBuilder.Entity<TurProductosBitacoraMateriales>(entity =>
+        {
+            entity.HasOne(d => d.IdProductosBitacoraNavigation)
+                .WithMany(p => p.TurProductosBitacoraMateriales)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Productos_Bitacora_Materiales_Tur_Productos_Bitacora");
+
+            entity.HasOne(d => d.IdMateriaPrimaNavigation)
+                .WithMany(p => p.TurProductosBitacoraMateriales)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Productos_Bitacora_Materiales_Inv_Materia_Prima");
+        });
+
         modelBuilder.Entity<TurTurno>(entity =>
         {
             entity.Property(e => e.DiferenciaTotal).HasComment("Indica la cuadratura general del turno incluyendo todos los métodos de pago: si es negativo faltó dinero, si es positivo sobró. \r\nTodos los detalles se encontrarán en la tabla Tur_Turno_Desglose.");
@@ -316,6 +352,17 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenDetalleVenta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Ven_Detalle_Venta_Ven_Ventas");
+        });
+
+        modelBuilder.Entity<VenDetalleVentaMateriales>(entity =>
+        {
+            entity.HasOne(d => d.IdDetalleVentaNavigation).WithMany(p => p.VenDetalleVentaMateriales)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Ven_Detalle_Venta_Materiales_Ven_Detalle_Venta");
+
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.VenDetalleVentaMateriales)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Ven_Detalle_Venta_Materiales_Inv_Materia_Prima");
         });
 
         modelBuilder.Entity<VenMetodosPagoVenta>(entity =>

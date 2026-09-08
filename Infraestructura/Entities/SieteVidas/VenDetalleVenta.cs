@@ -39,4 +39,7 @@ public partial class VenDetalleVenta
     [ForeignKey("IdVenta")]
     [InverseProperty("VenDetalleVenta")]
     public virtual VenVentas IdVentaNavigation { get; set; } = null!;
+
+    [InverseProperty("IdDetalleVentaNavigation")]
+    public virtual ICollection<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; } = new List<VenDetalleVentaMateriales>();
 }

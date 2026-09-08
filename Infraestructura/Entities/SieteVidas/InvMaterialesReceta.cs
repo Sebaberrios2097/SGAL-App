@@ -19,6 +19,12 @@ public partial class InvMaterialesReceta
     [Column("Id_Materia_Prima")]
     public int IdMateriaPrima { get; set; }
 
+    [Column("Cantidad_Requerida", TypeName = "decimal(18,3)")]
+    public decimal CantidadRequerida { get; set; }
+
+    [Column("Id_Unidad_Medida")]
+    public int IdUnidadMedida { get; set; }
+
     [ForeignKey("IdMateriaPrima")]
     [InverseProperty("InvMaterialesReceta")]
     public virtual InvMateriaPrima IdMateriaPrimaNavigation { get; set; } = null!;
@@ -26,4 +32,8 @@ public partial class InvMaterialesReceta
     [ForeignKey("IdReceta")]
     [InverseProperty("InvMaterialesReceta")]
     public virtual InvRecetas IdRecetaNavigation { get; set; } = null!;
+
+    [ForeignKey("IdUnidadMedida")]
+    [InverseProperty("InvMaterialesReceta")]
+    public virtual InvUnidadesMedida IdUnidadMedidaNavigation { get; set; } = null!;
 }

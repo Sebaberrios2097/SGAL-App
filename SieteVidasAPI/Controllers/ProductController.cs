@@ -32,6 +32,8 @@ namespace SieteVidasAPI.Controllers
                     p.DescripcionProducto,
                     p.Precio,
                     p.Stock,
+                    RequiereReceta = p.RequiereReceta ?? false,
+                    TieneRecetaConfigurada = p.InvRecetas.Any(r => r.Estado),
                     p.FechaIngreso,
                     p.Activo,
                     p.FechaModificacion,
@@ -84,7 +86,8 @@ namespace SieteVidasAPI.Controllers
                 NombreProducto = dto.NombreProducto,
                 DescripcionProducto = dto.DescripcionProducto,
                 Precio = dto.Precio,
-                Stock = dto.Stock,
+                Stock = dto.RequiereReceta ? null : dto.Stock,
+                RequiereReceta = dto.RequiereReceta,
                 FechaIngreso = DateTime.Now,
                 Activo = true,
                 Imagen = imageBytes
@@ -102,6 +105,8 @@ namespace SieteVidasAPI.Controllers
                 product.DescripcionProducto,
                 product.Precio,
                 product.Stock,
+                RequiereReceta = product.RequiereReceta ?? false,
+                TieneRecetaConfigurada = false,
                 product.FechaIngreso,
                 product.Activo,
                 ImagenBase64 = product.Imagen != null ? Convert.ToBase64String(product.Imagen) : null
@@ -158,8 +163,21 @@ namespace SieteVidasAPI.Controllers
             product.NombreProducto = dto.NombreProducto;
             product.DescripcionProducto = dto.DescripcionProducto;
             product.Precio = dto.Precio;
-            product.Stock = dto.Stock;
+            product.Stock = dto.RequiereReceta ? null : dto.Stock;
+            product.RequiereReceta = dto.RequiereReceta;
             product.FechaModificacion = DateTime.Now;
+
+            if (!dto.RequiereReceta)
+            {
+                var activeRecipes = await _context.InvRecetas
+                    .Where(r => r.IdProducto == id && r.Estado)
+                    .ToListAsync();
+                activeRecipes.ForEach(r =>
+                {
+                    r.Estado = false;
+                    r.FechaModificacion = DateTime.Now;
+                });
+            }
 
             await _context.SaveChangesAsync();
 
@@ -172,6 +190,8 @@ namespace SieteVidasAPI.Controllers
                 product.DescripcionProducto,
                 product.Precio,
                 product.Stock,
+                RequiereReceta = product.RequiereReceta ?? false,
+                TieneRecetaConfigurada = await _context.InvRecetas.AnyAsync(r => r.IdProducto == id && r.Estado),
                 product.FechaIngreso,
                 product.Activo,
                 product.FechaModificacion,
@@ -205,6 +225,8 @@ namespace SieteVidasAPI.Controllers
                 product.DescripcionProducto,
                 product.Precio,
                 product.Stock,
+                RequiereReceta = product.RequiereReceta ?? false,
+                TieneRecetaConfigurada = await _context.InvRecetas.AnyAsync(r => r.IdProducto == id && r.Estado),
                 product.FechaIngreso,
                 product.Activo,
                 product.FechaModificacion,

@@ -31,7 +31,8 @@ public partial class InvMateriaPrima
     [StringLength(300)]
     public string? Descripcion { get; set; }
 
-    public double Cantidad { get; set; }
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal Cantidad { get; set; }
 
     [Column("Fecha_Creacion", TypeName = "datetime")]
     public DateTime FechaCreacion { get; set; }
@@ -50,4 +51,12 @@ public partial class InvMateriaPrima
 
     [InverseProperty("IdMateriaPrimaNavigation")]
     public virtual ICollection<InvMaterialesReceta> InvMaterialesReceta { get; set; } = new List<InvMaterialesReceta>();
+
+    [InverseProperty("IdMateriaPrimaNavigation")]
+    public virtual ICollection<InvPresentacionesMateriaPrima> InvPresentacionesMateriaPrima { get; set; } = new List<InvPresentacionesMateriaPrima>();
+
+    public virtual ICollection<TurProductosBitacoraMateriales> TurProductosBitacoraMateriales { get; set; } = new List<TurProductosBitacoraMateriales>();
+
+    [InverseProperty("IdMateriaPrimaNavigation")]
+    public virtual ICollection<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; } = new List<VenDetalleVentaMateriales>();
 }

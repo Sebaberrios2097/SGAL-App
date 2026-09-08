@@ -25,6 +25,16 @@ public partial class TurProductosBitacora
     [Column("Es_Cortesia")]
     public bool EsCortesia { get; set; }
 
+    public int Cantidad { get; set; }
+
+    [Column("Fecha_Consumo", TypeName = "datetime2")]
+    public DateTime FechaConsumo { get; set; }
+
+    public bool Activo { get; set; }
+
+    [StringLength(300)]
+    public string? Observacion { get; set; }
+
     [ForeignKey("IdBitacora")]
     [InverseProperty("TurProductosBitacora")]
     public virtual TurBitacora IdBitacoraNavigation { get; set; } = null!;
@@ -32,4 +42,6 @@ public partial class TurProductosBitacora
     [ForeignKey("IdProducto")]
     [InverseProperty("TurProductosBitacora")]
     public virtual InvProductos IdProductoNavigation { get; set; } = null!;
+
+    public virtual ICollection<TurProductosBitacoraMateriales> TurProductosBitacoraMateriales { get; set; } = new List<TurProductosBitacoraMateriales>();
 }
