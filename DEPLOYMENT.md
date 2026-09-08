@@ -24,9 +24,9 @@ Pago deben existir únicamente en este archivo del servidor. Protege el archivo:
 chmod 600 "$HOME/sietevidas/.env"
 ```
 
-Si la base SQL está fuera del VPS, permite el puerto 1433 solo desde la IP del
-servidor. Si está en el host Docker, no uses `localhost` como nombre del servidor:
-usa una IP alcanzable desde el contenedor.
+Si la base SQL está fuera del VPS, permite su puerto solo desde la IP del
+servidor. Si está instalada en el mismo VPS, usa `host.docker.internal` como host
+en la cadena de conexión; `compose.yaml` enlaza ese nombre con el host Docker.
 
 ## 2. Crear una llave SSH de despliegue
 
