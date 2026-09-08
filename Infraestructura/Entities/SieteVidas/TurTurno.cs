@@ -1,5 +1,8 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace Infraestructura.Entities.SieteVidas;
 
@@ -39,6 +42,9 @@ public partial class TurTurno
     [ForeignKey("IdUsuario")]
     [InverseProperty("TurTurno")]
     public virtual EmpUsuarios IdUsuarioNavigation { get; set; } = null!;
+
+    [InverseProperty("IdTurnoNavigation")]
+    public virtual ICollection<TurBitacora> TurBitacora { get; set; } = new List<TurBitacora>();
 
     [InverseProperty("IdTurnoNavigation")]
     public virtual ICollection<TurTurnoDesglose> TurTurnoDesglose { get; set; } = new List<TurTurnoDesglose>();

@@ -1,5 +1,8 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace Infraestructura.Entities.SieteVidas;
 
@@ -27,6 +30,9 @@ public partial class InvProductos
 
     public int? Stock { get; set; }
 
+    [Column("Requiere_Receta")]
+    public bool? RequiereReceta { get; set; }
+
     [Column("Fecha_Ingreso", TypeName = "datetime")]
     public DateTime FechaIngreso { get; set; }
 
@@ -44,6 +50,15 @@ public partial class InvProductos
 
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
+
+    [InverseProperty("IdProductoNavigation")]
+    public virtual ICollection<InvProductosCortesia> InvProductosCortesia { get; set; } = new List<InvProductosCortesia>();
+
+    [InverseProperty("IdProductoNavigation")]
+    public virtual ICollection<InvRecetas> InvRecetas { get; set; } = new List<InvRecetas>();
+
+    [InverseProperty("IdProductoNavigation")]
+    public virtual ICollection<TurProductosBitacora> TurProductosBitacora { get; set; } = new List<TurProductosBitacora>();
 
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<VenDetalleVenta> VenDetalleVenta { get; set; } = new List<VenDetalleVenta>();

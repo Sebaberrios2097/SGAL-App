@@ -89,6 +89,35 @@ namespace SieteVidasAPI.Controllers
             });
         }
 
+        [HttpGet("history")]
+        public async Task<IActionResult> GetHistory([FromQuery] int idUsuario)
+        {
+            if (idUsuario <= 0)
+            {
+                return BadRequest(new { mensaje = "El usuario es obligatorio." });
+            }
+
+            var turns = await _context.TurTurno
+                .AsNoTracking()
+                .Where(t => t.IdUsuario == idUsuario)
+                .OrderByDescending(t => t.FechaApertura)
+                .Select(t => new
+                {
+                    t.IdTurno,
+                    t.IdEstadoTurno,
+                    EstadoNombre = t.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                    t.FechaApertura,
+                    t.FechaCierre,
+                    t.DiferenciaTotal,
+                    TotalSales = t.VenVentas.Sum(v => (int?)v.MontoTotal) ?? 0,
+                    SalesCount = t.VenVentas.Count(),
+                    ExtractionCount = t.TurBitacora.SelectMany(b => b.TurExtracciones).Count()
+                })
+                .ToListAsync();
+
+            return Ok(turns);
+        }
+
         [HttpGet("denominations")]
         public async Task<IActionResult> GetDenominations()
         {
@@ -127,44 +156,55 @@ namespace SieteVidasAPI.Controllers
                 return BadRequest(new { Mensaje = "Ya existe un turno activo en la caja. Debe ser cerrado antes de iniciar uno nuevo." });
             }
 
-            // Create Turno
-            var turn = new TurTurno
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                IdUsuario = dto.IdUsuario,
-                IdEstadoTurno = 1, // Abierto
-                FechaApertura = DateTime.Now
-            };
-
-            _context.TurTurno.Add(turn);
-            await _context.SaveChangesAsync(); // Generates IdTurno
-
-            // Create breakdown (Desglose Efectivo)
-            if (dto.Desglose != null && dto.Desglose.Any())
-            {
-                foreach (var item in dto.Desglose)
+                var turn = new TurTurno
                 {
-                    if (item.Cantidad > 0)
+                    IdUsuario = dto.IdUsuario,
+                    IdEstadoTurno = 1, // Abierto
+                    FechaApertura = DateTime.Now
+                };
+
+                _context.TurTurno.Add(turn);
+                await _context.SaveChangesAsync();
+
+                _context.TurBitacora.Add(new TurBitacora
+                {
+                    IdTurno = turn.IdTurno,
+                    FechaCreacion = DateTime.Now
+                });
+
+                if (dto.Desglose != null)
+                {
+                    foreach (var item in dto.Desglose.Where(item => item.Cantidad > 0))
                     {
-                        var breakdown = new TurTurnoDesgloseEfectivo
+                        _context.TurTurnoDesgloseEfectivo.Add(new TurTurnoDesgloseEfectivo
                         {
                             IdTurno = turn.IdTurno,
                             IdDenominacion = item.IdDenominacion,
                             IdTipoMovimiento = 1, // Apertura
                             Cantidad = item.Cantidad
-                        };
-                        _context.TurTurnoDesgloseEfectivo.Add(breakdown);
+                        });
                     }
                 }
-                await _context.SaveChangesAsync();
-            }
 
-            return Ok(new
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    turn.IdTurno,
+                    turn.IdUsuario,
+                    turn.FechaApertura,
+                    turn.IdEstadoTurno
+                });
+            }
+            catch
             {
-                turn.IdTurno,
-                turn.IdUsuario,
-                turn.FechaApertura,
-                turn.IdEstadoTurno
-            });
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         [HttpGet("summary")]

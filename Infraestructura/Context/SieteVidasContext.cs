@@ -1,4 +1,6 @@
-﻿using Infraestructura.Entities.SieteVidas;
+﻿using System;
+using System.Collections.Generic;
+using Infraestructura.Entities.SieteVidas;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infraestructura.Context;
@@ -22,9 +24,17 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<InvCategoriaProductos> InvCategoriaProductos { get; set; }
 
+    public virtual DbSet<InvCategoriasMateria> InvCategoriasMateria { get; set; }
+
     public virtual DbSet<InvDescuentosProductos> InvDescuentosProductos { get; set; }
 
     public virtual DbSet<InvEstadosOrdenCompra> InvEstadosOrdenCompra { get; set; }
+
+    public virtual DbSet<InvMarcas> InvMarcas { get; set; }
+
+    public virtual DbSet<InvMateriaPrima> InvMateriaPrima { get; set; }
+
+    public virtual DbSet<InvMaterialesReceta> InvMaterialesReceta { get; set; }
 
     public virtual DbSet<InvOrdenCompra> InvOrdenCompra { get; set; }
 
@@ -32,7 +42,13 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<InvProductos> InvProductos { get; set; }
 
+    public virtual DbSet<InvProductosCortesia> InvProductosCortesia { get; set; }
+
     public virtual DbSet<InvProveedores> InvProveedores { get; set; }
+
+    public virtual DbSet<InvRecetas> InvRecetas { get; set; }
+
+    public virtual DbSet<InvUnidadesMedida> InvUnidadesMedida { get; set; }
 
     public virtual DbSet<SiiCafFolios> SiiCafFolios { get; set; }
 
@@ -42,9 +58,15 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<SiiTiposDte> SiiTiposDte { get; set; }
 
+    public virtual DbSet<TurBitacora> TurBitacora { get; set; }
+
     public virtual DbSet<TurDenominaciones> TurDenominaciones { get; set; }
 
     public virtual DbSet<TurEstadosTurnos> TurEstadosTurnos { get; set; }
+
+    public virtual DbSet<TurExtracciones> TurExtracciones { get; set; }
+
+    public virtual DbSet<TurProductosBitacora> TurProductosBitacora { get; set; }
 
     public virtual DbSet<TurTiposMovimientos> TurTiposMovimientos { get; set; }
 
@@ -113,6 +135,32 @@ public partial class SieteVidasContext : DbContext
                 .HasConstraintName("FK_Inv_Descuentos_Productos_Inv_Productos");
         });
 
+        modelBuilder.Entity<InvMateriaPrima>(entity =>
+        {
+            entity.HasOne(d => d.IdCategoriaMateriaNavigation).WithMany(p => p.InvMateriaPrima)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materia_Prima_Inv_Categorias_Materia");
+
+            entity.HasOne(d => d.IdMarcaNavigation).WithMany(p => p.InvMateriaPrima)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materia_Prima_Inv_Marcas");
+
+            entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvMateriaPrima)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materia_Prima_Inv_Unidades_Medida");
+        });
+
+        modelBuilder.Entity<InvMaterialesReceta>(entity =>
+        {
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvMaterialesReceta)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Materia_Prima");
+
+            entity.HasOne(d => d.IdRecetaNavigation).WithMany(p => p.InvMaterialesReceta)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Recetas");
+        });
+
         modelBuilder.Entity<InvOrdenCompra>(entity =>
         {
             entity.HasOne(d => d.IdEstadoOrdenCompraNavigation).WithMany(p => p.InvOrdenCompra)
@@ -146,6 +194,22 @@ public partial class SieteVidasContext : DbContext
                 .HasConstraintName("FK_Inv_Productos_Inv_Categoria_Productos");
         });
 
+        modelBuilder.Entity<InvProductosCortesia>(entity =>
+        {
+            entity.ToTable("Inv_Productos_Cortesia", tb => tb.HasComment("Tabla que guarda todos los productos de cortesía para los empleados. Ejemplo 1 americano y un espresso por día gratis."));
+
+            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvProductosCortesia)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Productos_Cortesia_Inv_Productos");
+        });
+
+        modelBuilder.Entity<InvRecetas>(entity =>
+        {
+            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvRecetas)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Recetas_Inv_Productos");
+        });
+
         modelBuilder.Entity<SiiCafFolios>(entity =>
         {
             entity.HasOne(d => d.IdTipoDteNavigation).WithMany(p => p.SiiCafFolios)
@@ -168,9 +232,36 @@ public partial class SieteVidasContext : DbContext
                 .HasComment("Código oficial del SII.");
         });
 
+        modelBuilder.Entity<TurBitacora>(entity =>
+        {
+            entity.HasOne(d => d.IdTurnoNavigation).WithMany(p => p.TurBitacora)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Bitacora_Tur_Turno");
+        });
+
         modelBuilder.Entity<TurDenominaciones>(entity =>
         {
             entity.ToTable("Tur_Denominaciones", tb => tb.HasComment("Almacena denominaciones de dinero (ej. billete de 1000 pesos, moneda de 10 pesos, moneda de 500 pesos, etc.)"));
+        });
+
+        modelBuilder.Entity<TurExtracciones>(entity =>
+        {
+            entity.HasOne(d => d.IdBitacoraNavigation).WithMany(p => p.TurExtracciones)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Extracciones_Tur_Bitacora");
+        });
+
+        modelBuilder.Entity<TurProductosBitacora>(entity =>
+        {
+            entity.ToTable("Tur_Productos_Bitacora", tb => tb.HasComment("Tabla que guarda los productos consumidos por el empleado."));
+
+            entity.HasOne(d => d.IdBitacoraNavigation).WithMany(p => p.TurProductosBitacora)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Productos_Bitacora_Tur_Bitacora");
+
+            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.TurProductosBitacora)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Productos_Bitacora_Inv_Productos");
         });
 
         modelBuilder.Entity<TurTurno>(entity =>
@@ -242,17 +333,7 @@ public partial class SieteVidasContext : DbContext
 
         modelBuilder.Entity<VenOrdenesPoint>(entity =>
         {
-            entity.ToTable("Ven_Ordenes_Point", tb => tb.HasComment("Órdenes de cobro enviadas a la terminal Mercado Pago Point. Permiten reconciliar cada venta con su pago y auditar los intentos que no llegaron a concretarse."));
-
-            entity.HasIndex(e => e.IdOrdenMp, "UQ_Ven_Ordenes_Point_Id_Orden_MP").IsUnique();
-
-            entity.HasIndex(e => e.ReferenciaExterna, "UQ_Ven_Ordenes_Point_Referencia_Externa").IsUnique();
-
-            entity.Property(e => e.FechaCreacion).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.FechaActualizacion).HasDefaultValueSql("(getdate())");
-
-            entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenOrdenesPoint)
-                .HasConstraintName("FK_Ven_Ordenes_Point_Ven_Ventas");
+            entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenOrdenesPoint).HasConstraintName("FK_Ven_Ordenes_Point_Ven_Ventas");
         });
 
         modelBuilder.Entity<VenVentas>(entity =>

@@ -1,10 +1,15 @@
-using Microsoft.EntityFrameworkCore;
+﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace Infraestructura.Entities.SieteVidas;
 
 [Table("Ven_Ordenes_Point")]
+[Index("IdVenta", Name = "IX_Ven_Ordenes_Point_Id_Venta")]
+[Index("IdOrdenMp", Name = "UQ_Ven_Ordenes_Point_Id_Orden_MP", IsUnique = true)]
+[Index("ReferenciaExterna", Name = "UQ_Ven_Ordenes_Point_Referencia_Externa", IsUnique = true)]
 public partial class VenOrdenesPoint
 {
     [Key]
@@ -29,10 +34,8 @@ public partial class VenOrdenesPoint
     [Unicode(false)]
     public string IdTerminal { get; set; } = null!;
 
-    [Column("Monto")]
     public int Monto { get; set; }
 
-    [Column("Estado")]
     [StringLength(30)]
     [Unicode(false)]
     public string Estado { get; set; } = null!;
@@ -57,7 +60,6 @@ public partial class VenOrdenesPoint
     [Unicode(false)]
     public string? MarcaTarjeta { get; set; }
 
-    [Column("Cuotas")]
     public int? Cuotas { get; set; }
 
     [Column("Monto_Pagado")]
