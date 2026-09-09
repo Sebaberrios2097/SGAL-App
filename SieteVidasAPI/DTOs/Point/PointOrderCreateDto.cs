@@ -17,9 +17,6 @@ namespace SieteVidasAPI.DTOs.Point
         /// <summary>Descripción visible en la terminal y en el detalle de la orden.</summary>
         public string? Descripcion { get; set; }
 
-        /// <summary>Medio de pago preseleccionado: debit_card (por defecto) o credit_card.</summary>
-        public string? TipoMedioPago { get; set; }
-
         /// <summary>Terminal destino. Si no se envía, se usa la configurada por defecto.</summary>
         public string? TerminalId { get; set; }
     }

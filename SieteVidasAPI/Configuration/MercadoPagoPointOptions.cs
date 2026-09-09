@@ -46,5 +46,11 @@ namespace SieteVidasAPI.Configuration
         /// mientras se trabaja con credenciales de prueba.
         /// </summary>
         public bool AllowSimulation { get; set; } = false;
+
+        /// <summary>
+        /// Simula automáticamente el resultado de cada orden creada. Debe habilitarse
+        /// únicamente junto a credenciales de prueba y una terminal virtual.
+        /// </summary>
+        public bool AutoSimulate { get; set; } = false;
     }
 }

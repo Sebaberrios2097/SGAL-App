@@ -71,18 +71,19 @@ namespace SieteVidasAPI.Services
                 return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto.");
             }
 
-            // El monto que va a la terminal es la porción pagada con tarjeta.
-            int montoDebito = dto.MetodosPago?.Where(m => m.IdMetodoPago == MetodosPago.Debito).Sum(m => m.Monto) ?? 0;
-            int montoCredito = dto.MetodosPago?.Where(m => m.IdMetodoPago == MetodosPago.Credito).Sum(m => m.Monto) ?? 0;
-            int montoTarjeta = montoDebito + montoCredito;
-
-            // Preselección del medio en la pantalla del lector: manda el monto mayor.
-            // El cliente puede cambiarla en la terminal, por eso es solo una sugerencia.
-            string tipoMedioPago = montoCredito > montoDebito ? "credit_card" : "debit_card";
+            // La interfaz solo solicita "Tarjeta". Mercado Pago informará si el cobro
+            // se procesó como débito o crédito cuando termine la operación.
+            int montoTarjeta = dto.MontoTarjeta;
 
             if (montoTarjeta <= 0)
             {
                 return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta no incluye un monto a cobrar con tarjeta.");
+            }
+
+            if (dto.MetodosPago?.Any(m => m.IdMetodoPago is MetodosPago.Debito or MetodosPago.Credito) == true)
+            {
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(
+                    "No se debe indicar débito o crédito. Envía el monto mediante MontoTarjeta.");
             }
 
             var turn = await _context.TurTurno.FindAsync([dto.IdTurno], cancellationToken);
@@ -113,7 +114,7 @@ namespace SieteVidasAPI.Services
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(lines.Error!);
             }
 
-            int sumPayments = dto.MetodosPago?.Sum(m => m.Monto) ?? 0;
+            int sumPayments = (dto.MetodosPago?.Sum(m => m.Monto) ?? 0) + montoTarjeta;
             if (sumPayments != lines.Total)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -127,8 +128,9 @@ namespace SieteVidasAPI.Services
             sale.MontoIva = lines.Total - neto;
             _context.Entry(sale).State = EntityState.Modified;
 
-            // Las asignaciones de pago se guardan desde ya: al confirmar solo cambia el estado.
-            foreach (var p in dto.MetodosPago!.Where(p => p.Monto > 0))
+            // Los métodos no asociados a la terminal se pueden guardar desde ya. La porción
+            // de tarjeta se registra como débito o crédito cuando Mercado Pago la informe.
+            foreach (var p in (dto.MetodosPago ?? []).Where(p => p.Monto > 0))
             {
                 _context.VenMetodosPagoVenta.Add(new VenMetodosPagoVenta
                 {
@@ -150,8 +152,7 @@ namespace SieteVidasAPI.Services
                 {
                     Monto = montoTarjeta,
                     ReferenciaExterna = referenciaExterna,
-                    Descripcion = dto.Descripcion ?? $"Venta {sale.IdVenta} - Siete Vidas",
-                    TipoMedioPago = tipoMedioPago
+                    Descripcion = dto.Descripcion ?? $"Venta {sale.IdVenta} - Siete Vidas"
                 }, cancellationToken);
             }
             catch (Exception ex)
@@ -204,6 +205,26 @@ namespace SieteVidasAPI.Services
                 return PointSaleResult<PointSaleStartResultDto>.Fallo("No se pudo registrar la venta. El cobro fue retirado de la terminal.");
             }
 
+            bool usesVirtualTerminal = _options.TerminalId.EndsWith("__SBX0000001", StringComparison.OrdinalIgnoreCase);
+            if (_options.AllowSimulation && _options.AutoSimulate && usesVirtualTerminal)
+            {
+                try
+                {
+                    var simulation = BuildRandomSimulation();
+                    await _pointService.SimulateOrderAsync(order.Id, simulation, cancellationToken);
+
+                    _logger.LogInformation(
+                        "Simulación automática enviada para la orden {OrderId}. Resultado={Status} Medio={PaymentMethodType}",
+                        order.Id, simulation.Status, simulation.PaymentMethodType);
+                }
+                catch (Exception ex)
+                {
+                    // La venta y la orden ya existen. Si Mercado Pago no acepta la
+                    // simulación, se mantienen pendientes para permitir reintentarla.
+                    _logger.LogError(ex, "No se pudo simular automáticamente la orden {OrderId}.", order.Id);
+                }
+            }
+
             return PointSaleResult<PointSaleStartResultDto>.Ok(new PointSaleStartResultDto
             {
                 IdVenta = sale.IdVenta,
@@ -253,6 +274,41 @@ namespace SieteVidasAPI.Services
                     switch (estado)
                     {
                         case "processed":
+                            var idMetodoPago = payment?.PaymentMethod?.Type switch
+                            {
+                                "debit_card" => MetodosPago.Debito,
+                                "credit_card" => MetodosPago.Credito,
+                                _ => (int?)null
+                            };
+
+                            if (!idMetodoPago.HasValue)
+                            {
+                                _logger.LogWarning(
+                                    "La orden {OrderId} fue procesada sin un tipo de tarjeta reconocible ({TipoMedioPago}). La venta {IdVenta} seguirá pendiente.",
+                                    order.Id, payment?.PaymentMethod?.Type, venta.IdVenta);
+                                break;
+                            }
+
+                            // Compatibilidad con órdenes iniciadas por versiones anteriores:
+                            // cualquier asignación provisoria de débito/crédito se reemplaza
+                            // por la clasificación que informó Mercado Pago.
+                            var asignacionesTarjeta = await _context.VenMetodosPagoVenta
+                                .Where(m => m.IdVenta == venta.IdVenta &&
+                                            (m.IdMetodoPago == MetodosPago.Debito || m.IdMetodoPago == MetodosPago.Credito))
+                                .ToListAsync(cancellationToken);
+
+                            if (asignacionesTarjeta.Count > 0)
+                            {
+                                _context.VenMetodosPagoVenta.RemoveRange(asignacionesTarjeta);
+                            }
+
+                            _context.VenMetodosPagoVenta.Add(new VenMetodosPagoVenta
+                            {
+                                IdVenta = venta.IdVenta,
+                                IdMetodoPago = idMetodoPago.Value,
+                                Monto = registro.Monto
+                            });
+
                             venta.IdEstadoVenta = EstadosVenta.Terminada;
                             _logger.LogInformation("Venta {IdVenta} confirmada por la orden {OrderId}.", venta.IdVenta, order.Id);
                             break;
@@ -330,5 +386,31 @@ namespace SieteVidasAPI.Services
             decimal.TryParse(amount, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
                 ? (int)Math.Round(value)
                 : null;
+
+        private static PointSimulationRequest BuildRandomSimulation()
+        {
+            var outcome = Random.Shared.Next(100);
+
+            if (outcome >= 95)
+            {
+                return new PointSimulationRequest { Status = "canceled" };
+            }
+
+            bool esCredito = Random.Shared.Next(2) == 0;
+            var simulation = new PointSimulationRequest
+            {
+                Status = outcome < 80 ? "processed" : "failed",
+                PaymentMethodType = esCredito ? "credit_card" : "debit_card",
+                PaymentMethodId = esCredito ? "visa" : "debvisa",
+                StatusDetail = outcome < 80 ? "accredited" : "insufficient_amount"
+            };
+
+            if (esCredito)
+            {
+                simulation.Installments = 1;
+            }
+
+            return simulation;
+        }
     }
 }

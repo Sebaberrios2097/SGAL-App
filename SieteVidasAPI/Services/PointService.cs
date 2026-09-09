@@ -95,10 +95,6 @@ namespace SieteVidasAPI.Services
                     {
                         TerminalId = terminalId,
                         PrintOnTerminal = _options.PrintOnTerminal
-                    },
-                    PaymentMethod = new PointPaymentMethodConfig
-                    {
-                        DefaultType = string.IsNullOrWhiteSpace(dto.TipoMedioPago) ? "debit_card" : dto.TipoMedioPago
                     }
                 },
                 Taxes = string.IsNullOrWhiteSpace(_options.PayerCondition)
