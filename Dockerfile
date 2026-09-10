@@ -16,6 +16,12 @@ RUN dotnet publish "SieteVidasAPI/SieteVidasAPI.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 LABEL org.opencontainers.image.source="https://github.com/Sebaberrios2097/SieteVidasAPI"
+
+# Fuentes necesarias para generar PDF (SystemPdfFontResolver busca DejaVu)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
