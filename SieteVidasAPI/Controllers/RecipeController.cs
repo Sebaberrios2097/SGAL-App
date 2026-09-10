@@ -39,7 +39,13 @@ namespace SieteVidasAPI.Controllers
                             m.CantidadRequerida,
                             m.IdUnidadMedida,
                             NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
-                            AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion
+                            AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
+                            m.IdMateriaPrimaReemplazada,
+                            NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
+                                ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
+                                : null,
+                            m.Recargo,
+                            m.UsaMismaMedidaQuePrincipal
                         }).ToList()
                 }).ToListAsync();
 
@@ -72,7 +78,13 @@ namespace SieteVidasAPI.Controllers
                         m.IdUnidadMedida,
                         NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
                         AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
-                        m.CantidadRequerida
+                        m.CantidadRequerida,
+                        m.IdMateriaPrimaReemplazada,
+                        NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
+                            ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
+                            : null,
+                        m.Recargo,
+                        m.UsaMismaMedidaQuePrincipal
                     }).ToList()
                 }).FirstOrDefaultAsync();
 
@@ -92,8 +104,9 @@ namespace SieteVidasAPI.Controllers
                 .Select(x => x.First())
                 .ToList();
             if (materials.Count == 0) return BadRequest(new { mensaje = "Debe seleccionar al menos una materia prima." });
-            if (materials.Any(x => x.CantidadRequerida <= 0))
-                return BadRequest(new { mensaje = "La cantidad requerida de cada materia prima debe ser mayor que cero." });
+            if (materials.Any(x => x.Recargo < 0))
+                return BadRequest(new { mensaje = "El recargo de una materia prima no puede ser negativo." });
+
             var ids = materials.Select(x => x.IdMateriaPrima).ToList();
             var rawMaterials = await _context.InvMateriaPrima.AsNoTracking()
                 .Include(x => x.IdUnidadMedidaNavigation)
@@ -101,12 +114,35 @@ namespace SieteVidasAPI.Controllers
                 .ToDictionaryAsync(x => x.IdMateriaPrima);
             if (rawMaterials.Count != ids.Count)
                 return BadRequest(new { mensaje = "Una o más materias primas no son válidas." });
+            var selectedIds = ids.ToHashSet();
+            foreach (var alternative in materials.Where(x => x.IdMateriaPrimaReemplazada.HasValue))
+            {
+                if (alternative.IdMateriaPrimaReemplazada == alternative.IdMateriaPrima)
+                    return BadRequest(new { mensaje = "Una materia prima no puede ser alternativa de sí misma." });
+                if (!selectedIds.Contains(alternative.IdMateriaPrimaReemplazada!.Value))
+                    return BadRequest(new { mensaje = "La materia prima principal de cada alternativa debe formar parte de la receta." });
+
+                var baseMaterial = materials.First(x => x.IdMateriaPrima == alternative.IdMateriaPrimaReemplazada.Value);
+                if (baseMaterial.IdMateriaPrimaReemplazada.HasValue)
+                    return BadRequest(new { mensaje = "No se permiten cadenas de alternativas. La materia principal no puede reemplazar a otra." });
+
+                if (alternative.UsaMismaMedidaQuePrincipal)
+                {
+                    alternative.CantidadRequerida = baseMaterial.CantidadRequerida;
+                    alternative.IdUnidadMedida = baseMaterial.IdUnidadMedida;
+                }
+            }
+
+            if (materials.Any(x => x.CantidadRequerida <= 0))
+                return BadRequest(new { mensaje = "La cantidad requerida de cada materia prima debe ser mayor que cero." });
+
             var unitIds = materials.Select(x => x.IdUnidadMedida).Distinct().ToList();
             var units = await _context.InvUnidadesMedida.AsNoTracking()
                 .Where(x => unitIds.Contains(x.IdUnidadMedida))
                 .ToDictionaryAsync(x => x.IdUnidadMedida);
             if (units.Count != unitIds.Count)
                 return BadRequest(new { mensaje = "Una o más unidades de medida no son válidas." });
+
             foreach (var material in materials)
             {
                 var recipeUnit = units[material.IdUnidadMedida];
@@ -144,7 +180,10 @@ namespace SieteVidasAPI.Controllers
                 IdReceta = recipe.IdReceta,
                 IdMateriaPrima = material.IdMateriaPrima,
                 IdUnidadMedida = material.IdUnidadMedida,
-                CantidadRequerida = material.CantidadRequerida
+                CantidadRequerida = material.CantidadRequerida,
+                IdMateriaPrimaReemplazada = material.IdMateriaPrimaReemplazada,
+                Recargo = material.IdMateriaPrimaReemplazada.HasValue ? material.Recargo : 0,
+                UsaMismaMedidaQuePrincipal = material.IdMateriaPrimaReemplazada.HasValue && material.UsaMismaMedidaQuePrincipal
             }));
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();

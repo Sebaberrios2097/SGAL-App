@@ -14,10 +14,16 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Infraestructura\Infraestructura.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\frontend\public\logo_siete_vidas_completo.png" Link="Assets\logo_siete_vidas_completo.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

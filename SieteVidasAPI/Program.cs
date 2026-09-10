@@ -19,6 +19,7 @@ builder.Services.Configure<MercadoPagoPointOptions>(
 builder.Services.AddScoped<ISaleLinesService, SaleLinesService>();
 builder.Services.AddScoped<IPointSaleService, PointSaleService>();
 builder.Services.AddScoped<ISaleVoidService, SaleVoidService>();
+builder.Services.AddScoped<IPurchaseOrderExportService, PurchaseOrderExportService>();
 
 builder.Services.AddHttpClient<IPointService, PointService>((sp, client) =>
 {

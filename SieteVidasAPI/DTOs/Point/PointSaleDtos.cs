@@ -8,6 +8,13 @@ namespace SieteVidasAPI.DTOs.Point
     {
         public int IdTurno { get; set; }
 
+        /// <summary>
+        /// Monto que se enviará a la terminal. El tipo definitivo (débito o crédito)
+        /// se obtiene desde Mercado Pago después de procesar el cobro.
+        /// </summary>
+        public int MontoTarjeta { get; set; }
+
+        /// <summary>Métodos distintos de tarjeta usados en un pago dividido.</summary>
         public List<SalePaymentMethodDto> MetodosPago { get; set; } = new();
 
         public List<SaleItemDto> Items { get; set; } = new();

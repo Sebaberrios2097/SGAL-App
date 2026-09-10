@@ -28,11 +28,30 @@ public partial class InvOrdenCompra
     [Column("Monto_Total")]
     public int MontoTotal { get; set; }
 
+    [Column("Monto_Total_Real")]
+    public int? MontoTotalReal { get; set; }
+
     [Column("Fecha_Solicitud", TypeName = "datetime")]
     public DateTime FechaSolicitud { get; set; }
 
     [Column("Fecha_Llegada_Pedido", TypeName = "datetime")]
     public DateTime FechaLlegadaPedido { get; set; }
+
+    [Column("Fecha_Emision", TypeName = "datetime2")]
+    public DateTime? FechaEmision { get; set; }
+
+    [Column("Fecha_Recepcion", TypeName = "datetime2")]
+    public DateTime? FechaRecepcion { get; set; }
+
+    [Column("Observaciones")]
+    [StringLength(500)]
+    public string? Observaciones { get; set; }
+
+    [Column("Precios_Confirmados")]
+    public bool PreciosConfirmados { get; set; }
+
+    [Column("Fecha_Confirmacion_Precios", TypeName = "datetime2")]
+    public DateTime? FechaConfirmacionPrecios { get; set; }
 
     [ForeignKey("IdEstadoOrdenCompra")]
     [InverseProperty("InvOrdenCompra")]

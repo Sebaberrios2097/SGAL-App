@@ -17,5 +17,12 @@ namespace SieteVidasAPI.DTOs
     {
         public int IdProducto { get; set; }
         public int Cantidad { get; set; }
+        public List<SaleMaterialSelectionDto> SeleccionesMateriales { get; set; } = new();
+    }
+
+    public class SaleMaterialSelectionDto
+    {
+        public int IdMateriaPrimaBase { get; set; }
+        public int IdMateriaPrimaSeleccionada { get; set; }
     }
 }

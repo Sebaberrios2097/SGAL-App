@@ -194,8 +194,17 @@ namespace SieteVidasAPI.Controllers
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
+                        d.PrecioNormal,
                         d.PrecioUnitario,
-                        d.Subtotal
+                        d.Subtotal,
+                        SeleccionesMateriales = d.VenDetalleVentaMateriales
+                            .Where(m => m.EsEleccionAlternativa)
+                            .Select(m => new
+                            {
+                                m.IdMateriaPrima,
+                                NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial,
+                                m.Recargo
+                            })
                     })
                 })
                 .ToListAsync();

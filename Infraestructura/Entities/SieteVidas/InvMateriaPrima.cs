@@ -53,6 +53,12 @@ public partial class InvMateriaPrima
     public virtual ICollection<InvMaterialesReceta> InvMaterialesReceta { get; set; } = new List<InvMaterialesReceta>();
 
     [InverseProperty("IdMateriaPrimaNavigation")]
+    public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
+
+    [InverseProperty("IdMateriaPrimaReemplazadaNavigation")]
+    public virtual ICollection<InvMaterialesReceta> InvMaterialesRecetaComoMateriaBase { get; set; } = new List<InvMaterialesReceta>();
+
+    [InverseProperty("IdMateriaPrimaNavigation")]
     public virtual ICollection<InvPresentacionesMateriaPrima> InvPresentacionesMateriaPrima { get; set; } = new List<InvPresentacionesMateriaPrima>();
 
     public virtual ICollection<TurProductosBitacoraMateriales> TurProductosBitacoraMateriales { get; set; } = new List<TurProductosBitacoraMateriales>();
