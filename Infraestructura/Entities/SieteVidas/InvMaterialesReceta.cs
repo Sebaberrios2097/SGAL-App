@@ -25,9 +25,21 @@ public partial class InvMaterialesReceta
     [Column("Id_Unidad_Medida")]
     public int IdUnidadMedida { get; set; }
 
+    [Column("Id_Materia_Prima_Reemplazada")]
+    public int? IdMateriaPrimaReemplazada { get; set; }
+
+    public int Recargo { get; set; }
+
+    [Column("Usa_Misma_Medida_Que_Principal")]
+    public bool UsaMismaMedidaQuePrincipal { get; set; }
+
     [ForeignKey("IdMateriaPrima")]
     [InverseProperty("InvMaterialesReceta")]
     public virtual InvMateriaPrima IdMateriaPrimaNavigation { get; set; } = null!;
+
+    [ForeignKey("IdMateriaPrimaReemplazada")]
+    [InverseProperty("InvMaterialesRecetaComoMateriaBase")]
+    public virtual InvMateriaPrima? IdMateriaPrimaReemplazadaNavigation { get; set; }
 
     [ForeignKey("IdReceta")]
     [InverseProperty("InvMaterialesReceta")]

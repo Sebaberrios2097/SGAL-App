@@ -164,6 +164,10 @@ public partial class SieteVidasContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Materia_Prima");
 
+            entity.HasOne(d => d.IdMateriaPrimaReemplazadaNavigation).WithMany(p => p.InvMaterialesRecetaComoMateriaBase)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Inv_Materiales_Receta_Materia_Reemplazada");
+
             entity.HasOne(d => d.IdRecetaNavigation).WithMany(p => p.InvMaterialesReceta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Recetas");
@@ -206,8 +210,16 @@ public partial class SieteVidasContext : DbContext
                 .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Orden_Compra");
 
             entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvOrdenDetalle)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Productos");
+
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvOrdenDetalle)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Materia_Prima");
+
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_Inv_Orden_Detalle_Tipo_Item",
+                "([Id_Producto] IS NOT NULL AND [Id_Materia_Prima] IS NULL) OR ([Id_Producto] IS NULL AND [Id_Materia_Prima] IS NOT NULL)"));
         });
 
         modelBuilder.Entity<InvProductos>(entity =>

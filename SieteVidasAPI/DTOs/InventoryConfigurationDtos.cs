@@ -46,6 +46,9 @@ namespace SieteVidasAPI.DTOs
         public int IdMateriaPrima { get; set; }
         public int IdUnidadMedida { get; set; }
         public decimal CantidadRequerida { get; set; }
+        public int? IdMateriaPrimaReemplazada { get; set; }
+        public int Recargo { get; set; }
+        public bool UsaMismaMedidaQuePrincipal { get; set; }
     }
 
     public class RawMaterialPresentationDto

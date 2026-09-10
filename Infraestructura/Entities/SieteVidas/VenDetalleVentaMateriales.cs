@@ -19,6 +19,11 @@ public partial class VenDetalleVentaMateriales
     [Column("Cantidad_Descontada", TypeName = "decimal(18,3)")]
     public decimal CantidadDescontada { get; set; }
 
+    [Column("Es_Eleccion_Alternativa")]
+    public bool EsEleccionAlternativa { get; set; }
+
+    public int Recargo { get; set; }
+
     [ForeignKey("IdDetalleVenta")]
     [InverseProperty("VenDetalleVentaMateriales")]
     public virtual VenDetalleVenta IdDetalleVentaNavigation { get; set; } = null!;

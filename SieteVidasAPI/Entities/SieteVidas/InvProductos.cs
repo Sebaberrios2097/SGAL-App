@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace SieteVidasAPI.Entities.SieteVidas;
 
 [Table("Inv_Productos")]
+[Index("CodigoProducto", Name = "UX_Inv_Productos_Codigo_Producto", IsUnique = true)]
 public partial class InvProductos
 {
     [Key]
@@ -15,6 +16,11 @@ public partial class InvProductos
 
     [Column("Id_Categoria_Producto")]
     public int IdCategoriaProducto { get; set; }
+
+    [Column("Codigo_Producto")]
+    [StringLength(50)]
+    [Unicode(false)]
+    public string CodigoProducto { get; set; } = null!;
 
     [Column("Nombre_Producto")]
     [StringLength(150)]

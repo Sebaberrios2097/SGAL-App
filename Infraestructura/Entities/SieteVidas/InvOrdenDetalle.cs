@@ -17,14 +17,40 @@ public partial class InvOrdenDetalle
     public int IdOrdenCompra { get; set; }
 
     [Column("Id_Producto")]
-    public int IdProducto { get; set; }
+    public int? IdProducto { get; set; }
 
-    public int Cantidad { get; set; }
+    [Column("Id_Materia_Prima")]
+    public int? IdMateriaPrima { get; set; }
+
+    [Column(TypeName = "decimal(18, 3)")]
+    public decimal Cantidad { get; set; }
 
     [Column("Precio_Unitario")]
     public int PrecioUnitario { get; set; }
 
     public int Subtotal { get; set; }
+
+    [Column("Cantidad_Recibida", TypeName = "decimal(18, 3)")]
+    public decimal CantidadRecibida { get; set; }
+
+    [Column("Precio_Unitario_Real")]
+    public int? PrecioUnitarioReal { get; set; }
+
+    [Column("Subtotal_Real")]
+    public int? SubtotalReal { get; set; }
+
+    [Column("Precio_Venta_Anterior")]
+    public int? PrecioVentaAnterior { get; set; }
+
+    [Column("Nuevo_Precio_Venta")]
+    public int? NuevoPrecioVenta { get; set; }
+
+    [Column("Precio_Confirmado")]
+    public bool PrecioConfirmado { get; set; }
+
+    [Column("Observacion_Recepcion")]
+    [StringLength(300)]
+    public string? ObservacionRecepcion { get; set; }
 
     [ForeignKey("IdOrdenCompra")]
     [InverseProperty("InvOrdenDetalle")]
@@ -32,5 +58,9 @@ public partial class InvOrdenDetalle
 
     [ForeignKey("IdProducto")]
     [InverseProperty("InvOrdenDetalle")]
-    public virtual InvProductos IdProductoNavigation { get; set; } = null!;
+    public virtual InvProductos? IdProductoNavigation { get; set; }
+
+    [ForeignKey("IdMateriaPrima")]
+    [InverseProperty("InvOrdenDetalle")]
+    public virtual InvMateriaPrima? IdMateriaPrimaNavigation { get; set; }
 }

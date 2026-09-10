@@ -58,6 +58,11 @@ namespace SieteVidasAPI.Services
 
             foreach (var item in items)
             {
+                if (item.Cantidad <= 0)
+                {
+                    return new SaleLinesResult { Error = "La cantidad de cada producto debe ser mayor que cero." };
+                }
+
                 var prod = await _context.InvProductos
                     .Include(x => x.InvRecetas.Where(r => r.Estado))
                         .ThenInclude(r => r.InvMaterialesReceta)
@@ -81,6 +86,9 @@ namespace SieteVidasAPI.Services
                     IndExento = false
                 };
 
+                int recargoUnitario = 0;
+                var materialesAConsumir = new List<(InvMaterialesReceta Material, InvMaterialesReceta Medida, bool EsEleccionAlternativa)>();
+
                 // Los productos con receta descuentan materias primas convertidas a la
                 // unidad de inventario. El snapshot permite reponer exactamente al anular.
                 if (prod.RequiereReceta == true)
@@ -89,11 +97,52 @@ namespace SieteVidasAPI.Services
                     if (recipe == null || recipe.InvMaterialesReceta.Count == 0)
                         return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no tiene una receta activa configurada." };
 
-                    foreach (var material in recipe.InvMaterialesReceta)
+                    var gruposAlternativas = recipe.InvMaterialesReceta
+                        .Where(m => m.IdMateriaPrimaReemplazada.HasValue)
+                        .GroupBy(m => m.IdMateriaPrimaReemplazada!.Value)
+                        .ToDictionary(g => g.Key, g => g.ToList());
+                    var selecciones = item.SeleccionesMateriales ?? [];
+
+                    if (selecciones.GroupBy(s => s.IdMateriaPrimaBase).Any(g => g.Count() > 1))
+                        return new SaleLinesResult { Error = $"Hay selecciones de materia prima repetidas para {prod.NombreProducto}." };
+                    if (selecciones.Any(s => !gruposAlternativas.ContainsKey(s.IdMateriaPrimaBase)))
+                        return new SaleLinesResult { Error = $"Se indicó una alternativa que no pertenece a la receta de {prod.NombreProducto}." };
+
+                    var seleccionPorBase = selecciones.ToDictionary(s => s.IdMateriaPrimaBase);
+
+                    foreach (var materialBase in recipe.InvMaterialesReceta.Where(m => !m.IdMateriaPrimaReemplazada.HasValue))
+                    {
+                        if (!gruposAlternativas.TryGetValue(materialBase.IdMateriaPrima, out var alternativas))
+                        {
+                            materialesAConsumir.Add((materialBase, materialBase, false));
+                            continue;
+                        }
+
+                        int idSeleccionado = seleccionPorBase.TryGetValue(materialBase.IdMateriaPrima, out var seleccion)
+                            ? seleccion.IdMateriaPrimaSeleccionada
+                            : materialBase.IdMateriaPrima;
+                        var materialSeleccionado = idSeleccionado == materialBase.IdMateriaPrima
+                            ? materialBase
+                            : alternativas.FirstOrDefault(m => m.IdMateriaPrima == idSeleccionado);
+
+                        if (materialSeleccionado == null)
+                            return new SaleLinesResult { Error = $"La materia prima seleccionada no es una alternativa válida para {prod.NombreProducto}." };
+
+                        var medidaSeleccionada = materialSeleccionado.UsaMismaMedidaQuePrincipal
+                            ? materialBase
+                            : materialSeleccionado;
+                        materialesAConsumir.Add((materialSeleccionado, medidaSeleccionada, true));
+                        recargoUnitario += materialSeleccionado.Recargo;
+                    }
+
+                    if (gruposAlternativas.Keys.Any(id => materialesAConsumir.All(x => x.Material.IdMateriaPrima != id && x.Material.IdMateriaPrimaReemplazada != id)))
+                        return new SaleLinesResult { Error = $"La receta de {prod.NombreProducto} contiene una alternativa sin materia principal." };
+
+                    foreach (var (material, medida, esEleccionAlternativa) in materialesAConsumir)
                     {
                         var required = decimal.Round(
-                            material.CantidadRequerida * item.Cantidad
-                            * material.IdUnidadMedidaNavigation.FactorConversionBase
+                            medida.CantidadRequerida * item.Cantidad
+                            * medida.IdUnidadMedidaNavigation.FactorConversionBase
                             / material.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
                             3,
                             MidpointRounding.AwayFromZero);
@@ -106,7 +155,9 @@ namespace SieteVidasAPI.Services
                         detail.VenDetalleVentaMateriales.Add(new VenDetalleVentaMateriales
                         {
                             IdMateriaPrima = material.IdMateriaPrima,
-                            CantidadDescontada = required
+                            CantidadDescontada = required,
+                            EsEleccionAlternativa = esEleccionAlternativa,
+                            Recargo = esEleccionAlternativa ? material.Recargo : 0
                         });
                     }
                 }
@@ -134,9 +185,12 @@ namespace SieteVidasAPI.Services
                     finalUnitPrice = (int)Math.Round(prod.Precio - discountVal);
                 }
 
+                finalUnitPrice += recargoUnitario;
+
                 int subtotal = finalUnitPrice * item.Cantidad;
                 total += subtotal;
 
+                detail.PrecioNormal = prod.Precio + recargoUnitario;
                 detail.PrecioUnitario = finalUnitPrice;
                 detail.Subtotal = subtotal;
 
