@@ -118,6 +118,152 @@ namespace SieteVidasAPI.Controllers
             return Ok(turns);
         }
 
+        [HttpGet("calendar")]
+        public async Task<IActionResult> GetCalendar([FromQuery] int idUsuario, [FromQuery] int year, [FromQuery] int month)
+        {
+            if (idUsuario <= 0)
+            {
+                return BadRequest(new { mensaje = "El usuario es obligatorio." });
+            }
+
+            if (year is < 2000 or > 2100 || month is < 1 or > 12)
+            {
+                return BadRequest(new { mensaje = "El año o mes no es válido." });
+            }
+
+            var start = new DateTime(year, month, 1);
+            var end = start.AddMonths(1);
+
+            var days = await _context.TurTurno.AsNoTracking()
+                .Where(x => x.IdUsuario == idUsuario && x.FechaApertura >= start && x.FechaApertura < end)
+                .GroupBy(x => x.FechaApertura.Date)
+                .Select(g => new
+                {
+                    Fecha = g.Key,
+                    CantidadTurnos = g.Count(),
+                    TurnosAbiertos = g.Count(x => x.IdEstadoTurno == 1),
+                    CantidadBitacoras = g.Sum(x => x.TurBitacora.Count),
+                    CantidadVentas = g.Sum(x => x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada)),
+                    TotalVentas = g.Sum(x => x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0)
+                })
+                .OrderBy(x => x.Fecha)
+                .ToListAsync();
+
+            var tipsByDay = await GetTipsByDayAsync(idUsuario, start, end);
+
+            var dias = days.Select(d => new
+            {
+                d.Fecha,
+                d.CantidadTurnos,
+                d.TurnosAbiertos,
+                d.CantidadBitacoras,
+                d.CantidadVentas,
+                d.TotalVentas,
+                PropinaTotal = tipsByDay.TryGetValue(d.Fecha, out var propina) ? propina : 0
+            });
+
+            return Ok(new { year, month, Dias = dias });
+        }
+
+        [HttpGet("day")]
+        public async Task<IActionResult> GetDay([FromQuery] int idUsuario, [FromQuery] DateTime date)
+        {
+            if (idUsuario <= 0)
+            {
+                return BadRequest(new { mensaje = "El usuario es obligatorio." });
+            }
+
+            var start = date.Date;
+            var end = start.AddDays(1);
+
+            var turns = await _context.TurTurno.AsNoTracking()
+                .Where(x => x.IdUsuario == idUsuario && x.FechaApertura >= start && x.FechaApertura < end)
+                .OrderBy(x => x.FechaApertura)
+                .Select(x => new
+                {
+                    x.IdTurno,
+                    x.IdUsuario,
+                    Usuario = x.IdUsuarioNavigation.NombreUsuario,
+                    Empleado = x.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
+                        .Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
+                    x.FechaApertura,
+                    x.FechaCierre,
+                    x.IdEstadoTurno,
+                    Estado = x.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                    x.DiferenciaTotal,
+                    CantidadVentas = x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada),
+                    TotalVentas = x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0,
+                    Bitacoras = x.TurBitacora.Select(b => new
+                    {
+                        b.IdBitacora,
+                        b.FechaCreacion,
+                        b.Observaciones,
+                        CantidadExtracciones = b.TurExtracciones.Count,
+                        CantidadConsumos = b.TurProductosBitacora.Count(p => p.Activo)
+                    }).ToList()
+                })
+                .ToListAsync();
+
+            var tipsByTurn = await GetTipsByTurnAsync(turns.Select(t => t.IdTurno).ToList());
+
+            var turnos = turns.Select(t => new
+            {
+                t.IdTurno,
+                t.IdUsuario,
+                t.Usuario,
+                t.Empleado,
+                t.FechaApertura,
+                t.FechaCierre,
+                t.IdEstadoTurno,
+                t.Estado,
+                t.DiferenciaTotal,
+                t.CantidadVentas,
+                t.TotalVentas,
+                PropinaTotal = tipsByTurn.TryGetValue(t.IdTurno, out var propina) ? propina : 0,
+                t.Bitacoras
+            });
+
+            return Ok(new { Fecha = start, Turnos = turnos });
+        }
+
+        // Suma de propinas (Ven_Ordenes_Point.Monto_Propina) por día de apertura del turno,
+        // considerando solo ventas terminadas del usuario indicado.
+        private async Task<Dictionary<DateTime, int>> GetTipsByDayAsync(int idUsuario, DateTime start, DateTime end)
+        {
+            var tips = await _context.VenOrdenesPoint.AsNoTracking()
+                .Where(o => o.IdVenta != null
+                         && o.MontoPropina != null
+                         && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
+                         && o.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                         && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
+                         && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
+                .GroupBy(o => o.IdVentaNavigation!.IdTurnoNavigation.FechaApertura.Date)
+                .Select(g => new { Fecha = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
+                .ToListAsync();
+
+            return tips.ToDictionary(t => t.Fecha, t => t.Propina);
+        }
+
+        // Suma de propinas por turno para el conjunto de turnos indicado.
+        private async Task<Dictionary<int, int>> GetTipsByTurnAsync(List<int> turnIds)
+        {
+            if (turnIds.Count == 0)
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var tips = await _context.VenOrdenesPoint.AsNoTracking()
+                .Where(o => o.IdVenta != null
+                         && o.MontoPropina != null
+                         && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
+                         && turnIds.Contains(o.IdVentaNavigation.IdTurno))
+                .GroupBy(o => o.IdVentaNavigation!.IdTurno)
+                .Select(g => new { IdTurno = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
+                .ToListAsync();
+
+            return tips.ToDictionary(t => t.IdTurno, t => t.Propina);
+        }
+
         [HttpGet("denominations")]
         public async Task<IActionResult> GetDenominations()
         {

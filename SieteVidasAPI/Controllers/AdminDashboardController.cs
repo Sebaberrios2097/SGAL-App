@@ -100,7 +100,20 @@ public class AdminDashboardController : ControllerBase
                 TotalVentas = g.Sum(x => x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0)
             }).OrderBy(x => x.Fecha).ToListAsync();
 
-        return Ok(new { year, month, Dias = days });
+        var tipsByDay = await GetTipsByDayAsync(start, end);
+
+        var dias = days.Select(d => new
+        {
+            d.Fecha,
+            d.CantidadTurnos,
+            d.TurnosAbiertos,
+            d.CantidadBitacoras,
+            d.CantidadVentas,
+            d.TotalVentas,
+            PropinaTotal = tipsByDay.TryGetValue(d.Fecha, out var propina) ? propina : 0
+        });
+
+        return Ok(new { year, month, Dias = dias });
     }
 
     [HttpGet("turn-records/day")]
@@ -135,7 +148,63 @@ public class AdminDashboardController : ControllerBase
                 }).ToList()
             }).ToListAsync();
 
-        return Ok(new { Fecha = start, Turnos = turns });
+        var tipsByTurn = await GetTipsByTurnAsync(turns.Select(t => t.IdTurno).ToList());
+
+        var turnos = turns.Select(t => new
+        {
+            t.IdTurno,
+            t.IdUsuario,
+            t.Usuario,
+            t.Empleado,
+            t.FechaApertura,
+            t.FechaCierre,
+            t.IdEstadoTurno,
+            t.Estado,
+            t.DiferenciaTotal,
+            t.CantidadVentas,
+            t.TotalVentas,
+            PropinaTotal = tipsByTurn.TryGetValue(t.IdTurno, out var propina) ? propina : 0,
+            t.Bitacoras
+        });
+
+        return Ok(new { Fecha = start, Turnos = turnos });
+    }
+
+    // Suma de propinas (Ven_Ordenes_Point.Monto_Propina) por día de apertura del turno,
+    // considerando solo ventas terminadas.
+    private async Task<Dictionary<DateTime, int>> GetTipsByDayAsync(DateTime start, DateTime end)
+    {
+        var tips = await _context.VenOrdenesPoint.AsNoTracking()
+            .Where(o => o.IdVenta != null
+                     && o.MontoPropina != null
+                     && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
+                     && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
+                     && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
+            .GroupBy(o => o.IdVentaNavigation!.IdTurnoNavigation.FechaApertura.Date)
+            .Select(g => new { Fecha = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
+            .ToListAsync();
+
+        return tips.ToDictionary(t => t.Fecha, t => t.Propina);
+    }
+
+    // Suma de propinas por turno para el conjunto de turnos indicado.
+    private async Task<Dictionary<int, int>> GetTipsByTurnAsync(List<int> turnIds)
+    {
+        if (turnIds.Count == 0)
+        {
+            return new Dictionary<int, int>();
+        }
+
+        var tips = await _context.VenOrdenesPoint.AsNoTracking()
+            .Where(o => o.IdVenta != null
+                     && o.MontoPropina != null
+                     && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
+                     && turnIds.Contains(o.IdVentaNavigation.IdTurno))
+            .GroupBy(o => o.IdVentaNavigation!.IdTurno)
+            .Select(g => new { IdTurno = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
+            .ToListAsync();
+
+        return tips.ToDictionary(t => t.IdTurno, t => t.Propina);
     }
 
     [HttpGet("turn-records/logbook/{idBitacora:int}")]

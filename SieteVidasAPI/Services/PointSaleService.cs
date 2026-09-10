@@ -262,6 +262,7 @@ namespace SieteVidasAPI.Services
             registro.MarcaTarjeta = payment?.PaymentMethod?.Id ?? registro.MarcaTarjeta;
             registro.Cuotas = payment?.PaymentMethod?.Installments ?? registro.Cuotas;
             registro.MontoPagado = ParseMonto(payment?.PaidAmount ?? order.TotalPaidAmount) ?? registro.MontoPagado;
+            registro.MontoPropina = ParseMonto(payment?.TipAmount) ?? registro.MontoPropina;
             registro.FechaActualizacion = DateTime.Now;
 
             if (registro.IdVenta.HasValue)

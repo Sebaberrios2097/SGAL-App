@@ -65,6 +65,9 @@ public partial class VenOrdenesPoint
     [Column("Monto_Pagado")]
     public int? MontoPagado { get; set; }
 
+    [Column("Monto_Propina")]
+    public int? MontoPropina { get; set; }
+
     [Column("Fecha_Creacion", TypeName = "datetime")]
     public DateTime FechaCreacion { get; set; }
 

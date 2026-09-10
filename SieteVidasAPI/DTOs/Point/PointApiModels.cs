@@ -85,6 +85,11 @@ namespace SieteVidasAPI.DTOs.Point
         public string? PaidAmount { get; set; }
         public string? Status { get; set; }
         public string? StatusDetail { get; set; }
+
+        /// <summary>Propina cobrada en la terminal, informada por Mercado Pago como string sin decimales en Chile.</summary>
+        [JsonPropertyName("tip_amount")]
+        public string? TipAmount { get; set; }
+
         public PointPaymentMethod? PaymentMethod { get; set; }
         public PointPaymentReference? Reference { get; set; }
     }
