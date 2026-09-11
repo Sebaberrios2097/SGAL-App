@@ -1,3 +1,4 @@
+using System.Globalization;
 using Infraestructura.Context;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,162 @@ public class AdminDashboardController : ControllerBase
             ProductosMasVendidos = topProducts,
             CategoriasMasVendidas = topCategories
         });
+    }
+
+    // Resumen configurable por rango de fechas y granularidad (día/semana/mes).
+    [HttpGet("overview")]
+    [Permission(Permissions.DashboardView)]
+    public async Task<IActionResult> GetOverview([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string granularity = "day")
+    {
+        var start = from.Date;
+        var end = to.Date.AddDays(1);
+        if (end <= start) return BadRequest(new { mensaje = "El rango de fechas no es válido." });
+        if ((end - start).TotalDays > 366) return BadRequest(new { mensaje = "El rango no puede superar los 366 días." });
+        var gran = (granularity ?? "day").ToLowerInvariant();
+        if (gran is not ("day" or "week" or "month")) gran = "day";
+
+        var sales = _context.VenVentas.AsNoTracking()
+            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.FechaVenta >= start && x.FechaVenta < end);
+
+        var totals = await sales.GroupBy(_ => 1).Select(g => new
+        {
+            TotalVentas = g.Sum(x => x.MontoTotal),
+            CantidadVentas = g.Count()
+        }).FirstOrDefaultAsync();
+        var totalIngresos = totals?.TotalVentas ?? 0;
+        var cantidadVentas = totals?.CantidadVentas ?? 0;
+
+        var dailySales = await sales.GroupBy(x => x.FechaVenta.Date)
+            .Select(g => new { Fecha = g.Key, Monto = g.Sum(x => x.MontoTotal), Cantidad = g.Count() })
+            .ToListAsync();
+
+        // Egresos: órdenes de compra recibidas (total o parcial), fechadas por su llegada.
+        var estadosRecibidos = new[] { "Completada", "Recibida parcialmente" };
+        var dailyEgresos = await _context.InvOrdenCompra.AsNoTracking()
+            .Where(o => estadosRecibidos.Contains(o.IdEstadoOrdenCompraNavigation.NombreEstadoOrdenCompra)
+                && o.FechaLlegadaPedido >= start && o.FechaLlegadaPedido < end)
+            .GroupBy(o => o.FechaLlegadaPedido.Date)
+            .Select(g => new { Fecha = g.Key, Monto = g.Sum(o => o.MontoTotalReal ?? o.MontoTotal) })
+            .ToListAsync();
+        var totalEgresos = dailyEgresos.Sum(x => x.Monto);
+
+        var salesByDay = dailySales.ToDictionary(x => x.Fecha);
+        var egresosByDay = dailyEgresos.ToDictionary(x => x.Fecha, x => x.Monto);
+
+        // Buckets continuos según granularidad (se rellenan los huecos).
+        var buckets = new List<int[]>(); // [ingresos, egresos, cantidad]
+        var labels = new List<string>();
+        var orders = new List<DateTime>();
+        var index = new Dictionary<string, int>();
+        for (var day = start; day < end; day = day.AddDays(1))
+        {
+            var (key, label, order) = BucketOf(day, gran);
+            if (!index.TryGetValue(key, out var idx))
+            {
+                idx = buckets.Count;
+                index[key] = idx;
+                buckets.Add(new[] { 0, 0, 0 });
+                labels.Add(label);
+                orders.Add(order);
+            }
+            if (salesByDay.TryGetValue(day, out var s)) { buckets[idx][0] += s.Monto; buckets[idx][2] += s.Cantidad; }
+            if (egresosByDay.TryGetValue(day, out var e)) { buckets[idx][1] += e; }
+        }
+        var series = Enumerable.Range(0, buckets.Count)
+            .OrderBy(i => orders[i])
+            .Select(i => new
+            {
+                etiqueta = labels[i],
+                ingresos = buckets[i][0],
+                egresos = buckets[i][1],
+                resultado = buckets[i][0] - buckets[i][1],
+                cantidadVentas = buckets[i][2]
+            }).ToList();
+
+        var paymentMethods = await _context.VenMetodosPagoVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new { x.IdMetodoPago, x.IdMetodoPagoNavigation.NombreMetodoPago })
+            .Select(g => new { g.Key.IdMetodoPago, g.Key.NombreMetodoPago, Monto = g.Sum(x => x.Monto) })
+            .OrderByDescending(x => x.Monto).ToListAsync();
+
+        var topProducts = await _context.VenDetalleVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new { x.IdProducto, x.IdProductoNavigation.NombreProducto })
+            .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
+            .OrderByDescending(x => x.Cantidad).ThenByDescending(x => x.Monto).Take(8).ToListAsync();
+
+        var topCategories = await _context.VenDetalleVenta.AsNoTracking()
+            .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(x => new { x.IdProductoNavigation.IdCategoriaProducto, x.IdProductoNavigation.IdCategoriaProductoNavigation.NombreCategoriaProducto })
+            .Select(g => new { g.Key.IdCategoriaProducto, NombreCategoria = g.Key.NombreCategoriaProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
+            .OrderByDescending(x => x.Cantidad).ThenByDescending(x => x.Monto).Take(8).ToListAsync();
+
+        var cantidadTurnos = await _context.TurTurno.CountAsync(x => x.FechaApertura >= start && x.FechaApertura < end);
+
+        // Flujo de caja: esperado vs real por método (turnos del rango).
+        var porMetodo = await _context.TurTurnoDesglose.AsNoTracking()
+            .Where(d => d.IdTurnoNavigation.FechaApertura >= start && d.IdTurnoNavigation.FechaApertura < end)
+            .GroupBy(d => d.IdMetodoPagoNavigation.NombreMetodoPago)
+            .Select(g => new { NombreMetodoPago = g.Key, Esperado = g.Sum(x => x.MontoEsperado), Real = g.Sum(x => x.MontoReal) })
+            .ToListAsync();
+        var flujoPorMetodo = porMetodo.Select(m => new { m.NombreMetodoPago, m.Esperado, m.Real, Diferencia = m.Real - m.Esperado }).ToList();
+
+        // Efectivo por tipo de movimiento (1 = Apertura, 2 = Cierre).
+        var efectivo = await _context.TurTurnoDesgloseEfectivo.AsNoTracking()
+            .Where(e => e.IdTurnoNavigation.FechaApertura >= start && e.IdTurnoNavigation.FechaApertura < end)
+            .GroupBy(e => e.IdTipoMovimiento)
+            .Select(g => new { Tipo = g.Key, Monto = g.Sum(x => x.Cantidad * x.IdDenominacionNavigation.Valor) })
+            .ToListAsync();
+
+        var diffByDay = await _context.TurTurno.AsNoTracking()
+            .Where(t => t.FechaApertura >= start && t.FechaApertura < end && t.DiferenciaTotal != null)
+            .GroupBy(t => t.FechaApertura.Date)
+            .Select(g => new { Fecha = g.Key, Diferencia = g.Sum(x => x.DiferenciaTotal ?? 0) })
+            .OrderBy(x => x.Fecha).ToListAsync();
+
+        var tips = await GetTipsByDayAsync(start, end);
+        var totalPropinas = tips.Values.Sum();
+
+        return Ok(new
+        {
+            periodo = new { from = start, to = end.AddDays(-1), granularity = gran },
+            totalIngresos,
+            totalEgresos,
+            resultado = totalIngresos - totalEgresos,
+            cantidadVentas,
+            ticketPromedio = cantidadVentas > 0 ? (decimal)totalIngresos / cantidadVentas : 0,
+            totalPropinas,
+            cantidadTurnos,
+            diferenciaCajaTotal = diffByDay.Sum(x => x.Diferencia),
+            series,
+            metodosPago = paymentMethods,
+            productosMasVendidos = topProducts,
+            categoriasMasVendidas = topCategories,
+            flujoCaja = new
+            {
+                porMetodo = flujoPorMetodo,
+                efectivoApertura = efectivo.FirstOrDefault(x => x.Tipo == 1)?.Monto ?? 0,
+                efectivoCierre = efectivo.FirstOrDefault(x => x.Tipo == 2)?.Monto ?? 0,
+                diferenciaPorDia = diffByDay
+            }
+        });
+    }
+
+    private static (string Key, string Label, DateTime Order) BucketOf(DateTime day, string gran)
+    {
+        var es = new CultureInfo("es-CL");
+        if (gran == "month")
+            return (day.ToString("yyyy-MM"), day.ToString("MMM yyyy", es), new DateTime(day.Year, day.Month, 1));
+        if (gran == "week")
+        {
+            var diff = ((int)day.DayOfWeek + 6) % 7; // semana inicia lunes
+            var monday = day.AddDays(-diff);
+            return (monday.ToString("yyyy-MM-dd"), $"Sem {monday:dd/MM}", monday);
+        }
+        return (day.ToString("yyyy-MM-dd"), day.ToString("dd/MM"), day);
     }
 
     [HttpGet("turn-records/calendar")]
