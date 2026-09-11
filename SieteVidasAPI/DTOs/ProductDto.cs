@@ -10,5 +10,8 @@ namespace SieteVidasAPI.DTOs
         public int? Stock { get; set; }
         public bool RequiereReceta { get; set; }
         public string? ImagenBase64 { get; set; }
+
+        /// <summary>Si el producto admite ingredientes extra en la venta.</summary>
+        public bool AceptaIngredientesExtra { get; set; }
     }
 }

@@ -20,16 +20,17 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 
 | Código | Módulo visible | Pantallas principales | Acceso actual en frontend |
 |---|---|---|---|
-| `inicio` | Inicio y panel administrativo | `/` | Usuario autenticado; el contenido cambia por nombre de rol |
+| `inicio` | Inicio y panel administrativo | `/dashboard` | `inicio.dashboard.ver`; es el respaldo de `/` cuando el usuario no opera turnos |
 | `usuarios` | Empleados | `/employees`, `/employees/:id/edit` | Permisos modulares `usuarios.*` |
 | `roles` | Roles | `/roles` | `ADMINISTRADOR` |
 | `inventario` | Productos, categorías y descuentos | `/inventory` | `ADMINISTRADOR` |
 | `recetas` | Recetas | `/recipes`, `/inventory/products/:idProducto/recipe` | `ADMINISTRADOR` |
+| `ingredientes_extra` | Ingredientes extra | `/settings/extra-ingredients` | `ADMINISTRADOR` |
 | `configuracion_inventario` | Parámetros de inventario | `/settings/:section` | `ADMINISTRADOR` |
 | `proveedores` | Proveedores | `/providers` | `ADMINISTRADOR` |
 | `ordenes_compra` | Órdenes de compra | `/purchase-orders`, `/purchase-orders/:id` | `ADMINISTRADOR` |
 | `registros_turnos` | Consulta administrativa de turnos | `/admin/turn-records` | `ADMINISTRADOR` |
-| `turnos` | Operación e historial del turno propio | `/`, `/turn-history` | `BARISTA/VENDEDOR` o `VENDEDOR/BARISTA` |
+| `turnos` | Operación e historial del turno propio | `/` (landing), `/turn`, `/turn-history` | `BARISTA/VENDEDOR` o `VENDEDOR/BARISTA` |
 | `ventas` | Punto de venta | `/sales` | Barista con turno propio abierto |
 | `bitacora` | Bitácora del turno | `/logbook/:idTurno` | `BARISTA/VENDEDOR` o `VENDEDOR/BARISTA` |
 | `sesion` | Inicio de sesión y contraseña | `/login` | Público / usuario identificado por la solicitud |
@@ -113,6 +114,19 @@ No existe actualmente un endpoint para editar un descuento; solo se puede crear,
 | Crear o reemplazar la receta de un producto | `recetas.editar` | `PUT /api/recipe/product/{idProducto}` |
 
 La edición contempla ingredientes base, cantidades y alternativas de ingredientes.
+
+### 6b. Ingredientes extra
+
+| Funcionalidad actual | Permiso propuesto | Endpoint |
+|---|---|---|
+| Listar ingredientes extra | `ingredientes_extra.ver` | `GET /api/extra-ingredient` |
+| Opciones de formulario (materias primas y unidades) | `ingredientes_extra.ver` | `GET /api/extra-ingredient/options` |
+| Catálogo activo para el punto de venta | `ventas.operar` \| `ventas.crear` \| `ingredientes_extra.ver` | `GET /api/extra-ingredient/active` |
+| Crear ingrediente extra | `ingredientes_extra.crear` | `POST /api/extra-ingredient` |
+| Editar ingrediente extra | `ingredientes_extra.editar` | `PUT /api/extra-ingredient/{id}` |
+| Activar o desactivar | `ingredientes_extra.estado.modificar` | `PUT /api/extra-ingredient/{id}/status` |
+
+Cada ingrediente extra descuenta **una** materia prima (cantidad + unidad fija) y suma su precio como recargo. El producto declara con una bandera (`Inv_Productos.Acepta_Ingredientes_Extra`, editable con `inventario.productos.editar`) si admite extras; si la tiene, en la venta cada línea del carrito puede activar/desactivar **cualquier** extra activo del catálogo. El consumo de materia prima se registra en `Ven_Detalle_Venta_Materiales` y la elección en `Ven_Detalle_Venta_Ingredientes`.
 
 ### 7. Configuración de inventario
 

@@ -39,6 +39,9 @@ public partial class InvProductos
     [Column("Requiere_Receta")]
     public bool? RequiereReceta { get; set; }
 
+    [Column("Acepta_Ingredientes_Extra")]
+    public bool AceptaIngredientesExtra { get; set; }
+
     [Column("Fecha_Ingreso", TypeName = "datetime")]
     public DateTime FechaIngreso { get; set; }
 

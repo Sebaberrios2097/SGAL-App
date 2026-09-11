@@ -37,6 +37,11 @@ public static class Permissions
 
     public const string RecipesView = "recetas.ver";
     public const string RecipesEdit = "recetas.editar";
+
+    public const string ExtraIngredientsView = "ingredientes_extra.ver";
+    public const string ExtraIngredientsCreate = "ingredientes_extra.crear";
+    public const string ExtraIngredientsEdit = "ingredientes_extra.editar";
+    public const string ExtraIngredientsStatusEdit = "ingredientes_extra.estado.modificar";
     public const string InventoryCatalogsView = "configuracion_inventario.catalogos.ver";
     public const string UnitsCreate = "configuracion_inventario.unidades.crear";
     public const string UnitsEdit = "configuracion_inventario.unidades.editar";

@@ -102,6 +102,10 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<VenVentas> VenVentas { get; set; }
 
+    public virtual DbSet<InvIngredientesExtra> InvIngredientesExtra { get; set; }
+
+    public virtual DbSet<VenDetalleVentaIngrediente> VenDetalleVentaIngrediente { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AudAccesosUsuarios>(entity =>
@@ -202,6 +206,28 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvMaterialesReceta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Unidades_Medida");
+        });
+
+        modelBuilder.Entity<InvIngredientesExtra>(entity =>
+        {
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvIngredientesExtra)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Ingredientes_Extra_Inv_Materia_Prima");
+
+            entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvIngredientesExtra)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Ingredientes_Extra_Inv_Unidades_Medida");
+        });
+
+        modelBuilder.Entity<VenDetalleVentaIngrediente>(entity =>
+        {
+            entity.HasOne(d => d.IdDetalleVentaNavigation).WithMany(p => p.VenDetalleVentaIngrediente)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Ven_Detalle_Venta_Ingredientes_Ven_Detalle_Venta");
+
+            entity.HasOne(d => d.IdIngredienteExtraNavigation).WithMany(p => p.VenDetalleVentaIngrediente)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Ven_Detalle_Venta_Ingredientes_Inv_Ingredientes_Extra");
         });
 
         modelBuilder.Entity<InvPresentacionesMateriaPrima>(entity =>

@@ -42,4 +42,7 @@ public partial class VenDetalleVenta
 
     [InverseProperty("IdDetalleVentaNavigation")]
     public virtual ICollection<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; } = new List<VenDetalleVentaMateriales>();
+
+    [InverseProperty("IdDetalleVentaNavigation")]
+    public virtual ICollection<VenDetalleVentaIngrediente> VenDetalleVentaIngrediente { get; set; } = new List<VenDetalleVentaIngrediente>();
 }

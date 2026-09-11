@@ -221,6 +221,13 @@ namespace SieteVidasAPI.Controllers
                                 m.IdMateriaPrima,
                                 NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial,
                                 m.Recargo
+                            }),
+                        IngredientesExtra = d.VenDetalleVentaIngrediente
+                            .Select(x => new
+                            {
+                                x.IdIngredienteExtra,
+                                Nombre = x.IdIngredienteExtraNavigation.NombreIngredienteExtra,
+                                x.Precio
                             })
                     })
                 })

@@ -171,6 +171,59 @@ namespace SieteVidasAPI.Services
                     _context.Entry(prod).State = EntityState.Modified;
                 }
 
+                // Ingredientes extra: cada uno descuenta su materia prima y suma su precio
+                // como recargo por unidad. El consumo se guarda junto al resto de materiales
+                // para que la anulación reponga stock sin lógica adicional.
+                var idsExtra = (item.IdsIngredientesExtra ?? [])
+                    .Where(x => x > 0)
+                    .Distinct()
+                    .ToList();
+                if (idsExtra.Count > 0)
+                {
+                    if (!prod.AceptaIngredientesExtra)
+                        return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no admite ingredientes extra." };
+
+                    var extras = await _context.InvIngredientesExtra
+                        .Include(e => e.IdUnidadMedidaNavigation)
+                        .Include(e => e.IdMateriaPrimaNavigation)
+                            .ThenInclude(m => m.IdUnidadMedidaNavigation)
+                        .Where(e => idsExtra.Contains(e.IdIngredienteExtra))
+                        .ToListAsync(cancellationToken);
+
+                    foreach (var idExtra in idsExtra)
+                    {
+                        var extra = extras.FirstOrDefault(e => e.IdIngredienteExtra == idExtra);
+                        if (extra == null || !extra.Activo)
+                            return new SaleLinesResult { Error = $"El ingrediente extra seleccionado para {prod.NombreProducto} no existe o no está activo." };
+
+                        var requiredExtra = decimal.Round(
+                            extra.CantidadRequerida * item.Cantidad
+                            * extra.IdUnidadMedidaNavigation.FactorConversionBase
+                            / extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
+                            3,
+                            MidpointRounding.AwayFromZero);
+                        if (requiredExtra <= 0)
+                            return new SaleLinesResult { Error = $"La cantidad configurada para el extra {extra.NombreIngredienteExtra} es demasiado pequeña." };
+                        if (extra.IdMateriaPrimaNavigation.Cantidad < requiredExtra)
+                            return new SaleLinesResult { Error = $"Stock insuficiente de {extra.IdMateriaPrimaNavigation.NombreMaterial} para el extra {extra.NombreIngredienteExtra}. Se requieren {requiredExtra} {extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.Abreviacion}." };
+
+                        extra.IdMateriaPrimaNavigation.Cantidad -= requiredExtra;
+                        detail.VenDetalleVentaMateriales.Add(new VenDetalleVentaMateriales
+                        {
+                            IdMateriaPrima = extra.IdMateriaPrima,
+                            CantidadDescontada = requiredExtra,
+                            EsEleccionAlternativa = false,
+                            Recargo = 0
+                        });
+                        detail.VenDetalleVentaIngrediente.Add(new VenDetalleVentaIngrediente
+                        {
+                            IdIngredienteExtra = extra.IdIngredienteExtra,
+                            Precio = extra.Precio
+                        });
+                        recargoUnitario += extra.Precio;
+                    }
+                }
+
                 // Check for active discounts on this product
                 int finalUnitPrice = prod.Precio;
                 var activeDiscount = await _context.InvDescuentosProductos
@@ -213,13 +266,13 @@ namespace SieteVidasAPI.Services
 
             foreach (var detalle in detalles)
             {
-                if (detalle.VenDetalleVentaMateriales.Count > 0)
-                {
-                    foreach (var material in detalle.VenDetalleVentaMateriales)
-                        material.IdMateriaPrimaNavigation.Cantidad += material.CantidadDescontada;
-                    continue;
-                }
+                // Repone la materia prima consumida por la receta y por los ingredientes extra.
+                foreach (var material in detalle.VenDetalleVentaMateriales)
+                    material.IdMateriaPrimaNavigation.Cantidad += material.CantidadDescontada;
 
+                // Repone el stock de los productos controlados por unidades. Los productos con
+                // receta tienen Stock nulo, así que aquí solo se ajustan los que lo usan (incluso
+                // cuando llevan extras que sí registran consumo de materiales).
                 var prod = await _context.InvProductos.FindAsync([detalle.IdProducto], cancellationToken);
                 if (prod?.Stock != null)
                 {

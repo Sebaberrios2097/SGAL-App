@@ -36,6 +36,7 @@ namespace SieteVidasAPI.Controllers
                     p.Precio,
                     p.Stock,
                     RequiereReceta = p.RequiereReceta ?? false,
+                    p.AceptaIngredientesExtra,
                     TieneRecetaConfigurada = p.InvRecetas.Any(r => r.Estado),
                     AlternativasReceta = p.InvRecetas
                         .Where(r => r.Estado)
@@ -112,6 +113,7 @@ namespace SieteVidasAPI.Controllers
                 Precio = dto.Precio,
                 Stock = dto.RequiereReceta ? null : dto.Stock,
                 RequiereReceta = dto.RequiereReceta,
+                AceptaIngredientesExtra = dto.AceptaIngredientesExtra,
                 FechaIngreso = DateTime.Now,
                 Activo = true,
                 Imagen = imageBytes
@@ -131,6 +133,7 @@ namespace SieteVidasAPI.Controllers
                 product.Precio,
                 product.Stock,
                 RequiereReceta = product.RequiereReceta ?? false,
+                product.AceptaIngredientesExtra,
                 TieneRecetaConfigurada = false,
                 product.FechaIngreso,
                 product.Activo,
@@ -199,6 +202,7 @@ namespace SieteVidasAPI.Controllers
             product.Precio = dto.Precio;
             product.Stock = dto.RequiereReceta ? null : dto.Stock;
             product.RequiereReceta = dto.RequiereReceta;
+            product.AceptaIngredientesExtra = dto.AceptaIngredientesExtra;
             product.FechaModificacion = DateTime.Now;
 
             if (!dto.RequiereReceta)
@@ -226,6 +230,7 @@ namespace SieteVidasAPI.Controllers
                 product.Precio,
                 product.Stock,
                 RequiereReceta = product.RequiereReceta ?? false,
+                product.AceptaIngredientesExtra,
                 TieneRecetaConfigurada = await _context.InvRecetas.AnyAsync(r => r.IdProducto == id && r.Estado),
                 product.FechaIngreso,
                 product.Activo,
