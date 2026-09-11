@@ -29,6 +29,8 @@ namespace SieteVidasAPI.Controllers
                     x.IdReceta,
                     x.IdProducto,
                     NombreProducto = x.IdProductoNavigation.NombreProducto,
+                    x.IdProductoBase,
+                    NombreProductoBase = x.IdProductoBaseNavigation != null ? x.IdProductoBaseNavigation.NombreProducto : null,
                     x.Estado,
                     x.FechaCreacion,
                     x.FechaModificacion,
@@ -38,6 +40,7 @@ namespace SieteVidasAPI.Controllers
                         {
                             m.IdMateriaPrima,
                             NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
+                            m.IdMateriaPrimaNavigation.EsCafeCalibrable,
                             m.CantidadRequerida,
                             m.IdUnidadMedida,
                             NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -73,11 +76,14 @@ namespace SieteVidasAPI.Controllers
                 .Select(x => new
                 {
                     x.IdReceta,
+                    x.IdProductoBase,
+                    NombreProductoBase = x.IdProductoBaseNavigation != null ? x.IdProductoBaseNavigation.NombreProducto : null,
                     x.FechaCreacion,
                     x.FechaModificacion,
                     Materiales = x.InvMaterialesReceta.Select(m => new
                     {
                         m.IdMateriaPrima,
+                        m.IdMateriaPrimaNavigation.EsCafeCalibrable,
                         m.IdUnidadMedida,
                         NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
                         AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
@@ -102,6 +108,35 @@ namespace SieteVidasAPI.Controllers
             if (product == null) return NotFound(new { mensaje = "Producto no encontrado." });
             if (product.RequiereReceta != true)
                 return BadRequest(new { mensaje = "El producto no está marcado como producto con receta." });
+
+            // Preparación base opcional: debe ser otro producto con receta activa y no formar ciclos.
+            if (dto.IdProductoBase.HasValue)
+            {
+                if (dto.IdProductoBase.Value == idProducto)
+                    return BadRequest(new { mensaje = "Una preparación no puede usarse como su propia base." });
+
+                var baseProduct = await _context.InvProductos.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.IdProducto == dto.IdProductoBase.Value);
+                if (baseProduct == null || baseProduct.RequiereReceta != true)
+                    return BadRequest(new { mensaje = "La preparación base no es válida." });
+                if (!await _context.InvRecetas.AnyAsync(r => r.IdProducto == dto.IdProductoBase.Value && r.Estado))
+                    return BadRequest(new { mensaje = "La preparación base debe tener una receta activa." });
+
+                // Detección de ciclos: se recorre la cadena de bases del candidato.
+                var cadenaBases = await _context.InvRecetas.AsNoTracking()
+                    .Where(r => r.Estado && r.IdProductoBase != null)
+                    .Select(r => new { r.IdProducto, r.IdProductoBase })
+                    .ToDictionaryAsync(r => r.IdProducto, r => r.IdProductoBase);
+                int? cursor = dto.IdProductoBase.Value;
+                var visitados = new HashSet<int>();
+                while (cursor.HasValue)
+                {
+                    if (cursor.Value == idProducto)
+                        return BadRequest(new { mensaje = "La preparación base genera una dependencia circular." });
+                    if (!visitados.Add(cursor.Value)) break;
+                    cursor = cadenaBases.TryGetValue(cursor.Value, out var next) ? next : null;
+                }
+            }
 
             var materials = dto.Materiales
                 .GroupBy(x => x.IdMateriaPrima)
@@ -157,6 +192,16 @@ namespace SieteVidasAPI.Controllers
                     return BadRequest(new { mensaje = $"La cantidad de {rawMaterials[material.IdMateriaPrima].NombreMaterial} debe ser un número entero." });
             }
 
+            // El café calibrable toma sus gramos de la última extracción del turno, así que en la
+            // receta debe expresarse en gramos (g) y no puede heredar la medida de otra materia.
+            foreach (var material in materials.Where(x => rawMaterials[x.IdMateriaPrima].EsCafeCalibrable))
+            {
+                if (units[material.IdUnidadMedida].Abreviacion.Trim().ToLowerInvariant() != "g")
+                    return BadRequest(new { mensaje = $"{rawMaterials[material.IdMateriaPrima].NombreMaterial} es café calibrable: debe configurarse en gramos (g)." });
+                if (material.UsaMismaMedidaQuePrincipal)
+                    return BadRequest(new { mensaje = $"{rawMaterials[material.IdMateriaPrima].NombreMaterial} es café calibrable y debe expresarse en gramos, no heredar la medida de otra materia." });
+            }
+
             await using var transaction = await _context.Database.BeginTransactionAsync();
             var recipe = await _context.InvRecetas
                 .Include(x => x.InvMaterialesReceta)
@@ -167,6 +212,7 @@ namespace SieteVidasAPI.Controllers
                 recipe = new InvRecetas
                 {
                     IdProducto = idProducto,
+                    IdProductoBase = dto.IdProductoBase,
                     Estado = true,
                     FechaCreacion = DateTime.Now
                 };
@@ -176,6 +222,7 @@ namespace SieteVidasAPI.Controllers
             else
             {
                 _context.InvMaterialesReceta.RemoveRange(recipe.InvMaterialesReceta);
+                recipe.IdProductoBase = dto.IdProductoBase;
                 recipe.FechaModificacion = DateTime.Now;
             }
 
@@ -192,6 +239,97 @@ namespace SieteVidasAPI.Controllers
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
             return Ok(new { mensaje = "Receta guardada correctamente.", recipe.IdReceta });
+        }
+
+        /// <summary>
+        /// Preparaciones que pueden usarse como base de la receta de <paramref name="idProducto"/>:
+        /// productos con receta activa, excluyendo el propio producto y sus descendientes (para no
+        /// generar dependencias circulares).
+        /// </summary>
+        [HttpGet("base-candidates/{idProducto:int}")]
+        [Permission(Permissions.RecipesView)]
+        public async Task<IActionResult> GetBaseCandidates(int idProducto)
+        {
+            var recetasActivas = await _context.InvRecetas.AsNoTracking()
+                .Where(r => r.Estado)
+                .Select(r => new { r.IdProducto, r.IdProductoBase, Nombre = r.IdProductoNavigation.NombreProducto })
+                .ToListAsync();
+            var baseDe = recetasActivas.ToDictionary(r => r.IdProducto, r => r.IdProductoBase);
+
+            // ¿El candidato tiene a idProducto en su cadena de bases? Entonces elegirlo sería un ciclo.
+            bool GeneraCiclo(int candidato)
+            {
+                int? cursor = candidato;
+                var visitados = new HashSet<int>();
+                while (cursor.HasValue)
+                {
+                    if (cursor.Value == idProducto) return true;
+                    if (!visitados.Add(cursor.Value)) break;
+                    cursor = baseDe.TryGetValue(cursor.Value, out var next) ? next : null;
+                }
+                return false;
+            }
+
+            var candidatos = recetasActivas
+                .Where(r => r.IdProducto != idProducto && !GeneraCiclo(r.IdProducto))
+                .OrderBy(r => r.Nombre, StringComparer.Create(new System.Globalization.CultureInfo("es"), true))
+                .Select(r => new { r.IdProducto, NombreProducto = r.Nombre })
+                .ToList();
+            return Ok(candidatos);
+        }
+
+        /// <summary>
+        /// Materiales heredados de una preparación (recorriendo su cadena de bases), aplanados y
+        /// con nombres, para mostrarlos como bloque de solo lectura en el editor de recetas.
+        /// </summary>
+        [HttpGet("composed/{idProducto:int}")]
+        [Permission(Permissions.RecipesView)]
+        public async Task<IActionResult> GetComposedMaterials(int idProducto)
+        {
+            var materiales = new List<object>();
+            var visitados = new HashSet<int>();
+            int? actual = idProducto;
+            while (actual.HasValue)
+            {
+                if (!visitados.Add(actual.Value)) break;
+                var receta = await _context.InvRecetas.AsNoTracking()
+                    .Where(r => r.IdProducto == actual.Value && r.Estado)
+                    .Select(r => new
+                    {
+                        r.IdProductoBase,
+                        NombrePreparacion = r.IdProductoNavigation.NombreProducto,
+                        Materiales = r.InvMaterialesReceta.Select(m => new
+                        {
+                            m.IdMateriaPrima,
+                            NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
+                            m.IdMateriaPrimaNavigation.EsCafeCalibrable,
+                            m.CantidadRequerida,
+                            AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
+                            m.IdMateriaPrimaReemplazada,
+                            NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
+                                ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
+                                : null,
+                            m.Recargo
+                        }).ToList()
+                    }).FirstOrDefaultAsync();
+                if (receta == null) break;
+
+                foreach (var m in receta.Materiales)
+                    materiales.Add(new
+                    {
+                        receta.NombrePreparacion,
+                        m.IdMateriaPrima,
+                        m.NombreMaterial,
+                        m.EsCafeCalibrable,
+                        m.CantidadRequerida,
+                        m.AbreviacionUnidad,
+                        m.IdMateriaPrimaReemplazada,
+                        m.NombreMateriaPrimaReemplazada,
+                        m.Recargo
+                    });
+                actual = receta.IdProductoBase;
+            }
+            return Ok(materiales);
         }
     }
 }

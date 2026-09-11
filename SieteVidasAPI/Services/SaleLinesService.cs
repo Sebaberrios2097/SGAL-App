@@ -38,7 +38,7 @@ namespace SieteVidasAPI.Services
     /// </summary>
     public interface ISaleLinesService
     {
-        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, CancellationToken cancellationToken = default);
+        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default);
 
         Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default);
     }
@@ -52,9 +52,28 @@ namespace SieteVidasAPI.Services
             _context = context;
         }
 
-        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, CancellationToken cancellationToken = default)
+        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default)
         {
             int total = 0;
+
+            // Los gramos del café por calibración salen de la última extracción del turno
+            // abierto. Se consulta una sola vez y de forma perezosa: solo si alguna receta usa
+            // una materia prima calibrable. Null = el turno todavía no tiene ninguna extracción.
+            double? gramosCalibracion = null;
+            bool gramosCalibracionCargados = false;
+            async Task<double?> ObtenerGramosCalibracionAsync()
+            {
+                if (!gramosCalibracionCargados)
+                {
+                    gramosCalibracion = await _context.TurExtracciones
+                        .Where(e => e.IdBitacoraNavigation.IdTurno == idTurno)
+                        .OrderByDescending(e => e.IdExtraccion)
+                        .Select(e => (double?)e.Gramos)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    gramosCalibracionCargados = true;
+                }
+                return gramosCalibracion;
+            }
 
             foreach (var item in items)
             {
@@ -64,13 +83,6 @@ namespace SieteVidasAPI.Services
                 }
 
                 var prod = await _context.InvProductos
-                    .Include(x => x.InvRecetas.Where(r => r.Estado))
-                        .ThenInclude(r => r.InvMaterialesReceta)
-                            .ThenInclude(m => m.IdUnidadMedidaNavigation)
-                    .Include(x => x.InvRecetas.Where(r => r.Estado))
-                        .ThenInclude(r => r.InvMaterialesReceta)
-                            .ThenInclude(m => m.IdMateriaPrimaNavigation)
-                                .ThenInclude(m => m.IdUnidadMedidaNavigation)
                     .FirstOrDefaultAsync(x => x.IdProducto == item.IdProducto, cancellationToken);
                 if (prod == null || !prod.Activo)
                 {
@@ -93,11 +105,12 @@ namespace SieteVidasAPI.Services
                 // unidad de inventario. El snapshot permite reponer exactamente al anular.
                 if (prod.RequiereReceta == true)
                 {
-                    var recipe = prod.InvRecetas.FirstOrDefault();
-                    if (recipe == null || recipe.InvMaterialesReceta.Count == 0)
-                        return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no tiene una receta activa configurada." };
+                    // Compone la receta del producto con la de su preparación base (recursivo).
+                    var (materialesReceta, errorReceta) = await ComponerRecetaAsync(prod.IdProducto, prod.NombreProducto, cancellationToken);
+                    if (errorReceta != null)
+                        return new SaleLinesResult { Error = errorReceta };
 
-                    var gruposAlternativas = recipe.InvMaterialesReceta
+                    var gruposAlternativas = materialesReceta!
                         .Where(m => m.IdMateriaPrimaReemplazada.HasValue)
                         .GroupBy(m => m.IdMateriaPrimaReemplazada!.Value)
                         .ToDictionary(g => g.Key, g => g.ToList());
@@ -110,7 +123,7 @@ namespace SieteVidasAPI.Services
 
                     var seleccionPorBase = selecciones.ToDictionary(s => s.IdMateriaPrimaBase);
 
-                    foreach (var materialBase in recipe.InvMaterialesReceta.Where(m => !m.IdMateriaPrimaReemplazada.HasValue))
+                    foreach (var materialBase in materialesReceta!.Where(m => !m.IdMateriaPrimaReemplazada.HasValue))
                     {
                         if (!gruposAlternativas.TryGetValue(materialBase.IdMateriaPrima, out var alternativas))
                         {
@@ -140,8 +153,25 @@ namespace SieteVidasAPI.Services
 
                     foreach (var (material, medida, esEleccionAlternativa) in materialesAConsumir)
                     {
+                        // Café por calibración: la cantidad no es la fija de la receta (en gramos),
+                        // sino los gramos de la última extracción del turno. Sin extracción se
+                        // bloquea la venta. La receta obliga a configurar el café en gramos, por lo
+                        // que la conversión a la unidad de stock sigue siendo la misma.
+                        decimal cantidadReceta;
+                        if (material.IdMateriaPrimaNavigation.EsCafeCalibrable)
+                        {
+                            var gramos = await ObtenerGramosCalibracionAsync();
+                            if (gramos is not > 0)
+                                return new SaleLinesResult { Error = $"Registre una calibración (extracción) en la bitácora del turno antes de vender {prod.NombreProducto}." };
+                            cantidadReceta = (decimal)gramos.Value;
+                        }
+                        else
+                        {
+                            cantidadReceta = medida.CantidadRequerida;
+                        }
+
                         var required = decimal.Round(
-                            medida.CantidadRequerida * item.Cantidad
+                            cantidadReceta * item.Cantidad
                             * medida.IdUnidadMedidaNavigation.FactorConversionBase
                             / material.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
                             3,
@@ -251,6 +281,52 @@ namespace SieteVidasAPI.Services
             }
 
             return new SaleLinesResult { Total = total };
+        }
+
+        /// <summary>
+        /// Carga la receta activa de un producto con las navegaciones necesarias para descontar
+        /// stock (materia prima + unidades). Se trackea porque luego se muta la cantidad en stock.
+        /// </summary>
+        private Task<InvRecetas?> CargarRecetaActivaAsync(int idProducto, CancellationToken cancellationToken)
+        {
+            return _context.InvRecetas
+                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdUnidadMedidaNavigation)
+                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdMateriaPrimaNavigation).ThenInclude(mp => mp.IdUnidadMedidaNavigation)
+                .FirstOrDefaultAsync(r => r.IdProducto == idProducto && r.Estado, cancellationToken);
+        }
+
+        /// <summary>
+        /// Compone la lista de materiales a consumir para un producto: los de su propia receta
+        /// más los de su preparación base, recorriendo la cadena de bases. Detecta ciclos y
+        /// exige que cada preparación de la cadena tenga una receta activa con materiales.
+        /// </summary>
+        private async Task<(List<InvMaterialesReceta>? Materiales, string? Error)> ComponerRecetaAsync(
+            int idProducto, string nombreProducto, CancellationToken cancellationToken)
+        {
+            var materiales = new List<InvMaterialesReceta>();
+            var visitados = new HashSet<int>();
+            int? actual = idProducto;
+            bool esRaiz = true;
+
+            while (actual.HasValue)
+            {
+                if (!visitados.Add(actual.Value))
+                    return (null, $"La receta de {nombreProducto} tiene una preparación base que forma un ciclo.");
+
+                var receta = await CargarRecetaActivaAsync(actual.Value, cancellationToken);
+                if (receta == null || receta.InvMaterialesReceta.Count == 0)
+                {
+                    return esRaiz
+                        ? (null, $"El producto {nombreProducto} no tiene una receta activa configurada.")
+                        : (null, $"La preparación base de {nombreProducto} no tiene una receta activa configurada.");
+                }
+
+                materiales.AddRange(receta.InvMaterialesReceta);
+                actual = receta.IdProductoBase;
+                esRaiz = false;
+            }
+
+            return (materiales, null);
         }
 
         /// <summary>

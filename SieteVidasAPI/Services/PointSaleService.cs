@@ -107,7 +107,7 @@ namespace SieteVidasAPI.Services
             _context.VenVentas.Add(sale);
             await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
 
-            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, cancellationToken);
+            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno, cancellationToken);
             if (!lines.EsValido)
             {
                 await transaction.RollbackAsync(cancellationToken);

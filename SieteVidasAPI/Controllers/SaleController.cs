@@ -67,7 +67,7 @@ namespace SieteVidasAPI.Controllers
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
-                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items);
+                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno);
                 if (!lines.EsValido)
                 {
                     return BadRequest(new { mensaje = lines.Error });

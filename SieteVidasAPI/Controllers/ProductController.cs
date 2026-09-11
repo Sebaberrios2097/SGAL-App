@@ -22,6 +22,30 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.ProductsView)]
         public async Task<IActionResult> GetProducts()
         {
+            // Recetas activas con sus materiales (incluida la materia base de cada alternativa y si
+            // es café calibrable). Se cargan una vez para componer, en memoria, la receta de cada
+            // producto con la de su preparación base recorriendo la cadena de bases.
+            var recetas = await _context.InvRecetas.AsNoTracking()
+                .Where(r => r.Estado)
+                .Select(r => new
+                {
+                    r.IdProducto,
+                    r.IdProductoBase,
+                    Materiales = r.InvMaterialesReceta.Select(m => new
+                    {
+                        m.IdMateriaPrima,
+                        NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial,
+                        m.IdMateriaPrimaNavigation.EsCafeCalibrable,
+                        m.IdMateriaPrimaReemplazada,
+                        NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
+                            ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
+                            : null,
+                        m.Recargo
+                    }).ToList()
+                })
+                .ToListAsync();
+            var recetaPorProducto = recetas.ToDictionary(r => r.IdProducto);
+
             var products = await _context.InvProductos
                 .Include(p => p.IdCategoriaProductoNavigation)
                 .OrderByDescending(p => p.FechaIngreso)
@@ -38,25 +62,65 @@ namespace SieteVidasAPI.Controllers
                     RequiereReceta = p.RequiereReceta ?? false,
                     p.AceptaIngredientesExtra,
                     TieneRecetaConfigurada = p.InvRecetas.Any(r => r.Estado),
-                    AlternativasReceta = p.InvRecetas
-                        .Where(r => r.Estado)
-                        .SelectMany(r => r.InvMaterialesReceta)
-                        .Where(m => m.IdMateriaPrimaReemplazada.HasValue)
-                        .Select(m => new
-                        {
-                            IdMateriaPrimaBase = m.IdMateriaPrimaReemplazada!.Value,
-                            NombreMateriaPrimaBase = m.IdMateriaPrimaReemplazadaNavigation!.NombreMaterial,
-                            IdMateriaPrimaAlternativa = m.IdMateriaPrima,
-                            NombreMateriaPrimaAlternativa = m.IdMateriaPrimaNavigation.NombreMaterial,
-                            m.Recargo
-                        }).ToList(),
                     p.FechaIngreso,
                     p.Activo,
                     p.FechaModificacion,
                     ImagenBase64 = p.Imagen != null ? Convert.ToBase64String(p.Imagen) : null
                 })
                 .ToListAsync();
-            return Ok(products);
+
+            var result = products.Select(p =>
+            {
+                var alternativas = new List<object>();
+                bool requiereCalibracion = false;
+
+                if (p.RequiereReceta)
+                {
+                    int? actual = p.IdProducto;
+                    var visitados = new HashSet<int>();
+                    while (actual.HasValue && visitados.Add(actual.Value)
+                        && recetaPorProducto.TryGetValue(actual.Value, out var receta))
+                    {
+                        foreach (var m in receta.Materiales)
+                        {
+                            if (m.EsCafeCalibrable) requiereCalibracion = true;
+                            if (m.IdMateriaPrimaReemplazada.HasValue)
+                                alternativas.Add(new
+                                {
+                                    IdMateriaPrimaBase = m.IdMateriaPrimaReemplazada.Value,
+                                    NombreMateriaPrimaBase = m.NombreMateriaPrimaReemplazada,
+                                    IdMateriaPrimaAlternativa = m.IdMateriaPrima,
+                                    NombreMateriaPrimaAlternativa = m.NombreMateriaPrima,
+                                    m.Recargo
+                                });
+                        }
+                        actual = receta.IdProductoBase;
+                    }
+                }
+
+                return new
+                {
+                    p.IdProducto,
+                    p.IdCategoriaProducto,
+                    p.CodigoProducto,
+                    p.NombreCategoriaProducto,
+                    p.NombreProducto,
+                    p.DescripcionProducto,
+                    p.Precio,
+                    p.Stock,
+                    p.RequiereReceta,
+                    p.AceptaIngredientesExtra,
+                    p.TieneRecetaConfigurada,
+                    AlternativasReceta = alternativas,
+                    RequiereCalibracion = requiereCalibracion,
+                    p.FechaIngreso,
+                    p.Activo,
+                    p.FechaModificacion,
+                    p.ImagenBase64
+                };
+            }).ToList();
+
+            return Ok(result);
         }
 
         [HttpPost]

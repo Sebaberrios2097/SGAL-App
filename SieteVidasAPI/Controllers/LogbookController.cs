@@ -115,6 +115,27 @@ namespace SieteVidasAPI.Controllers
             });
         }
 
+        /// <summary>
+        /// Gramos de la última calibración (extracción) del turno, o null si aún no hay ninguna.
+        /// Lo usa el POS para avisar antes de vender preparaciones que dependen de la calibración.
+        /// </summary>
+        [HttpGet("turn/{idTurno:int}/calibration")]
+        [Permission(Permissions.OwnLogbookView)]
+        public async Task<IActionResult> GetLastCalibration(int idTurno)
+        {
+            var idUsuario = User.GetUserId();
+            if (!await _context.TurTurno.AnyAsync(t => t.IdTurno == idTurno && t.IdUsuario == idUsuario))
+                return NotFound(new { mensaje = "Turno no encontrado para el usuario." });
+
+            var gramos = await _context.TurExtracciones
+                .Where(e => e.IdBitacoraNavigation.IdTurno == idTurno)
+                .OrderByDescending(e => e.IdExtraccion)
+                .Select(e => (double?)e.Gramos)
+                .FirstOrDefaultAsync();
+
+            return Ok(new { TieneCalibracion = gramos.HasValue, Gramos = gramos });
+        }
+
         [HttpPost("products")]
         [Permission(Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> AddConsumedProduct([FromBody] LogbookProductCreateDto dto)

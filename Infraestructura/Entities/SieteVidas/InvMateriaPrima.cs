@@ -34,6 +34,14 @@ public partial class InvMateriaPrima
     [Column(TypeName = "decimal(18,3)")]
     public decimal Cantidad { get; set; }
 
+    /// <summary>
+    /// Marca la materia prima como el café cuya cantidad en las recetas se toma de la última
+    /// calibración (extracción) del turno abierto, en lugar de una cantidad fija. Solo una
+    /// materia prima puede estar marcada a la vez.
+    /// </summary>
+    [Column("Es_Cafe_Calibrable")]
+    public bool EsCafeCalibrable { get; set; }
+
     [Column("Fecha_Creacion", TypeName = "datetime")]
     public DateTime FechaCreacion { get; set; }
 

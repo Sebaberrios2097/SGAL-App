@@ -296,6 +296,11 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvRecetas)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Recetas_Inv_Productos");
+
+            entity.HasOne(d => d.IdProductoBaseNavigation).WithMany(p => p.InvRecetasComoBase)
+                .HasForeignKey(d => d.IdProductoBase)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Inv_Recetas_Inv_Productos_Base");
         });
 
         modelBuilder.Entity<SiiCafFolios>(entity =>

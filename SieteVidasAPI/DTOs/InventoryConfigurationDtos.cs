@@ -34,10 +34,17 @@ namespace SieteVidasAPI.DTOs
         public string? Descripcion { get; set; }
         public decimal Cantidad { get; set; }
         public string? ImagenBase64 { get; set; }
+
+        /// <summary>Marca esta materia prima como el café cuya cantidad en recetas se toma de
+        /// la última calibración (extracción) del turno. Solo una puede estar marcada.</summary>
+        public bool EsCafeCalibrable { get; set; }
     }
 
     public class RecipeUpdateDto
     {
+        /// <summary>Preparación base opcional sobre la que se construye la receta.</summary>
+        public int? IdProductoBase { get; set; }
+
         public List<RecipeMaterialDto> Materiales { get; set; } = new();
     }
 

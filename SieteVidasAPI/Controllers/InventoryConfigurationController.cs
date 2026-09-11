@@ -291,6 +291,7 @@ namespace SieteVidasAPI.Controllers
                     x.NombreMaterial,
                     x.Descripcion,
                     x.Cantidad,
+                    x.EsCafeCalibrable,
                     NombreMarca = x.IdMarcaNavigation.NombreMarca,
                     NombreCategoria = x.IdCategoriaMateriaNavigation.NombreCategoriaMateria,
                     NombreUnidad = x.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -318,6 +319,7 @@ namespace SieteVidasAPI.Controllers
                 NombreMaterial = dto.NombreMaterial.Trim(),
                 Descripcion = string.IsNullOrWhiteSpace(dto.Descripcion) ? null : dto.Descripcion.Trim(),
                 Cantidad = dto.Cantidad,
+                EsCafeCalibrable = dto.EsCafeCalibrable,
                 Imagen = ParseImage(dto.ImagenBase64),
                 FechaCreacion = DateTime.Now
             };
@@ -357,6 +359,7 @@ namespace SieteVidasAPI.Controllers
             entity.NombreMaterial = dto.NombreMaterial.Trim();
             entity.Descripcion = string.IsNullOrWhiteSpace(dto.Descripcion) ? null : dto.Descripcion.Trim();
             entity.Cantidad = quantityToStore;
+            entity.EsCafeCalibrable = dto.EsCafeCalibrable;
             if (dto.ImagenBase64 == string.Empty) entity.Imagen = null;
             else if (dto.ImagenBase64 != null) entity.Imagen = ParseImage(dto.ImagenBase64);
             await _context.SaveChangesAsync();
@@ -485,6 +488,9 @@ namespace SieteVidasAPI.Controllers
                 if (!recipeUnitsAreCompatible || !presentationUnitsAreCompatible)
                     return "La nueva unidad no es compatible con las recetas o presentaciones existentes de esta materia prima.";
             }
+            if (dto.EsCafeCalibrable && await _context.InvMateriaPrima
+                .AnyAsync(x => x.EsCafeCalibrable && (!idMateriaPrima.HasValue || x.IdMateriaPrima != idMateriaPrima.Value)))
+                return "Ya existe otra materia prima marcada como café calibrable. Solo puede haber una.";
             try { ParseImage(dto.ImagenBase64); }
             catch (FormatException) { return "La imagen no tiene un formato válido."; }
             return null;
