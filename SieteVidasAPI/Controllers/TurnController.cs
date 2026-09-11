@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
 using SieteVidasAPI.Services;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -19,8 +20,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("active")]
+        [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetActiveTurn([FromQuery] int idUsuario)
         {
+            idUsuario = User.GetUserId();
             // Find any active turn in the system
             var activeTurn = await _context.TurTurno
                 .Include(t => t.IdUsuarioNavigation)
@@ -50,8 +53,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("last")]
+        [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetLastTurn([FromQuery] int idUsuario)
         {
+            idUsuario = User.GetUserId();
             var lastTurn = await _context.TurTurno
                 .Include(t => t.IdEstadoTurnoNavigation)
                 .Where(t => t.IdUsuario == idUsuario)
@@ -90,8 +95,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("history")]
+        [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetHistory([FromQuery] int idUsuario)
         {
+            idUsuario = User.GetUserId();
             if (idUsuario <= 0)
             {
                 return BadRequest(new { mensaje = "El usuario es obligatorio." });
@@ -119,8 +126,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("calendar")]
+        [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetCalendar([FromQuery] int idUsuario, [FromQuery] int year, [FromQuery] int month)
         {
+            idUsuario = User.GetUserId();
             if (idUsuario <= 0)
             {
                 return BadRequest(new { mensaje = "El usuario es obligatorio." });
@@ -166,8 +175,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("day")]
+        [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetDay([FromQuery] int idUsuario, [FromQuery] DateTime date)
         {
+            idUsuario = User.GetUserId();
             if (idUsuario <= 0)
             {
                 return BadRequest(new { mensaje = "El usuario es obligatorio." });
@@ -265,6 +276,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("denominations")]
+        [Permission(Permissions.TurnsOperate)]
         public async Task<IActionResult> GetDenominations()
         {
             var denominations = await _context.TurDenominaciones
@@ -282,8 +294,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("open")]
+        [Permission(Permissions.TurnsOpen)]
         public async Task<IActionResult> OpenTurn([FromBody] TurnOpenDto dto)
         {
+            dto.IdUsuario = User.GetUserId();
             if (dto == null || dto.IdUsuario <= 0)
             {
                 return BadRequest(new { Mensaje = "El usuario es obligatorio" });
@@ -354,6 +368,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("summary")]
+        [Permission(Permissions.TurnsClose)]
         public async Task<IActionResult> GetTurnSummary([FromQuery] int idTurno)
         {
             var turn = await _context.TurTurno.FindAsync(idTurno);
@@ -361,6 +376,7 @@ namespace SieteVidasAPI.Controllers
             {
                 return NotFound(new { mensaje = "Turno no encontrado." });
             }
+            if (turn.IdUsuario != User.GetUserId()) return Forbid();
 
             // 1. Calculate Expected Cash: Opening Cash + Cash Sales
             var openingCash = await (from e in _context.TurTurnoDesgloseEfectivo
@@ -405,6 +421,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("close")]
+        [Permission(Permissions.TurnsClose)]
         public async Task<IActionResult> CloseTurn([FromBody] TurnCloseDto dto)
         {
             if (dto == null)
@@ -417,6 +434,7 @@ namespace SieteVidasAPI.Controllers
             {
                 return NotFound(new { mensaje = "Turno no encontrado." });
             }
+            if (turn.IdUsuario != User.GetUserId()) return Forbid();
 
             if (turn.IdEstadoTurno != 1) // 1 = Abierto
             {

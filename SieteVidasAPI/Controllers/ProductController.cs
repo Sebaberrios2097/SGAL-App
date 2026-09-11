@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
+        [Permission(Permissions.ProductsView)]
         public async Task<IActionResult> GetProducts()
         {
             var products = await _context.InvProductos
@@ -57,6 +59,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost]
+        [Permission(Permissions.ProductsCreate)]
         public async Task<IActionResult> CreateProduct([FromBody] ProductDto dto)
         {
             if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto) || string.IsNullOrWhiteSpace(dto.CodigoProducto))
@@ -136,6 +139,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}")]
+        [Permission(Permissions.ProductsEdit)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductDto dto)
         {
             if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto) || string.IsNullOrWhiteSpace(dto.CodigoProducto))
@@ -231,6 +235,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}/status")]
+        [Permission(Permissions.ProductsStatusEdit)]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             var product = await _context.InvProductos

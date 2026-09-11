@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
 using SieteVidasAPI.Services;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers;
 
@@ -28,6 +29,7 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet("catalogs")]
+    [Permission(Permissions.PurchaseOrdersView)]
     public async Task<IActionResult> GetCatalogs()
     {
         var providers = await _context.InvProveedores.AsNoTracking()
@@ -72,6 +74,7 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet]
+    [Permission(Permissions.PurchaseOrdersView)]
     public async Task<IActionResult> GetAll()
     {
         var orders = await BaseQuery().AsNoTracking()
@@ -81,6 +84,7 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Permission(Permissions.PurchaseOrdersView)]
     public async Task<IActionResult> GetById(int id)
     {
         var order = await BaseQuery().AsNoTracking().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
@@ -88,9 +92,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPost]
+    [Permission(Permissions.PurchaseOrdersCreate)]
     public async Task<IActionResult> Create([FromBody] PurchaseOrderSaveDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var validation = await ValidateOrder(dto);
         if (validation != null) return BadRequest(new { mensaje = validation });
 
@@ -99,7 +103,7 @@ public class PurchaseOrderController : ControllerBase
 
         var order = new InvOrdenCompra
         {
-            IdUsuario = dto.IdUsuario,
+            IdUsuario = User.GetUserId(),
             IdProveedor = dto.IdProveedor,
             IdEstadoOrdenCompra = draftState.IdEstadoOrdenCompra,
             FechaSolicitud = DateTime.Now,
@@ -116,9 +120,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Permission(Permissions.PurchaseOrdersEdit)]
     public async Task<IActionResult> Update(int id, [FromBody] PurchaseOrderSaveDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var validation = await ValidateOrder(dto);
         if (validation != null) return BadRequest(new { mensaje = validation });
 
@@ -139,9 +143,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPost("{id:int}/issue")]
+    [Permission(Permissions.PurchaseOrdersIssue)]
     public async Task<IActionResult> Issue(int id, [FromBody] PurchaseOrderUserActionDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
         if (order == null) return NotFound(new { mensaje = "Orden de compra no encontrada." });
         if (!StateIs(order, Draft)) return Conflict(new { mensaje = "La orden ya no está en borrador." });
@@ -156,9 +160,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPost("{id:int}/receive")]
+    [Permission(Permissions.PurchaseOrdersReceive)]
     public async Task<IActionResult> Receive(int id, [FromBody] PurchaseOrderReceiveDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
 
         await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
@@ -223,9 +227,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm-prices")]
+    [Permission(Permissions.PurchaseOrdersConfirmPrices)]
     public async Task<IActionResult> ConfirmPrices(int id, [FromBody] PurchaseOrderConfirmPricesDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
         if (order == null) return NotFound(new { mensaje = "Orden de compra no encontrada." });
         if (!StateIs(order, Completed) && !StateIs(order, PartiallyReceived))
@@ -255,9 +259,9 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Permission(Permissions.PurchaseOrdersCancel)]
     public async Task<IActionResult> Cancel(int id, [FromBody] PurchaseOrderUserActionDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
         if (order == null) return NotFound(new { mensaje = "Orden de compra no encontrada." });
         if (!StateIs(order, Draft) && !StateIs(order, Issued))
@@ -270,6 +274,7 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet("{id:int}/pdf")]
+    [Permission(Permissions.PurchaseOrdersExport)]
     public async Task<IActionResult> DownloadPdf(int id)
     {
         var order = await BaseQuery().AsNoTracking().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
@@ -278,6 +283,7 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet("{id:int}/excel")]
+    [Permission(Permissions.PurchaseOrdersExport)]
     public async Task<IActionResult> DownloadExcel(int id)
     {
         var order = await BaseQuery().AsNoTracking().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
@@ -342,10 +348,6 @@ public class PurchaseOrderController : ControllerBase
 
     private static int CalculateSubtotal(decimal quantity, int price) =>
         decimal.ToInt32(decimal.Round(quantity * price, 0, MidpointRounding.AwayFromZero));
-
-    private async Task<bool> IsAdministrator(int userId) => userId > 0 && await _context.EmpRolesXusuario
-        .AnyAsync(x => x.IdUsuario == userId && x.Activo && x.IdUsuarioNavigation.Activo
-            && x.IdRolUsuarioNavigation.NombreRol.ToUpper() == "ADMINISTRADOR");
 
     private async Task<InvEstadosOrdenCompra?> GetState(string name) => await _context.InvEstadosOrdenCompra
         .FirstOrDefaultAsync(x => x.NombreEstadoOrdenCompra == name);

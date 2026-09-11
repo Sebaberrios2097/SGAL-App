@@ -1,0 +1,10 @@
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+IF COL_LENGTH('dbo.Emp_Empleados', 'Alias') IS NULL
+BEGIN
+    ALTER TABLE dbo.Emp_Empleados
+    ADD Alias nvarchar(50) NULL;
+END;
+
+COMMIT TRANSACTION;

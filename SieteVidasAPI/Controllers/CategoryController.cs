@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
+        [Permission(Permissions.CategoriesView)]
         public async Task<IActionResult> GetCategories()
         {
             var categories = await _context.InvCategoriaProductos
@@ -27,6 +29,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost]
+        [Permission(Permissions.CategoriesCreate)]
         public async Task<IActionResult> CreateCategory([FromBody] CategoryDto dto)
         {
             if (dto == null || string.IsNullOrWhiteSpace(dto.NombreCategoriaProducto))
@@ -56,6 +59,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}")]
+        [Permission(Permissions.CategoriesEdit)]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] CategoryDto dto)
         {
             if (dto == null || string.IsNullOrWhiteSpace(dto.NombreCategoriaProducto))
@@ -86,6 +90,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}/status")]
+        [Permission(Permissions.CategoriesStatusEdit)]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             var category = await _context.InvCategoriaProductos.FindAsync(id);

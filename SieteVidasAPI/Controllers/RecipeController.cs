@@ -2,6 +2,7 @@ using Infraestructura.Context;
 using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SieteVidasAPI.Security;
 using SieteVidasAPI.DTOs;
 
 namespace SieteVidasAPI.Controllers
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
+        [Permission(Permissions.RecipesView)]
         public async Task<IActionResult> GetAll()
         {
             var recipes = await _context.InvRecetas.AsNoTracking()
@@ -53,6 +55,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("product/{idProducto:int}")]
+        [Permission(Permissions.RecipesView)]
         public async Task<IActionResult> GetByProduct(int idProducto)
         {
             var product = await _context.InvProductos.AsNoTracking()
@@ -92,6 +95,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("product/{idProducto:int}")]
+        [Permission(Permissions.RecipesEdit)]
         public async Task<IActionResult> Save(int idProducto, [FromBody] RecipeUpdateDto dto)
         {
             var product = await _context.InvProductos.FindAsync(idProducto);

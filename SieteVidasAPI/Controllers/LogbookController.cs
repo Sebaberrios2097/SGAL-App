@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
 using System.Data;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -19,8 +20,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("turn/{idTurno:int}")]
+        [Permission(Permissions.OwnLogbookView)]
         public async Task<IActionResult> GetByTurn(int idTurno, [FromQuery] int idUsuario)
         {
+            idUsuario = User.GetUserId();
             var turn = await _context.TurTurno
                 .AsNoTracking()
                 .Include(t => t.IdEstadoTurnoNavigation)
@@ -113,8 +116,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("products")]
+        [Permission(Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> AddConsumedProduct([FromBody] LogbookProductCreateDto dto)
         {
+            dto.IdUsuario = User.GetUserId();
             if (dto.IdUsuario <= 0 || dto.IdTurno <= 0 || dto.IdProducto <= 0)
                 return BadRequest(new { mensaje = "Usuario, turno y producto son obligatorios." });
             if (dto.Cantidad <= 0)
@@ -232,8 +237,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("products/{id:int}/void")]
+        [Permission(Permissions.LogbookConsumptionsVoid)]
         public async Task<IActionResult> VoidConsumedProduct(int id, [FromBody] LogbookProductVoidDto dto)
         {
+            dto.IdUsuario = User.GetUserId();
             await using var transaction = await _context.Database.BeginTransactionAsync();
             var consumption = await _context.TurProductosBitacora
                 .Include(x => x.IdBitacoraNavigation).ThenInclude(x => x.IdTurnoNavigation)
@@ -264,8 +271,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("observation")]
+        [Permission(Permissions.LogbookObservationEdit)]
         public async Task<IActionResult> UpdateObservation([FromBody] LogbookObservationUpdateDto dto)
         {
+            dto.IdUsuario = User.GetUserId();
             if (dto.IdUsuario <= 0 || dto.IdTurno <= 0)
             {
                 return BadRequest(new { mensaje = "El usuario y el turno son obligatorios." });
@@ -309,8 +318,10 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("extractions")]
+        [Permission(Permissions.LogbookExtractionsCreate)]
         public async Task<IActionResult> AddExtractions([FromBody] ExtractionBatchCreateDto dto)
         {
+            dto.IdUsuario = User.GetUserId();
             if (dto.IdUsuario <= 0 || dto.IdTurno <= 0)
             {
                 return BadRequest(new { mensaje = "El usuario y el turno son obligatorios." });

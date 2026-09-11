@@ -19,4 +19,6 @@ public partial class EmpRolesUsuarios
 
     [InverseProperty("IdRolUsuarioNavigation")]
     public virtual ICollection<EmpRolesXusuario> EmpRolesXusuario { get; set; } = new List<EmpRolesXusuario>();
+
+    public virtual ICollection<SegPermisoRol> SegPermisos { get; set; } = new List<SegPermisoRol>();
 }

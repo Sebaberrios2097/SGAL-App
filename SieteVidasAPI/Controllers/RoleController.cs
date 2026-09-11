@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
+        [Permission(Permissions.RolesView)]
         public async Task<IActionResult> GetRoles()
         {
             var roles = await _context.EmpRolesUsuarios
@@ -27,6 +29,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost]
+        [Permission(Permissions.RolesCreate)]
         public async Task<IActionResult> CreateRole([FromBody] string roleName)
         {
             if (string.IsNullOrWhiteSpace(roleName))
@@ -50,6 +53,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}")]
+        [Permission(Permissions.RolesEdit)]
         public async Task<IActionResult> UpdateRole(int id, [FromBody] string roleName)
         {
             if (string.IsNullOrWhiteSpace(roleName))
@@ -78,6 +82,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Permission(Permissions.RolesDelete)]
         public async Task<IActionResult> DeleteRole(int id)
         {
             var role = await _context.EmpRolesUsuarios.FindAsync(id);
@@ -104,6 +109,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("users/{userId}/roles")]
+        [Permission(Permissions.UsersRolesAssign)]
         public async Task<IActionResult> AssignRoles(int userId, [FromBody] AssignRolesDto dto)
         {
             var user = await _context.EmpUsuarios.FindAsync(userId);
@@ -119,6 +125,14 @@ namespace SieteVidasAPI.Controllers
 
             // Set of new role IDs requested
             var newRoleIds = dto.RoleIds.ToHashSet();
+            var callerPermissions = (await _context.SegPermisosXRol.AsNoTracking()
+                .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
+                    .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
+                .Select(x => x.IdPermiso).Distinct().ToListAsync()).ToHashSet();
+            var grantsOutsideCaller = await _context.SegPermisosXRol.AsNoTracking()
+                .AnyAsync(x => newRoleIds.Contains(x.IdRolUsuario) && x.Activo && !callerPermissions.Contains(x.IdPermiso));
+            if (grantsOutsideCaller)
+                return StatusCode(403, new { Mensaje = "No puede asignar un rol con permisos que usted no posee." });
 
             // 1. Deactivate roles that are not in the new list
             foreach (var assoc in existingAssociations.Where(rx => rx.Activo))
@@ -174,6 +188,56 @@ namespace SieteVidasAPI.Controllers
                 .ToListAsync();
 
             return Ok(updatedRoles);
+        }
+
+        [HttpGet("permissions/catalog")]
+        [Permission(Permissions.RolesView)]
+        public async Task<IActionResult> GetPermissionCatalog()
+        {
+            var modules = await _context.SegModulos.AsNoTracking()
+                .Where(x => x.Activo).OrderBy(x => x.Orden)
+                .Select(x => new
+                {
+                    x.IdModulo, x.Codigo, x.Nombre,
+                    Permisos = x.Permisos.Where(p => p.Activo).OrderBy(p => p.Nombre)
+                        .Select(p => new { p.IdPermiso, p.Codigo, p.Nombre, p.Descripcion, p.EsCritico })
+                }).ToListAsync();
+            return Ok(modules);
+        }
+
+        [HttpGet("{id:int}/permissions")]
+        [Permission(Permissions.RolesView)]
+        public async Task<IActionResult> GetRolePermissions(int id)
+        {
+            if (!await _context.EmpRolesUsuarios.AnyAsync(x => x.IdRolUsuario == id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
+            var permissionIds = await _context.SegPermisosXRol.AsNoTracking()
+                .Where(x => x.IdRolUsuario == id && x.Activo).Select(x => x.IdPermiso).ToListAsync();
+            return Ok(new { IdRolUsuario = id, PermissionIds = permissionIds });
+        }
+
+        [HttpPut("{id:int}/permissions")]
+        [Permission(Permissions.RolesPermissionsAssign)]
+        public async Task<IActionResult> SetRolePermissions(int id, [FromBody] AssignPermissionsDto dto)
+        {
+            if (!await _context.EmpRolesUsuarios.AnyAsync(x => x.IdRolUsuario == id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
+
+            var requested = dto.PermissionIds.Distinct().ToHashSet();
+            var existingPermissionIds = await _context.SegPermisos.Where(x => x.Activo && requested.Contains(x.IdPermiso))
+                .Select(x => x.IdPermiso).ToListAsync();
+            if (existingPermissionIds.Count != requested.Count)
+                return BadRequest(new { Mensaje = "Uno o más permisos no existen o están inactivos." });
+
+            var grants = await _context.SegPermisosXRol.Where(x => x.IdRolUsuario == id).ToListAsync();
+            foreach (var grant in grants) grant.Activo = requested.Contains(grant.IdPermiso);
+            foreach (var permissionId in requested.Where(permissionId => grants.All(x => x.IdPermiso != permissionId)))
+                _context.SegPermisosXRol.Add(new SegPermisoRol
+                {
+                    IdRolUsuario = id, IdPermiso = permissionId, Activo = true, FechaAsignacion = DateTime.Now
+                });
+            await _context.SaveChangesAsync();
+            return Ok(new { Mensaje = "Permisos actualizados.", PermissionIds = requested.OrderBy(x => x) });
         }
     }
 }

@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
+        [Permission(Permissions.DiscountsView)]
         public async Task<IActionResult> GetDiscounts()
         {
             var discounts = await _context.InvDescuentosProductos
@@ -40,6 +42,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost]
+        [Permission(Permissions.DiscountsCreate)]
         public async Task<IActionResult> CreateDiscount([FromBody] DiscountDto dto)
         {
             if (dto == null)
@@ -86,6 +89,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("{id}/status")]
+        [Permission(Permissions.DiscountsStatusEdit)]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             var discount = await _context.InvDescuentosProductos
@@ -115,6 +119,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Permission(Permissions.DiscountsDelete)]
         public async Task<IActionResult> DeleteDiscount(int id)
         {
             var discount = await _context.InvDescuentosProductos.FindAsync(id);

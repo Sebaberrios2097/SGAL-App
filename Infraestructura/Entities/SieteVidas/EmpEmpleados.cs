@@ -25,6 +25,9 @@ public partial class EmpEmpleados
     [StringLength(100)]
     public string Nombres { get; set; } = null!;
 
+    [StringLength(50)]
+    public string? Alias { get; set; }
+
     [Column("Apellido_1")]
     [StringLength(50)]
     public string Apellido1 { get; set; } = null!;

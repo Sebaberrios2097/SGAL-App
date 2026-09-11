@@ -3,6 +3,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("catalogs")]
+        [Permission(Permissions.InventoryCatalogsView)]
         public async Task<IActionResult> GetCatalogs()
         {
             return Ok(new
@@ -29,6 +31,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("units")]
+        [Permission(Permissions.UnitsCreate)]
         public async Task<IActionResult> CreateUnit([FromBody] MeasurementUnitDto dto)
         {
             var validation = ValidateUnit(dto);
@@ -56,6 +59,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("units/{id:int}")]
+        [Permission(Permissions.UnitsEdit)]
         public async Task<IActionResult> UpdateUnit(int id, [FromBody] MeasurementUnitDto dto)
         {
             var entity = await _context.InvUnidadesMedida.FindAsync(id);
@@ -87,6 +91,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("units/{id:int}")]
+        [Permission(Permissions.UnitsDelete)]
         public async Task<IActionResult> DeleteUnit(int id) => await DeleteCatalog(
             await _context.InvUnidadesMedida.FindAsync(id), "Unidad de medida");
 
@@ -103,6 +108,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("material-categories")]
+        [Permission(Permissions.MaterialCategoriesCreate)]
         public async Task<IActionResult> CreateMaterialCategory([FromBody] NamedCatalogDto dto)
         {
             var name = (dto.Nombre ?? string.Empty).Trim();
@@ -116,6 +122,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("material-categories/{id:int}")]
+        [Permission(Permissions.MaterialCategoriesEdit)]
         public async Task<IActionResult> UpdateMaterialCategory(int id, [FromBody] NamedCatalogDto dto)
         {
             var entity = await _context.InvCategoriasMateria.FindAsync(id);
@@ -130,10 +137,12 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("material-categories/{id:int}")]
+        [Permission(Permissions.MaterialCategoriesDelete)]
         public async Task<IActionResult> DeleteMaterialCategory(int id) => await DeleteCatalog(
             await _context.InvCategoriasMateria.FindAsync(id), "Categoría");
 
         [HttpPost("brands")]
+        [Permission(Permissions.BrandsCreate)]
         public async Task<IActionResult> CreateBrand([FromBody] NamedCatalogDto dto)
         {
             var name = (dto.Nombre ?? string.Empty).Trim();
@@ -147,6 +156,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("brands/{id:int}")]
+        [Permission(Permissions.BrandsEdit)]
         public async Task<IActionResult> UpdateBrand(int id, [FromBody] NamedCatalogDto dto)
         {
             var entity = await _context.InvMarcas.FindAsync(id);
@@ -161,10 +171,12 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("brands/{id:int}")]
+        [Permission(Permissions.BrandsDelete)]
         public async Task<IActionResult> DeleteBrand(int id) => await DeleteCatalog(
             await _context.InvMarcas.FindAsync(id), "Marca");
 
         [HttpGet("courtesy-products")]
+        [Permission(Permissions.CourtesyView)]
         public async Task<IActionResult> GetCourtesyProducts()
         {
             return Ok(await _context.InvProductosCortesia.AsNoTracking()
@@ -182,6 +194,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("courtesy-policy")]
+        [Permission(Permissions.CourtesyView)]
         public async Task<IActionResult> GetCourtesyPolicy()
         {
             var policy = await _context.InvConfiguracionCortesia.AsNoTracking()
@@ -190,6 +203,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("courtesy-policy")]
+        [Permission(Permissions.CourtesyPolicyEdit)]
         public async Task<IActionResult> UpdateCourtesyPolicy([FromBody] CourtesyPolicyDto dto)
         {
             if (dto.LimiteDiarioGlobal <= 0)
@@ -208,6 +222,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("courtesy-products")]
+        [Permission(Permissions.CourtesyCreate)]
         public async Task<IActionResult> CreateCourtesyProduct([FromBody] CourtesyProductDto dto)
         {
             if (dto.CantidadDiaria <= 0) return BadRequest(new { mensaje = "La cantidad diaria debe ser mayor que cero." });
@@ -231,6 +246,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("courtesy-products/{id:int}")]
+        [Permission(Permissions.CourtesyEdit)]
         public async Task<IActionResult> UpdateCourtesyProduct(int id, [FromBody] CourtesyProductDto dto)
         {
             var entity = await _context.InvProductosCortesia.FindAsync(id);
@@ -249,6 +265,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("courtesy-products/{id:int}/status")]
+        [Permission(Permissions.CourtesyStatusEdit)]
         public async Task<IActionResult> ToggleCourtesyProduct(int id)
         {
             var entity = await _context.InvProductosCortesia.FindAsync(id);
@@ -260,6 +277,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("raw-materials")]
+        [Permission(Permissions.RawMaterialsView)]
         public async Task<IActionResult> GetRawMaterials()
         {
             return Ok(await _context.InvMateriaPrima.AsNoTracking()
@@ -284,6 +302,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("raw-materials")]
+        [Permission(Permissions.RawMaterialsCreate)]
         public async Task<IActionResult> CreateRawMaterial([FromBody] RawMaterialDto dto)
         {
             var validation = await ValidateRawMaterial(dto);
@@ -308,6 +327,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("raw-materials/{id:int}")]
+        [Permission(Permissions.RawMaterialsEdit)]
         public async Task<IActionResult> UpdateRawMaterial(int id, [FromBody] RawMaterialDto dto)
         {
             var entity = await _context.InvMateriaPrima.FindAsync(id);
@@ -344,10 +364,12 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("raw-materials/{id:int}")]
+        [Permission(Permissions.RawMaterialsDelete)]
         public async Task<IActionResult> DeleteRawMaterial(int id) => await DeleteCatalog(
             await _context.InvMateriaPrima.FindAsync(id), "Materia prima");
 
         [HttpGet("raw-material-presentations")]
+        [Permission(Permissions.PresentationsView)]
         public async Task<IActionResult> GetRawMaterialPresentations([FromQuery] int? idMateriaPrima = null)
         {
             var query = _context.InvPresentacionesMateriaPrima.AsNoTracking().AsQueryable();
@@ -369,6 +391,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPost("raw-material-presentations")]
+        [Permission(Permissions.PresentationsCreate)]
         public async Task<IActionResult> CreateRawMaterialPresentation([FromBody] RawMaterialPresentationDto dto)
         {
             var validation = await ValidatePresentation(dto);
@@ -388,6 +411,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpPut("raw-material-presentations/{id:int}")]
+        [Permission(Permissions.PresentationsEdit)]
         public async Task<IActionResult> UpdateRawMaterialPresentation(int id, [FromBody] RawMaterialPresentationDto dto)
         {
             var entity = await _context.InvPresentacionesMateriaPrima.FindAsync(id);
@@ -404,10 +428,12 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpDelete("raw-material-presentations/{id:int}")]
+        [Permission(Permissions.PresentationsDelete)]
         public async Task<IActionResult> DeleteRawMaterialPresentation(int id) => await DeleteCatalog(
             await _context.InvPresentacionesMateriaPrima.FindAsync(id), "Presentación");
 
         [HttpPost("raw-material-presentations/{id:int}/stock-entry")]
+        [Permission(Permissions.StockEntry)]
         public async Task<IActionResult> AddStockFromPresentation(int id, [FromBody] RawMaterialStockEntryDto dto)
         {
             if (dto.CantidadPresentaciones <= 0)

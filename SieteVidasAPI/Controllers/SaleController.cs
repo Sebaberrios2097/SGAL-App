@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
 using SieteVidasAPI.DTOs.Point;
 using SieteVidasAPI.Services;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -16,20 +17,24 @@ namespace SieteVidasAPI.Controllers
         private readonly ISaleLinesService _saleLines;
         private readonly IPointSaleService _pointSales;
         private readonly ISaleVoidService _saleVoid;
+        private readonly IPermissionService _permissions;
 
         public SaleController(
             SieteVidasContext context,
             ISaleLinesService saleLines,
             IPointSaleService pointSales,
-            ISaleVoidService saleVoid)
+            ISaleVoidService saleVoid,
+            IPermissionService permissions)
         {
             _context = context;
             _saleLines = saleLines;
             _pointSales = pointSales;
             _saleVoid = saleVoid;
+            _permissions = permissions;
         }
 
         [HttpPost]
+        [Permission(Permissions.SalesCreate)]
         public async Task<IActionResult> CreateSale([FromBody] SaleCreateDto dto)
         {
             if (dto == null || dto.Items == null || !dto.Items.Any())
@@ -43,6 +48,7 @@ namespace SieteVidasAPI.Controllers
             {
                 return BadRequest(new { mensaje = "El turno especificado no existe o no se encuentra abierto." });
             }
+            if (turn.IdUsuario != User.GetUserId()) return Forbid();
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -125,12 +131,15 @@ namespace SieteVidasAPI.Controllers
         /// terminal Point. La venta se confirma cuando Mercado Pago informa el resultado.
         /// </summary>
         [HttpPost("point")]
+        [Permission(Permissions.SalesCreatePoint)]
         public async Task<IActionResult> CreatePointSale([FromBody] PointSaleStartDto dto, CancellationToken cancellationToken)
         {
             if (dto == null)
             {
                 return BadRequest(new { mensaje = "La solicitud de venta no es válida." });
             }
+            if (!await _context.TurTurno.AnyAsync(x => x.IdTurno == dto.IdTurno
+                && x.IdUsuario == User.GetUserId() && x.IdEstadoTurno == 1)) return Forbid();
 
             var result = await _pointSales.StartAsync(dto, cancellationToken);
 
@@ -144,8 +153,10 @@ namespace SieteVidasAPI.Controllers
         /// El frontend lo usa como polling mientras el cliente paga en la terminal.
         /// </summary>
         [HttpPost("point/{idVenta}/sync")]
+        [Permission(Permissions.SalesCreatePoint)]
         public async Task<IActionResult> SyncPointSale(int idVenta, CancellationToken cancellationToken)
         {
+            if (!await SaleBelongsToCurrentUser(idVenta)) return Forbid();
             var result = await _pointSales.SyncAsync(idVenta, cancellationToken);
 
             return result.EsValido
@@ -158,8 +169,10 @@ namespace SieteVidasAPI.Controllers
         /// en Mercado Pago: si la devolución falla, la venta no se anula.
         /// </summary>
         [HttpPost("{idVenta}/anular")]
+        [Permission(Permissions.SalesVoid)]
         public async Task<IActionResult> AnularVenta(int idVenta, [FromBody] SaleVoidDto? dto, CancellationToken cancellationToken)
         {
+            if (!await SaleBelongsToCurrentUser(idVenta)) return Forbid();
             var result = await _saleVoid.AnularAsync(idVenta, dto?.DevolverStock ?? true, cancellationToken);
 
             return result.EsValido
@@ -168,8 +181,12 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("turn/{idTurno}")]
+        [Permission(Permissions.OwnSalesView + "|" + Permissions.TurnRecordsSalesView)]
         public async Task<IActionResult> GetSalesByTurn(int idTurno)
         {
+            var ownsTurn = await _context.TurTurno.AnyAsync(x => x.IdTurno == idTurno && x.IdUsuario == User.GetUserId());
+            if (!ownsTurn && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.TurnRecordsSalesView))
+                return Forbid();
             // Las canceladas son intentos de cobro que nunca se concretaron: no son
             // parte del historial de ventas del turno. Las anuladas sí se muestran,
             // porque fueron ventas reales que después se revirtieron.
@@ -211,5 +228,8 @@ namespace SieteVidasAPI.Controllers
 
             return Ok(sales);
         }
+
+        private Task<bool> SaleBelongsToCurrentUser(int idVenta) => _context.VenVentas
+            .AnyAsync(x => x.IdVenta == idVenta && x.IdTurnoNavigation.IdUsuario == User.GetUserId());
     }
 }

@@ -22,6 +22,12 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<EmpUsuarios> EmpUsuarios { get; set; }
 
+    public virtual DbSet<SegModulo> SegModulos { get; set; }
+
+    public virtual DbSet<SegPermiso> SegPermisos { get; set; }
+
+    public virtual DbSet<SegPermisoRol> SegPermisosXRol { get; set; }
+
     public virtual DbSet<InvCategoriaProductos> InvCategoriaProductos { get; set; }
 
     public virtual DbSet<InvConfiguracionCortesia> InvConfiguracionCortesia { get; set; }
@@ -129,6 +135,27 @@ public partial class SieteVidasContext : DbContext
         modelBuilder.Entity<EmpUsuarios>(entity =>
         {
             entity.Property(e => e.Pass).IsFixedLength();
+        });
+
+        modelBuilder.Entity<SegModulo>(entity =>
+        {
+            entity.HasIndex(x => x.Codigo).IsUnique();
+        });
+
+        modelBuilder.Entity<SegPermiso>(entity =>
+        {
+            entity.HasIndex(x => x.Codigo).IsUnique();
+            entity.HasOne(x => x.Modulo).WithMany(x => x.Permisos)
+                .HasForeignKey(x => x.IdModulo).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SegPermisoRol>(entity =>
+        {
+            entity.HasKey(x => new { x.IdRolUsuario, x.IdPermiso });
+            entity.HasOne(x => x.Rol).WithMany(x => x.SegPermisos)
+                .HasForeignKey(x => x.IdRolUsuario).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Permiso).WithMany(x => x.Roles)
+                .HasForeignKey(x => x.IdPermiso).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<InvCategoriaProductos>(entity =>

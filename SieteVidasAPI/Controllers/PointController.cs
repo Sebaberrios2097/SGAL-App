@@ -5,6 +5,9 @@ using SieteVidasAPI.DTOs.Point;
 using SieteVidasAPI.Services;
 using System.Globalization;
 using System.Text.Json;
+using SieteVidasAPI.Security;
+using Infraestructura.Context;
+using Microsoft.EntityFrameworkCore;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -16,21 +19,25 @@ namespace SieteVidasAPI.Controllers
         private readonly IPointSaleService _pointSales;
         private readonly MercadoPagoPointOptions _options;
         private readonly ILogger<PointController> _logger;
+        private readonly SieteVidasContext _context;
 
         public PointController(
             IPointService pointService,
             IPointSaleService pointSales,
             IOptions<MercadoPagoPointOptions> options,
-            ILogger<PointController> logger)
+            ILogger<PointController> logger,
+            SieteVidasContext context)
         {
             _pointService = pointService;
             _pointSales = pointSales;
             _options = options.Value;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>Lista las terminals de la cuenta para identificar el id y el modo de operación.</summary>
         [HttpGet("terminals")]
+        [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> GetTerminals([FromQuery] string? storeId, [FromQuery] string? posId, CancellationToken cancellationToken)
         {
             try
@@ -49,6 +56,7 @@ namespace SieteVidasAPI.Controllers
         /// en ese modo la terminal deja de permitir cobros manuales desde su pantalla.
         /// </summary>
         [HttpPatch("terminals/{terminalId}/operating-mode")]
+        [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> SetOperatingMode(string terminalId, [FromQuery] string mode = "PDV", CancellationToken cancellationToken = default)
         {
             if (!mode.Equals("PDV", StringComparison.OrdinalIgnoreCase) &&
@@ -70,6 +78,7 @@ namespace SieteVidasAPI.Controllers
 
         /// <summary>Carga el monto en la terminal para que el cliente pague con tarjeta.</summary>
         [HttpPost("orders")]
+        [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> CreateOrder([FromBody] PointOrderCreateDto dto, CancellationToken cancellationToken)
         {
             if (dto == null || dto.Monto <= 0)
@@ -97,8 +106,10 @@ namespace SieteVidasAPI.Controllers
         /// que el cliente complete el pago en la terminal.
         /// </summary>
         [HttpGet("orders/{orderId}")]
+        [Permission(Permissions.SalesCreatePoint)]
         public async Task<IActionResult> GetOrder(string orderId, CancellationToken cancellationToken)
         {
+            if (!await OwnsOrder(orderId, cancellationToken)) return Forbid();
             try
             {
                 var order = await _pointService.GetOrderAsync(orderId, cancellationToken);
@@ -112,8 +123,10 @@ namespace SieteVidasAPI.Controllers
 
         /// <summary>Cancela una orden que todavía no fue pagada.</summary>
         [HttpPost("orders/{orderId}/cancel")]
+        [Permission(Permissions.SalesCreatePoint)]
         public async Task<IActionResult> CancelOrder(string orderId, CancellationToken cancellationToken)
         {
+            if (!await OwnsOrder(orderId, cancellationToken)) return Forbid();
             try
             {
                 var order = await _pointService.CancelOrderAsync(orderId, cancellationToken);
@@ -127,6 +140,7 @@ namespace SieteVidasAPI.Controllers
 
         /// <summary>Reembolsa el total de una orden ya procesada.</summary>
         [HttpPost("orders/{orderId}/refund")]
+        [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> RefundOrder(string orderId, CancellationToken cancellationToken)
         {
             try
@@ -145,6 +159,7 @@ namespace SieteVidasAPI.Controllers
         /// Solo disponible con credenciales de prueba (AllowSimulation).
         /// </summary>
         [HttpPost("orders/{orderId}/simulate")]
+        [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> SimulateOrder(string orderId, [FromBody] PointSimulationRequest simulation, CancellationToken cancellationToken)
         {
             if (!_options.AllowSimulation)
@@ -245,6 +260,10 @@ namespace SieteVidasAPI.Controllers
                 IdPago = payment?.Id
             };
         }
+
+        private Task<bool> OwnsOrder(string orderId, CancellationToken cancellationToken) =>
+            _context.VenOrdenesPoint.AnyAsync(x => x.IdOrdenMp == orderId && x.IdVenta != null
+                && x.IdVentaNavigation!.IdTurnoNavigation.IdUsuario == User.GetUserId(), cancellationToken);
 
         private static int? ParseAmount(string? amount) =>
             decimal.TryParse(amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var value)

@@ -1,6 +1,7 @@
 using Infraestructura.Context;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SieteVidasAPI.Security;
 using SieteVidasAPI.Services;
 
 namespace SieteVidasAPI.Controllers;
@@ -17,6 +18,7 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("monthly-summary")]
+    [Permission(Permissions.DashboardView)]
     public async Task<IActionResult> GetMonthlySummary([FromQuery] int year, [FromQuery] int month)
     {
         if (!TryGetMonthRange(year, month, out var start, out var end))
@@ -82,6 +84,7 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("turn-records/calendar")]
+    [Permission(Permissions.TurnRecordsView)]
     public async Task<IActionResult> GetTurnCalendar([FromQuery] int year, [FromQuery] int month)
     {
         if (!TryGetMonthRange(year, month, out var start, out var end))
@@ -117,6 +120,7 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("turn-records/day")]
+    [Permission(Permissions.TurnRecordsView)]
     public async Task<IActionResult> GetTurnDay([FromQuery] DateTime date)
     {
         var start = date.Date;
@@ -208,6 +212,7 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("turn-records/logbook/{idBitacora:int}")]
+    [Permission(Permissions.TurnRecordsLogbookView)]
     public async Task<IActionResult> GetLogbookDetail(int idBitacora)
     {
         var logbook = await _context.TurBitacora.AsNoTracking()

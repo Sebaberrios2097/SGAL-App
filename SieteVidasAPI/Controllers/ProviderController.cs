@@ -4,6 +4,7 @@ using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
+using SieteVidasAPI.Security;
 
 namespace SieteVidasAPI.Controllers;
 
@@ -19,6 +20,7 @@ public class ProviderController : ControllerBase
     }
 
     [HttpGet]
+    [Permission(Permissions.ProvidersView)]
     public async Task<IActionResult> GetAll()
     {
         var providers = await _context.InvProveedores.AsNoTracking()
@@ -47,9 +49,9 @@ public class ProviderController : ControllerBase
     }
 
     [HttpPost]
+    [Permission(Permissions.ProvidersCreate)]
     public async Task<IActionResult> Create([FromBody] ProviderSaveDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var name = NormalizeName(dto.NombreProveedor);
         var validation = await Validate(dto, name);
         if (validation != null) return BadRequest(new { mensaje = validation });
@@ -66,9 +68,9 @@ public class ProviderController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Permission(Permissions.ProvidersEdit)]
     public async Task<IActionResult> Update(int id, [FromBody] ProviderSaveDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var provider = await _context.InvProveedores.FindAsync(id);
         if (provider == null) return NotFound(new { mensaje = "Proveedor no encontrado." });
 
@@ -83,9 +85,9 @@ public class ProviderController : ControllerBase
     }
 
     [HttpPut("{id:int}/status")]
+    [Permission(Permissions.ProvidersStatusEdit)]
     public async Task<IActionResult> ToggleStatus(int id, [FromBody] ProviderStatusDto dto)
     {
-        if (!await IsAdministrator(dto.IdUsuario)) return Forbid();
         var provider = await _context.InvProveedores.FindAsync(id);
         if (provider == null) return NotFound(new { mensaje = "Proveedor no encontrado." });
 
@@ -138,10 +140,6 @@ public class ProviderController : ControllerBase
 
         return null;
     }
-
-    private async Task<bool> IsAdministrator(int userId) => userId > 0 && await _context.EmpRolesXusuario
-        .AnyAsync(x => x.IdUsuario == userId && x.Activo && x.IdUsuarioNavigation.Activo
-            && x.IdRolUsuarioNavigation.NombreRol.ToUpper() == "ADMINISTRADOR");
 
     private static string? NormalizeName(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : string.Join(' ', value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
