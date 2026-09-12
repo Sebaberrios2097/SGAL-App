@@ -51,6 +51,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
 | Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` | `GET /api/admin-dashboard/monthly-summary` |
+| Ver panel de turnos (dashboard analítico) | `registros_turnos.dashboard.ver` | `GET /api/admin-dashboard/turns-overview` |
 | Ver calendario administrativo de turnos | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/calendar` |
 | Ver turnos de un día | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/day` |
 | Ver detalle de una bitácora histórica | `registros_turnos.bitacora.ver` | `GET /api/admin-dashboard/turn-records/logbook/{idBitacora}` |

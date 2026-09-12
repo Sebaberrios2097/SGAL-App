@@ -228,6 +228,194 @@ public class AdminDashboardController : ControllerBase
         });
     }
 
+    // Dashboard dedicado a turnos: qué se movió por turno, por barista y por producto
+    // dentro de un rango configurable (día/semana/mes/personalizado).
+    [HttpGet("turns-overview")]
+    [Permission(Permissions.TurnRecordsDashboardView)]
+    public async Task<IActionResult> GetTurnsOverview([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string granularity = "day")
+    {
+        var start = from.Date;
+        var end = to.Date.AddDays(1);
+        if (end <= start) return BadRequest(new { mensaje = "El rango de fechas no es válido." });
+        if ((end - start).TotalDays > 366) return BadRequest(new { mensaje = "El rango no puede superar los 366 días." });
+        var gran = (granularity ?? "day").ToLowerInvariant();
+        if (gran is not ("day" or "week" or "month")) gran = "day";
+
+        // Un registro por turno con sus agregados de ventas y consumos de bitácora.
+        var turnos = await _context.TurTurno.AsNoTracking()
+            .Where(t => t.FechaApertura >= start && t.FechaApertura < end)
+            .OrderBy(t => t.FechaApertura)
+            .Select(t => new
+            {
+                t.IdTurno,
+                t.IdUsuario,
+                Usuario = t.IdUsuarioNavigation.NombreUsuario,
+                Empleado = t.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
+                    .Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
+                t.FechaApertura,
+                t.FechaCierre,
+                t.IdEstadoTurno,
+                Estado = t.IdEstadoTurnoNavigation.NombreEstadoTurno,
+                t.DiferenciaTotal,
+                CantidadVentas = t.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada),
+                Monto = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0,
+                Unidades = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada)
+                    .SelectMany(v => v.VenDetalleVenta).Sum(d => (int?)d.Cantidad) ?? 0,
+                ConsumoUnidades = t.TurBitacora.SelectMany(b => b.TurProductosBitacora)
+                    .Where(p => p.Activo && !p.EsCortesia).Sum(p => (int?)p.Cantidad) ?? 0,
+                CortesiaUnidades = t.TurBitacora.SelectMany(b => b.TurProductosBitacora)
+                    .Where(p => p.Activo && p.EsCortesia).Sum(p => (int?)p.Cantidad) ?? 0
+            })
+            .ToListAsync();
+
+        var tipsByTurn = await GetTipsByTurnAsync(turnos.Select(t => t.IdTurno).ToList());
+        var tipsByDay = await GetTipsByDayAsync(start, end);
+
+        int Propina(int idTurno) => tipsByTurn.TryGetValue(idTurno, out var p) ? p : 0;
+
+        // KPIs del período.
+        var totalVentas = turnos.Sum(t => t.Monto);
+        var cantidadVentas = turnos.Sum(t => t.CantidadVentas);
+        var unidadesVendidas = turnos.Sum(t => t.Unidades);
+        var totalPropinas = tipsByDay.Values.Sum();
+        var diferenciaCajaTotal = turnos.Sum(t => t.DiferenciaTotal ?? 0);
+
+        // Serie temporal por granularidad (huecos incluidos).
+        var buckets = new List<int[]>(); // [turnos, ventas, monto, propina, diferencia]
+        var labels = new List<string>();
+        var orders = new List<DateTime>();
+        var index = new Dictionary<string, int>();
+        int BucketIndex(DateTime day)
+        {
+            var (key, label, order) = BucketOf(day, gran);
+            if (!index.TryGetValue(key, out var idx))
+            {
+                idx = buckets.Count;
+                index[key] = idx;
+                buckets.Add(new[] { 0, 0, 0, 0, 0 });
+                labels.Add(label);
+                orders.Add(order);
+            }
+            return idx;
+        }
+        for (var day = start; day < end; day = day.AddDays(1)) BucketIndex(day); // asegura continuidad
+        foreach (var t in turnos)
+        {
+            var idx = BucketIndex(t.FechaApertura);
+            buckets[idx][0] += 1;
+            buckets[idx][1] += t.CantidadVentas;
+            buckets[idx][2] += t.Monto;
+            buckets[idx][4] += t.DiferenciaTotal ?? 0;
+        }
+        foreach (var kv in tipsByDay)
+        {
+            var idx = BucketIndex(kv.Key);
+            buckets[idx][3] += kv.Value;
+        }
+        var series = Enumerable.Range(0, buckets.Count)
+            .OrderBy(i => orders[i])
+            .Select(i => new
+            {
+                etiqueta = labels[i],
+                turnos = buckets[i][0],
+                cantidadVentas = buckets[i][1],
+                monto = buckets[i][2],
+                propinas = buckets[i][3],
+                diferencia = buckets[i][4]
+            }).ToList();
+
+        // Desglose por barista/usuario: a quién están asociados los turnos y montos.
+        var porBarista = turnos
+            .GroupBy(t => new { t.IdUsuario, t.Usuario, t.Empleado })
+            .Select(g => new
+            {
+                g.Key.IdUsuario,
+                g.Key.Usuario,
+                g.Key.Empleado,
+                turnos = g.Count(),
+                turnosDescuadrados = g.Count(x => x.IdEstadoTurno == 3),
+                cantidadVentas = g.Sum(x => x.CantidadVentas),
+                monto = g.Sum(x => x.Monto),
+                unidades = g.Sum(x => x.Unidades),
+                consumoUnidades = g.Sum(x => x.ConsumoUnidades),
+                cortesiaUnidades = g.Sum(x => x.CortesiaUnidades),
+                propina = g.Sum(x => Propina(x.IdTurno)),
+                diferencia = g.Sum(x => x.DiferenciaTotal ?? 0)
+            })
+            .OrderByDescending(x => x.monto)
+            .ToList();
+
+        // Productos vendidos durante los turnos del rango (unidades y monto).
+        var productosVendidos = await _context.VenDetalleVenta.AsNoTracking()
+            .Where(d => d.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
+                && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
+            .GroupBy(d => new { d.IdProducto, d.IdProductoNavigation.NombreProducto })
+            .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, cantidad = g.Sum(x => x.Cantidad), monto = g.Sum(x => x.Subtotal) })
+            .OrderByDescending(x => x.cantidad).ThenByDescending(x => x.monto)
+            .Take(15).ToListAsync();
+
+        // Consumos y cortesías registrados en bitácora durante los turnos del rango.
+        var consumosBitacora = await _context.TurProductosBitacora.AsNoTracking()
+            .Where(p => p.Activo
+                && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura >= start
+                && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura < end)
+            .GroupBy(p => new { p.IdProducto, p.IdProductoNavigation.NombreProducto })
+            .Select(g => new
+            {
+                g.Key.IdProducto,
+                g.Key.NombreProducto,
+                cantidad = g.Sum(x => x.Cantidad),
+                consumos = g.Where(x => !x.EsCortesia).Sum(x => (int?)x.Cantidad) ?? 0,
+                cortesias = g.Where(x => x.EsCortesia).Sum(x => (int?)x.Cantidad) ?? 0
+            })
+            .OrderByDescending(x => x.cantidad)
+            .Take(15).ToListAsync();
+
+        // Detalle turno a turno para la tabla inferior.
+        var detalleTurnos = turnos.Select(t => new
+        {
+            t.IdTurno,
+            t.IdUsuario,
+            t.Usuario,
+            t.Empleado,
+            t.FechaApertura,
+            t.FechaCierre,
+            t.IdEstadoTurno,
+            t.Estado,
+            t.CantidadVentas,
+            t.Unidades,
+            t.Monto,
+            t.ConsumoUnidades,
+            t.CortesiaUnidades,
+            Propina = Propina(t.IdTurno),
+            Diferencia = t.DiferenciaTotal
+        }).ToList();
+
+        return Ok(new
+        {
+            periodo = new { from = start, to = end.AddDays(-1), granularity = gran },
+            cantidadTurnos = turnos.Count,
+            turnosAbiertos = turnos.Count(t => t.IdEstadoTurno == 1),
+            turnosCerrados = turnos.Count(t => t.IdEstadoTurno == 2),
+            turnosDescuadrados = turnos.Count(t => t.IdEstadoTurno == 3),
+            totalVentas,
+            cantidadVentas,
+            unidadesVendidas,
+            ticketPromedio = cantidadVentas > 0 ? (decimal)totalVentas / cantidadVentas : 0,
+            ventaPromedioTurno = turnos.Count > 0 ? (decimal)totalVentas / turnos.Count : 0,
+            totalPropinas,
+            diferenciaCajaTotal,
+            consumoUnidades = turnos.Sum(t => t.ConsumoUnidades),
+            cortesiaUnidades = turnos.Sum(t => t.CortesiaUnidades),
+            series,
+            porBarista,
+            productosVendidos,
+            consumosBitacora,
+            turnos = detalleTurnos
+        });
+    }
+
     private static (string Key, string Label, DateTime Order) BucketOf(DateTime day, string gran)
     {
         var es = new CultureInfo("es-CL");

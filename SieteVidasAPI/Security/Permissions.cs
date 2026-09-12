@@ -4,6 +4,7 @@ public static class Permissions
 {
     public const string DashboardView = "inicio.dashboard.ver";
     public const string TurnRecordsView = "registros_turnos.ver";
+    public const string TurnRecordsDashboardView = "registros_turnos.dashboard.ver";
     public const string TurnRecordsLogbookView = "registros_turnos.bitacora.ver";
     public const string TurnRecordsSalesView = "registros_turnos.ventas.ver";
 
