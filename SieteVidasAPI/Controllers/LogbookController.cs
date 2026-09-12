@@ -37,6 +37,7 @@ namespace SieteVidasAPI.Controllers
             var logbook = await _context.TurBitacora
                 .AsNoTracking()
                 .Include(b => b.TurExtracciones)
+                    .ThenInclude(e => e.IdMateriaPrimaNavigation)
                 .FirstOrDefaultAsync(b => b.IdTurno == idTurno);
 
             var dayStart = DateTime.Today;
@@ -83,6 +84,8 @@ namespace SieteVidasAPI.Controllers
                         x.Observacion
                     }).ToListAsync();
 
+            var calibracion = await GetCalibrationMaterialsAsync();
+
             return Ok(new
             {
                 turn.IdTurno,
@@ -110,9 +113,43 @@ namespace SieteVidasAPI.Controllers
                         e.Gramos,
                         e.Segundos,
                         e.Mililitros,
-                        e.Observaciones
-                    }) ?? []
+                        e.Observaciones,
+                        e.IdMateriaPrima,
+                        Materia = e.IdMateriaPrimaNavigation != null ? e.IdMateriaPrimaNavigation.NombreMaterial : null,
+                        e.CantidadDescontada
+                    }) ?? [],
+                Calibracion = new
+                {
+                    IdMateriaDefault = calibracion.IdMateriaDefault,
+                    Materias = calibracion.Materias
+                }
             });
+        }
+
+        // Materias primas (café) que el POS puede descontar por calibración: el café marcado
+        // como calibrable y sus pares de la misma categoría, todos controlados en inventario.
+        private async Task<(int? IdMateriaDefault, object Materias)> GetCalibrationMaterialsAsync()
+        {
+            var calibrable = await _context.InvMateriaPrima.AsNoTracking()
+                .Where(m => m.EsCafeCalibrable)
+                .Select(m => new { m.IdMateriaPrima, m.IdCategoriaMateria })
+                .FirstOrDefaultAsync();
+
+            var query = _context.InvMateriaPrima.AsNoTracking().Where(m => !m.NoDescuentaInventario);
+            if (calibrable != null)
+                query = query.Where(m => m.IdCategoriaMateria == calibrable.IdCategoriaMateria);
+
+            var materias = await query
+                .OrderByDescending(m => m.EsCafeCalibrable).ThenBy(m => m.NombreMaterial)
+                .Select(m => new
+                {
+                    m.IdMateriaPrima,
+                    m.NombreMaterial,
+                    Abreviacion = m.IdUnidadMedidaNavigation.Abreviacion,
+                    m.EsCafeCalibrable
+                }).ToListAsync();
+
+            return (calibrable?.IdMateriaPrima, materias);
         }
 
         /// <summary>
@@ -380,6 +417,8 @@ namespace SieteVidasAPI.Controllers
                 return Conflict(new { mensaje = "La bitácora de un turno finalizado no puede ser modificada." });
             }
 
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             var logbook = await _context.TurBitacora.FirstOrDefaultAsync(b => b.IdTurno == dto.IdTurno);
             if (logbook == null)
             {
@@ -392,23 +431,113 @@ namespace SieteVidasAPI.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            var extractions = dto.Extracciones.Select(e => new TurExtracciones
+            // Café que descuenta stock para toda la tanda: el indicado o, por defecto, el calibrable.
+            var idMateria = dto.IdMateriaPrima
+                ?? await _context.InvMateriaPrima.Where(m => m.EsCafeCalibrable)
+                    .Select(m => (int?)m.IdMateriaPrima).FirstOrDefaultAsync();
+
+            InvMateriaPrima? materia = null;
+            if (idMateria.HasValue)
             {
-                IdBitacora = logbook.IdBitacora,
-                Gramos = e.Gramos,
-                Segundos = e.Segundos,
-                Mililitros = e.Mililitros,
-                Observaciones = string.IsNullOrWhiteSpace(e.Observaciones) ? null : e.Observaciones.Trim()
-            }).ToList();
+                materia = await _context.InvMateriaPrima
+                    .Include(m => m.IdUnidadMedidaNavigation)
+                    .FirstOrDefaultAsync(m => m.IdMateriaPrima == idMateria.Value);
+                if (materia == null)
+                    return BadRequest(new { mensaje = "La materia prima seleccionada no existe." });
+            }
+
+            // Solo se descuenta stock si el café está controlado en inventario.
+            var descuentaStock = materia != null && !materia.NoDescuentaInventario;
+
+            // Los gramos de la extracción se convierten a la unidad de inventario del café,
+            // igual que en las ventas: gramos * factor(unidad base) / factor(unidad del café).
+            decimal gramFactor = 1m;
+            if (descuentaStock)
+            {
+                gramFactor = await _context.InvUnidadesMedida
+                    .Where(u => u.TipoMagnitud == materia!.IdUnidadMedidaNavigation.TipoMagnitud && u.EsUnidadBase)
+                    .Select(u => (decimal?)u.FactorConversionBase).FirstOrDefaultAsync() ?? 1m;
+            }
+
+            var extractions = new List<TurExtracciones>();
+            decimal totalDescuento = 0;
+            foreach (var e in dto.Extracciones)
+            {
+                var extraction = new TurExtracciones
+                {
+                    IdBitacora = logbook.IdBitacora,
+                    IdMateriaPrima = materia?.IdMateriaPrima,
+                    Gramos = e.Gramos,
+                    Segundos = e.Segundos,
+                    Mililitros = e.Mililitros,
+                    Observaciones = string.IsNullOrWhiteSpace(e.Observaciones) ? null : e.Observaciones.Trim()
+                };
+
+                if (descuentaStock)
+                {
+                    var required = decimal.Round(
+                        (decimal)e.Gramos * gramFactor / materia!.IdUnidadMedidaNavigation.FactorConversionBase,
+                        3, MidpointRounding.AwayFromZero);
+                    if (required <= 0)
+                        return Conflict(new { mensaje = $"Los gramos de la extracción son demasiado pequeños para la precisión del inventario de {materia.NombreMaterial}." });
+                    extraction.CantidadDescontada = required;
+                    totalDescuento += required;
+                }
+
+                extractions.Add(extraction);
+            }
+
+            if (descuentaStock && totalDescuento > 0)
+            {
+                if (materia!.Cantidad < totalDescuento)
+                    return Conflict(new { mensaje = $"Stock insuficiente de {materia.NombreMaterial}. Se requieren {totalDescuento} {materia.IdUnidadMedidaNavigation.Abreviacion} para las extracciones." });
+                materia.Cantidad -= totalDescuento;
+            }
 
             _context.TurExtracciones.AddRange(extractions);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return Ok(new
             {
                 mensaje = extractions.Count == 1 ? "Extracción registrada." : "Extracciones registradas.",
-                cantidad = extractions.Count
+                cantidad = extractions.Count,
+                materia = materia == null ? null : new { materia.IdMateriaPrima, materia.NombreMaterial },
+                gramosDescontados = totalDescuento
             });
+        }
+
+        /// <summary>
+        /// Última extracción registrada en el turno anterior (el más reciente distinto al actual).
+        /// Permite al segundo turno del día reutilizar la calibración del primero sin recalibrar.
+        /// </summary>
+        [HttpGet("turn/{idTurno:int}/previous-extraction")]
+        [Permission(Permissions.LogbookExtractionsCreate + "|" + Permissions.OwnLogbookView)]
+        public async Task<IActionResult> GetPreviousTurnExtraction(int idTurno)
+        {
+            var idUsuario = User.GetUserId();
+            if (!await _context.TurTurno.AnyAsync(t => t.IdTurno == idTurno && t.IdUsuario == idUsuario))
+                return NotFound(new { mensaje = "Turno no encontrado para el usuario." });
+
+            var previous = await _context.TurExtracciones.AsNoTracking()
+                .Where(e => e.IdBitacoraNavigation.IdTurno < idTurno)
+                .OrderByDescending(e => e.IdBitacoraNavigation.IdTurno)
+                .ThenByDescending(e => e.IdExtraccion)
+                .Select(e => new
+                {
+                    e.IdExtraccion,
+                    e.Gramos,
+                    e.Segundos,
+                    e.Mililitros,
+                    e.Observaciones,
+                    e.IdMateriaPrima,
+                    Materia = e.IdMateriaPrimaNavigation != null ? e.IdMateriaPrimaNavigation.NombreMaterial : null,
+                    IdTurnoOrigen = e.IdBitacoraNavigation.IdTurno,
+                    FechaTurnoOrigen = e.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura
+                })
+                .FirstOrDefaultAsync();
+
+            return Ok(new { tieneExtraccion = previous != null, extraccion = previous });
         }
     }
 }

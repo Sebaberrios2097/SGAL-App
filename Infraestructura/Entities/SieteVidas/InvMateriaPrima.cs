@@ -83,5 +83,8 @@ public partial class InvMateriaPrima
     public virtual ICollection<TurProductosBitacoraMateriales> TurProductosBitacoraMateriales { get; set; } = new List<TurProductosBitacoraMateriales>();
 
     [InverseProperty("IdMateriaPrimaNavigation")]
+    public virtual ICollection<TurExtracciones> TurExtracciones { get; set; } = new List<TurExtracciones>();
+
+    [InverseProperty("IdMateriaPrimaNavigation")]
     public virtual ICollection<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; } = new List<VenDetalleVentaMateriales>();
 }

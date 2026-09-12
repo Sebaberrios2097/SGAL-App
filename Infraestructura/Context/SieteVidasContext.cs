@@ -342,6 +342,10 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdBitacoraNavigation).WithMany(p => p.TurExtracciones)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Tur_Extracciones_Tur_Bitacora");
+
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.TurExtracciones)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Tur_Extracciones_Inv_Materia_Prima");
         });
 
         modelBuilder.Entity<TurProductosBitacora>(entity =>
