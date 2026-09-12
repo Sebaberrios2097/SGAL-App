@@ -84,6 +84,7 @@ namespace SieteVidasAPI.Controllers
                     Materiales = x.InvMaterialesReceta.Select(m => new
                     {
                         m.IdMateriaPrima,
+                        NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
                         m.IdMateriaPrimaNavigation.EsCafeCalibrable,
                         m.IdUnidadMedida,
                         NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -168,9 +169,12 @@ namespace SieteVidasAPI.Controllers
                     x.Estado,
                     x.FechaCreacion,
                     x.FechaModificacion,
-                    Materiales = x.InvMaterialesReceta.Select(m => new
+                    Materiales = x.InvMaterialesReceta
+                        .OrderBy(m => m.IdMateriaPrimaNavigation.NombreMaterial)
+                        .Select(m => new
                     {
                         m.IdMateriaPrima,
+                        NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
                         m.IdMateriaPrimaNavigation.EsCafeCalibrable,
                         m.IdUnidadMedida,
                         NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -205,6 +209,7 @@ namespace SieteVidasAPI.Controllers
                     Materiales = x.InvMaterialesReceta.Select(m => new
                     {
                         m.IdMateriaPrima,
+                        NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
                         m.IdMateriaPrimaNavigation.EsCafeCalibrable,
                         m.IdUnidadMedida,
                         NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
