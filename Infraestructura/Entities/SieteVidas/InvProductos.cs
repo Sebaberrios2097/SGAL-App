@@ -66,9 +66,6 @@ public partial class InvProductos
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<InvRecetas> InvRecetas { get; set; } = new List<InvRecetas>();
 
-    [InverseProperty("IdProductoBaseNavigation")]
-    public virtual ICollection<InvRecetas> InvRecetasComoBase { get; set; } = new List<InvRecetas>();
-
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<TurProductosBitacora> TurProductosBitacora { get; set; } = new List<TurProductosBitacora>();
 

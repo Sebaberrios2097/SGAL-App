@@ -297,10 +297,10 @@ public partial class SieteVidasContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Recetas_Inv_Productos");
 
-            entity.HasOne(d => d.IdProductoBaseNavigation).WithMany(p => p.InvRecetasComoBase)
-                .HasForeignKey(d => d.IdProductoBase)
+            entity.HasOne(d => d.IdRecetaBaseNavigation).WithMany(p => p.InvRecetasComoBase)
+                .HasForeignKey(d => d.IdRecetaBase)
                 .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_Inv_Recetas_Inv_Productos_Base");
+                .HasConstraintName("FK_Inv_Recetas_Receta_Base");
         });
 
         modelBuilder.Entity<SiiCafFolios>(entity =>

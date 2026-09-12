@@ -73,7 +73,24 @@ namespace SieteVidasAPI.Controllers
                     return BadRequest(new { mensaje = lines.Error });
                 }
 
-                int total = lines.Total;
+                int totalBruto = lines.Total;
+
+                // Descuento opcional aplicado al cobro. Se valida contra el % máximo del usuario.
+                decimal porcentajeDescuento = dto.PorcentajeDescuento;
+                int montoDescuento = 0;
+                if (porcentajeDescuento != 0)
+                {
+                    if (porcentajeDescuento < 0)
+                        return BadRequest(new { mensaje = "El descuento no puede ser negativo." });
+                    var maxDescuento = await _permissions.GetMaxDiscountPercentAsync(User.GetUserId());
+                    if (maxDescuento <= 0)
+                        return BadRequest(new { mensaje = "No tiene permiso para aplicar descuentos." });
+                    if (porcentajeDescuento > maxDescuento)
+                        return BadRequest(new { mensaje = $"El descuento máximo que puede aplicar es {maxDescuento:0.##}%." });
+                    montoDescuento = (int)Math.Round(totalBruto * porcentajeDescuento / 100m, MidpointRounding.AwayFromZero);
+                }
+
+                int total = totalBruto - montoDescuento;
 
                 // Compute Net & VAT
                 int neto = (int)Math.Round(total / 1.19);
@@ -82,6 +99,8 @@ namespace SieteVidasAPI.Controllers
                 sale.MontoTotal = total;
                 sale.MontoNeto = neto;
                 sale.MontoIva = iva;
+                sale.PorcentajeDescuento = porcentajeDescuento;
+                sale.MontoDescuento = montoDescuento;
                 _context.Entry(sale).State = EntityState.Modified;
 
                 // Validate payment methods sum
@@ -140,6 +159,18 @@ namespace SieteVidasAPI.Controllers
             }
             if (!await _context.TurTurno.AnyAsync(x => x.IdTurno == dto.IdTurno
                 && x.IdUsuario == User.GetUserId() && x.IdEstadoTurno == 1)) return Forbid();
+
+            // Descuento opcional: se valida el % máximo del usuario antes de enviar a la terminal.
+            if (dto.PorcentajeDescuento != 0)
+            {
+                if (dto.PorcentajeDescuento < 0)
+                    return BadRequest(new { mensaje = "El descuento no puede ser negativo." });
+                var maxDescuento = await _permissions.GetMaxDiscountPercentAsync(User.GetUserId());
+                if (maxDescuento <= 0)
+                    return BadRequest(new { mensaje = "No tiene permiso para aplicar descuentos." });
+                if (dto.PorcentajeDescuento > maxDescuento)
+                    return BadRequest(new { mensaje = $"El descuento máximo que puede aplicar es {maxDescuento:0.##}%." });
+            }
 
             var result = await _pointSales.StartAsync(dto, cancellationToken);
 

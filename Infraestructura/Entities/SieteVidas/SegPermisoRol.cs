@@ -15,6 +15,13 @@ public class SegPermisoRol
     [Column("Fecha_Asignacion", TypeName = "datetime")]
     public DateTime FechaAsignacion { get; set; }
 
+    /// <summary>
+    /// Límite numérico opcional que parametriza el permiso para este rol. Para el permiso
+    /// ventas.descuento.aplicar es el porcentaje máximo de descuento que el rol puede aplicar.
+    /// </summary>
+    [Column("Valor_Limite", TypeName = "decimal(5, 2)")]
+    public decimal? ValorLimite { get; set; }
+
     [ForeignKey(nameof(IdRolUsuario))]
     public EmpRolesUsuarios Rol { get; set; } = null!;
     [ForeignKey(nameof(IdPermiso))]

@@ -12,10 +12,12 @@ namespace SieteVidasAPI.Controllers
     public class RoleController : ControllerBase
     {
         private readonly SieteVidasContext _context;
+        private readonly IPermissionService _permissions;
 
-        public RoleController(SieteVidasContext context)
+        public RoleController(SieteVidasContext context, IPermissionService permissions)
         {
             _context = context;
+            _permissions = permissions;
         }
 
         [HttpGet]
@@ -125,14 +127,18 @@ namespace SieteVidasAPI.Controllers
 
             // Set of new role IDs requested
             var newRoleIds = dto.RoleIds.ToHashSet();
-            var callerPermissions = (await _context.SegPermisosXRol.AsNoTracking()
-                .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
-                    .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
-                .Select(x => x.IdPermiso).Distinct().ToListAsync()).ToHashSet();
-            var grantsOutsideCaller = await _context.SegPermisosXRol.AsNoTracking()
-                .AnyAsync(x => newRoleIds.Contains(x.IdRolUsuario) && x.Activo && !callerPermissions.Contains(x.IdPermiso));
-            if (grantsOutsideCaller)
-                return StatusCode(403, new { Mensaje = "No puede asignar un rol con permisos que usted no posee." });
+            // El Desarrollador (superusuario) puede asignar cualquier rol sin restricción.
+            if (!await _permissions.IsDeveloperAsync(User.GetUserId()))
+            {
+                var callerPermissions = (await _context.SegPermisosXRol.AsNoTracking()
+                    .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
+                        .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
+                    .Select(x => x.IdPermiso).Distinct().ToListAsync()).ToHashSet();
+                var grantsOutsideCaller = await _context.SegPermisosXRol.AsNoTracking()
+                    .AnyAsync(x => newRoleIds.Contains(x.IdRolUsuario) && x.Activo && !callerPermissions.Contains(x.IdPermiso));
+                if (grantsOutsideCaller)
+                    return StatusCode(403, new { Mensaje = "No puede asignar un rol con permisos que usted no posee." });
+            }
 
             // 1. Deactivate roles that are not in the new list
             foreach (var assoc in existingAssociations.Where(rx => rx.Activo))
@@ -194,8 +200,9 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesView)]
         public async Task<IActionResult> GetPermissionCatalog()
         {
+            // Solo módulos activos que tengan al menos un permiso activo, y solo permisos activos.
             var modules = await _context.SegModulos.AsNoTracking()
-                .Where(x => x.Activo).OrderBy(x => x.Orden)
+                .Where(x => x.Activo && x.Permisos.Any(p => p.Activo)).OrderBy(x => x.Orden)
                 .Select(x => new
                 {
                     x.IdModulo, x.Codigo, x.Nombre,
@@ -211,9 +218,16 @@ namespace SieteVidasAPI.Controllers
         {
             if (!await _context.EmpRolesUsuarios.AnyAsync(x => x.IdRolUsuario == id))
                 return NotFound(new { Mensaje = "Rol no encontrado" });
-            var permissionIds = await _context.SegPermisosXRol.AsNoTracking()
-                .Where(x => x.IdRolUsuario == id && x.Activo).Select(x => x.IdPermiso).ToListAsync();
-            return Ok(new { IdRolUsuario = id, PermissionIds = permissionIds });
+            // Solo permisos activos: los permisos legacy desactivados no se muestran ni se reenvían.
+            var grants = await _context.SegPermisosXRol.AsNoTracking()
+                .Where(x => x.IdRolUsuario == id && x.Activo && x.Permiso.Activo)
+                .Select(x => new { x.IdPermiso, x.ValorLimite }).ToListAsync();
+            return Ok(new
+            {
+                IdRolUsuario = id,
+                PermissionIds = grants.Select(x => x.IdPermiso).ToList(),
+                Limites = grants.Where(x => x.ValorLimite != null).ToDictionary(x => x.IdPermiso, x => x.ValorLimite)
+            });
         }
 
         [HttpPut("{id:int}/permissions")]
@@ -239,20 +253,58 @@ namespace SieteVidasAPI.Controllers
                     PermisosRequeridos = missingDependencies.OrderBy(x => x)
                 });
 
-            var callerPermissionIds = await _context.SegPermisosXRol.AsNoTracking()
-                .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
-                    .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
-                .Select(x => x.IdPermiso).Distinct().ToListAsync();
-            var outsideCaller = requested.Except(callerPermissionIds).Any();
-            if (outsideCaller)
-                return StatusCode(403, new { Mensaje = "No puede conceder permisos que usted no posee." });
+            // El Desarrollador (superusuario) puede conceder cualquier permiso. El resto solo puede
+            // agregar o quitar permisos dentro de su propio alcance; los permisos que el rol ya tiene
+            // y que el usuario NO posee deben preservarse intactos (no puede agregarlos ni quitarlos).
+            if (!await _permissions.IsDeveloperAsync(User.GetUserId()))
+            {
+                var callerPermissionIds = (await _context.SegPermisosXRol.AsNoTracking()
+                    .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
+                        .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
+                    .Select(x => x.IdPermiso).Distinct().ToListAsync()).ToHashSet();
+                var existingIds = (await _context.SegPermisosXRol.AsNoTracking()
+                    .Where(x => x.IdRolUsuario == id && x.Activo && x.Permiso.Activo)
+                    .Select(x => x.IdPermiso).ToListAsync()).ToHashSet();
+
+                var agregaFueraDeAlcance = requested.Any(pid => !existingIds.Contains(pid) && !callerPermissionIds.Contains(pid));
+                var quitaFueraDeAlcance = existingIds.Any(pid => !callerPermissionIds.Contains(pid) && !requested.Contains(pid));
+                if (agregaFueraDeAlcance || quitaFueraDeAlcance)
+                    return StatusCode(403, new { Mensaje = "No puede conceder ni quitar permisos que usted no posee." });
+            }
+
+            decimal? LimiteDe(int permissionId) =>
+                dto.Limites != null && dto.Limites.TryGetValue(permissionId, out var valor) ? valor : null;
+
+            // El tope de descuento que se otorga a un rol no puede superar el propio del usuario
+            // (mismo principio: solo puede asignar hasta lo que él mismo tiene). El Desarrollador
+            // tiene tope 100%, por lo que puede otorgar cualquier valor válido.
+            var discountPermId = await _context.SegPermisos.AsNoTracking()
+                .Where(p => p.Activo && p.Codigo == Permissions.SalesDiscountApply)
+                .Select(p => (int?)p.IdPermiso).FirstOrDefaultAsync();
+            if (discountPermId.HasValue && requested.Contains(discountPermId.Value))
+            {
+                var callerMaxDescuento = await _permissions.GetMaxDiscountPercentAsync(User.GetUserId());
+                var limiteOtorgado = LimiteDe(discountPermId.Value) ?? 100m; // null = sin tope = 100%
+                if (limiteOtorgado > callerMaxDescuento)
+                    return StatusCode(403, new { Mensaje = $"No puede otorgar un descuento máximo mayor al suyo ({callerMaxDescuento:0.##}%)." });
+            }
+
+            // Permisos activos: los grants a permisos legacy desactivados se dejan intactos.
+            var activePermissionIds = (await _context.SegPermisos.AsNoTracking()
+                .Where(p => p.Activo).Select(p => p.IdPermiso).ToListAsync()).ToHashSet();
 
             var grants = await _context.SegPermisosXRol.Where(x => x.IdRolUsuario == id).ToListAsync();
-            foreach (var grant in grants) grant.Activo = requested.Contains(grant.IdPermiso);
+            foreach (var grant in grants)
+            {
+                if (!activePermissionIds.Contains(grant.IdPermiso)) continue;
+                grant.Activo = requested.Contains(grant.IdPermiso);
+                if (grant.Activo) grant.ValorLimite = LimiteDe(grant.IdPermiso);
+            }
             foreach (var permissionId in requested.Where(permissionId => grants.All(x => x.IdPermiso != permissionId)))
                 _context.SegPermisosXRol.Add(new SegPermisoRol
                 {
-                    IdRolUsuario = id, IdPermiso = permissionId, Activo = true, FechaAsignacion = DateTime.Now
+                    IdRolUsuario = id, IdPermiso = permissionId, Activo = true, FechaAsignacion = DateTime.Now,
+                    ValorLimite = LimiteDe(permissionId)
                 });
             await _context.SaveChangesAsync();
             return Ok(new { Mensaje = "Permisos actualizados.", PermissionIds = requested.OrderBy(x => x) });

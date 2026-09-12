@@ -19,6 +19,9 @@ namespace SieteVidasAPI.DTOs.Point
 
         public List<SaleItemDto> Items { get; set; } = new();
 
+        /// <summary>Porcentaje de descuento aplicado al total (0 = sin descuento).</summary>
+        public decimal PorcentajeDescuento { get; set; }
+
         /// <summary>Descripción opcional que se muestra en la terminal.</summary>
         public string? Descripcion { get; set; }
     }

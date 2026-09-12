@@ -295,35 +295,42 @@ namespace SieteVidasAPI.Services
                 .FirstOrDefaultAsync(r => r.IdProducto == idProducto && r.Estado, cancellationToken);
         }
 
+        /// <summary>Carga una receta activa por su Id (usado para recorrer la cadena de preparaciones base).</summary>
+        private Task<InvRecetas?> CargarRecetaActivaPorIdAsync(int idReceta, CancellationToken cancellationToken)
+        {
+            return _context.InvRecetas
+                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdUnidadMedidaNavigation)
+                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdMateriaPrimaNavigation).ThenInclude(mp => mp.IdUnidadMedidaNavigation)
+                .FirstOrDefaultAsync(r => r.IdReceta == idReceta && r.Estado, cancellationToken);
+        }
+
         /// <summary>
         /// Compone la lista de materiales a consumir para un producto: los de su propia receta
-        /// más los de su preparación base, recorriendo la cadena de bases. Detecta ciclos y
-        /// exige que cada preparación de la cadena tenga una receta activa con materiales.
+        /// más los de su preparación base, recorriendo la cadena de bases (receta -> receta).
+        /// Detecta ciclos y exige que cada preparación de la cadena tenga materiales activos.
         /// </summary>
         private async Task<(List<InvMaterialesReceta>? Materiales, string? Error)> ComponerRecetaAsync(
             int idProducto, string nombreProducto, CancellationToken cancellationToken)
         {
-            var materiales = new List<InvMaterialesReceta>();
-            var visitados = new HashSet<int>();
-            int? actual = idProducto;
-            bool esRaiz = true;
+            var recetaRaiz = await CargarRecetaActivaAsync(idProducto, cancellationToken);
+            if (recetaRaiz == null || recetaRaiz.InvMaterialesReceta.Count == 0)
+                return (null, $"El producto {nombreProducto} no tiene una receta activa configurada.");
+
+            var materiales = new List<InvMaterialesReceta>(recetaRaiz.InvMaterialesReceta);
+            var visitados = new HashSet<int> { recetaRaiz.IdReceta };
+            int? actual = recetaRaiz.IdRecetaBase;
 
             while (actual.HasValue)
             {
                 if (!visitados.Add(actual.Value))
                     return (null, $"La receta de {nombreProducto} tiene una preparación base que forma un ciclo.");
 
-                var receta = await CargarRecetaActivaAsync(actual.Value, cancellationToken);
+                var receta = await CargarRecetaActivaPorIdAsync(actual.Value, cancellationToken);
                 if (receta == null || receta.InvMaterialesReceta.Count == 0)
-                {
-                    return esRaiz
-                        ? (null, $"El producto {nombreProducto} no tiene una receta activa configurada.")
-                        : (null, $"La preparación base de {nombreProducto} no tiene una receta activa configurada.");
-                }
+                    return (null, $"La preparación base de {nombreProducto} no tiene una receta activa configurada.");
 
                 materiales.AddRange(receta.InvMaterialesReceta);
-                actual = receta.IdProductoBase;
-                esRaiz = false;
+                actual = receta.IdRecetaBase;
             }
 
             return (materiales, null);

@@ -5,6 +5,9 @@ namespace SieteVidasAPI.DTOs
         public int IdTurno { get; set; }
         public List<SalePaymentMethodDto> MetodosPago { get; set; } = new();
         public List<SaleItemDto> Items { get; set; } = new();
+
+        /// <summary>Porcentaje de descuento aplicado al total (0 = sin descuento).</summary>
+        public decimal PorcentajeDescuento { get; set; }
     }
 
     public class SalePaymentMethodDto

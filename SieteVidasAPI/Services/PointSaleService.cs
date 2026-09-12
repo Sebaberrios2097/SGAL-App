@@ -114,18 +114,27 @@ namespace SieteVidasAPI.Services
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(lines.Error!);
             }
 
+            // Descuento opcional (el % ya fue validado en el controlador contra el máximo del usuario).
+            int totalBruto = lines.Total;
+            int montoDescuento = dto.PorcentajeDescuento != 0
+                ? (int)Math.Round(totalBruto * dto.PorcentajeDescuento / 100m, MidpointRounding.AwayFromZero)
+                : 0;
+            int totalConDescuento = totalBruto - montoDescuento;
+
             int sumPayments = (dto.MetodosPago?.Sum(m => m.Monto) ?? 0) + montoTarjeta;
-            if (sumPayments != lines.Total)
+            if (sumPayments != totalConDescuento)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(
-                    $"La suma de los métodos de pago (${sumPayments:N0}) debe ser igual al total de la venta (${lines.Total:N0}).");
+                    $"La suma de los métodos de pago (${sumPayments:N0}) debe ser igual al total de la venta (${totalConDescuento:N0}).");
             }
 
-            int neto = (int)Math.Round(lines.Total / 1.19);
-            sale.MontoTotal = lines.Total;
+            int neto = (int)Math.Round(totalConDescuento / 1.19);
+            sale.MontoTotal = totalConDescuento;
             sale.MontoNeto = neto;
-            sale.MontoIva = lines.Total - neto;
+            sale.MontoIva = totalConDescuento - neto;
+            sale.PorcentajeDescuento = dto.PorcentajeDescuento;
+            sale.MontoDescuento = montoDescuento;
             _context.Entry(sale).State = EntityState.Modified;
 
             // Los métodos no asociados a la terminal se pueden guardar desde ya. La porción

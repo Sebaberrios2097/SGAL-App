@@ -42,8 +42,19 @@ namespace SieteVidasAPI.DTOs
 
     public class RecipeUpdateDto
     {
-        /// <summary>Preparación base opcional sobre la que se construye la receta.</summary>
-        public int? IdProductoBase { get; set; }
+        /// <summary>Preparación base opcional (receta marcada como base) sobre la que se construye la receta.</summary>
+        public int? IdRecetaBase { get; set; }
+
+        public List<RecipeMaterialDto> Materiales { get; set; } = new();
+    }
+
+    /// <summary>Crear o actualizar una preparación base independiente (receta sin producto).</summary>
+    public class BasePreparationDto
+    {
+        public string Nombre { get; set; } = string.Empty;
+
+        /// <summary>Otra preparación base opcional sobre la que se construye ésta.</summary>
+        public int? IdRecetaBase { get; set; }
 
         public List<RecipeMaterialDto> Materiales { get; set; } = new();
     }

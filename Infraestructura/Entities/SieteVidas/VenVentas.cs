@@ -34,6 +34,14 @@ public partial class VenVentas
     [Column("Monto_Total")]
     public int MontoTotal { get; set; }
 
+    /// <summary>Porcentaje de descuento aplicado al cobro (0 si no hubo descuento).</summary>
+    [Column("Porcentaje_Descuento", TypeName = "decimal(5, 2)")]
+    public decimal PorcentajeDescuento { get; set; }
+
+    /// <summary>Monto descontado del total bruto por el descuento aplicado (0 si no hubo).</summary>
+    [Column("Monto_Descuento")]
+    public int MontoDescuento { get; set; }
+
     [Column("Correlativo_Diario")]
     public int? CorrelativoDiario { get; set; }
 

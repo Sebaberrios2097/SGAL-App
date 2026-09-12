@@ -253,12 +253,14 @@ namespace SieteVidasAPI.Controllers
                 .Where(rx => rx.IdUsuario == userId && rx.Activo)
                 .Select(rx => rx.IdRolUsuarioNavigation.NombreRol).ToListAsync();
             var permissions = await _permissions.GetEffectivePermissionsAsync(userId);
+            var maxDiscountPercent = await _permissions.GetMaxDiscountPercentAsync(userId);
 
             return new
             {
                 user.IdUsuario,
                 user.NombreUsuario,
                 CambioClave = cambioClave,
+                MaxDiscountPercent = maxDiscountPercent,
                 Empleado = employee == null ? null : new
                 {
                     employee.IdEmpleado, employee.Nombres, employee.Alias, employee.Apellido1,

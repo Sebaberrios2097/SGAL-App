@@ -29,8 +29,9 @@ namespace SieteVidasAPI.Controllers
                 .Where(r => r.Estado)
                 .Select(r => new
                 {
+                    r.IdReceta,
                     r.IdProducto,
-                    r.IdProductoBase,
+                    r.IdRecetaBase,
                     Materiales = r.InvMaterialesReceta.Select(m => new
                     {
                         m.IdMateriaPrima,
@@ -44,7 +45,10 @@ namespace SieteVidasAPI.Controllers
                     }).ToList()
                 })
                 .ToListAsync();
-            var recetaPorProducto = recetas.ToDictionary(r => r.IdProducto);
+            var recetaPorId = recetas.ToDictionary(r => r.IdReceta);
+            var recetaRaizPorProducto = recetas
+                .Where(r => r.IdProducto != null)
+                .ToDictionary(r => r.IdProducto!.Value, r => r.IdReceta);
 
             var products = await _context.InvProductos
                 .Include(p => p.IdCategoriaProductoNavigation)
@@ -74,12 +78,12 @@ namespace SieteVidasAPI.Controllers
                 var alternativas = new List<object>();
                 bool requiereCalibracion = false;
 
-                if (p.RequiereReceta)
+                if (p.RequiereReceta && recetaRaizPorProducto.TryGetValue(p.IdProducto, out var idRecetaRaiz))
                 {
-                    int? actual = p.IdProducto;
+                    int? actual = idRecetaRaiz;
                     var visitados = new HashSet<int>();
                     while (actual.HasValue && visitados.Add(actual.Value)
-                        && recetaPorProducto.TryGetValue(actual.Value, out var receta))
+                        && recetaPorId.TryGetValue(actual.Value, out var receta))
                     {
                         foreach (var m in receta.Materiales)
                         {
@@ -94,7 +98,7 @@ namespace SieteVidasAPI.Controllers
                                     m.Recargo
                                 });
                         }
-                        actual = receta.IdProductoBase;
+                        actual = receta.IdRecetaBase;
                     }
                 }
 
