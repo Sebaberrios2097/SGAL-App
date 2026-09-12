@@ -19,7 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
-        [Permission(Permissions.CategoriesView)]
+        [Permission(Permissions.CategoriesView + "|" + Permissions.SalesOperate)]
         public async Task<IActionResult> GetCategories()
         {
             var categories = await _context.InvCategoriaProductos

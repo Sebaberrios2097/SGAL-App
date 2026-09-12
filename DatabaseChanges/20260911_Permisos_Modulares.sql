@@ -87,12 +87,15 @@ INSERT INTO @Permisos VALUES
 ('inventario','inventario.descuentos.eliminar',N'Eliminar descuentos',1),
 ('recetas','recetas.ver',N'Ver recetas',0), ('recetas','recetas.editar',N'Editar recetas',0),
 ('configuracion_inventario','configuracion_inventario.catalogos.ver',N'Ver catálogos de inventario',0),
+('configuracion_inventario','configuracion_inventario.unidades.ver',N'Ver unidades de medida',0),
 ('configuracion_inventario','configuracion_inventario.unidades.crear',N'Crear unidades de medida',0),
 ('configuracion_inventario','configuracion_inventario.unidades.editar',N'Editar unidades de medida',0),
 ('configuracion_inventario','configuracion_inventario.unidades.eliminar',N'Eliminar unidades de medida',1),
+('configuracion_inventario','configuracion_inventario.categorias_materia.ver',N'Ver categorías de materia prima',0),
 ('configuracion_inventario','configuracion_inventario.categorias_materia.crear',N'Crear categorías de materia',0),
 ('configuracion_inventario','configuracion_inventario.categorias_materia.editar',N'Editar categorías de materia',0),
 ('configuracion_inventario','configuracion_inventario.categorias_materia.eliminar',N'Eliminar categorías de materia',1),
+('configuracion_inventario','configuracion_inventario.marcas.ver',N'Ver marcas',0),
 ('configuracion_inventario','configuracion_inventario.marcas.crear',N'Crear marcas',0),
 ('configuracion_inventario','configuracion_inventario.marcas.editar',N'Editar marcas',0),
 ('configuracion_inventario','configuracion_inventario.marcas.eliminar',N'Eliminar marcas',1),
@@ -124,6 +127,7 @@ INSERT INTO @Permisos VALUES
 ('turnos','turnos.abrir',N'Abrir turno',1), ('turnos','turnos.cerrar',N'Cerrar turno',1),
 ('ventas','ventas.operar',N'Acceder al punto de venta',0), ('ventas','ventas.crear',N'Crear ventas',1),
 ('ventas','ventas.crear_point',N'Crear ventas con Point',1), ('ventas','ventas.propias.ver',N'Ver ventas propias',0),
+('ventas','ventas.documentos.reimprimir',N'Reimprimir comprobantes de ventas',0),
 ('ventas','ventas.anular',N'Anular ventas',1),
 ('bitacora','bitacora.propia.ver',N'Ver bitácora propia',0),
 ('bitacora','bitacora.consumos.crear',N'Registrar consumos',0),
@@ -138,6 +142,26 @@ ON target.Codigo = source.Codigo
 WHEN MATCHED THEN UPDATE SET Id_Modulo=source.Id_Modulo, Nombre=source.Nombre, EsCritico=source.EsCritico, Activo=1
 WHEN NOT MATCHED THEN INSERT (Id_Modulo,Codigo,Nombre,EsCritico,Activo) VALUES(source.Id_Modulo,source.Codigo,source.Nombre,source.EsCritico,1);
 
+-- Descompone el permiso histórico que exponía tres catálogos a la vez. Cada rol
+-- conserva el mismo acceso, pero desde ahora puede retirarse por catálogo.
+INSERT INTO dbo.Seg_PermisosXRol (Id_Rol_Usuario, Id_Permiso, Activo, Fecha_Asignacion)
+SELECT legacyGrant.Id_Rol_Usuario, replacement.Id_Permiso, legacyGrant.Activo, GETDATE()
+FROM dbo.Seg_PermisosXRol legacyGrant
+JOIN dbo.Seg_Permisos legacy ON legacy.Id_Permiso = legacyGrant.Id_Permiso
+CROSS JOIN dbo.Seg_Permisos replacement
+WHERE legacy.Codigo = 'configuracion_inventario.catalogos.ver'
+  AND replacement.Codigo IN (
+    'configuracion_inventario.unidades.ver',
+    'configuracion_inventario.categorias_materia.ver',
+    'configuracion_inventario.marcas.ver')
+  AND NOT EXISTS (SELECT 1 FROM dbo.Seg_PermisosXRol existing
+      WHERE existing.Id_Rol_Usuario = legacyGrant.Id_Rol_Usuario
+        AND existing.Id_Permiso = replacement.Id_Permiso);
+
+UPDATE dbo.Seg_Permisos
+SET Activo = 0
+WHERE Codigo = 'configuracion_inventario.catalogos.ver';
+
 -- Conserva el comportamiento actual: Administrador recibe todo.
 INSERT INTO dbo.Seg_PermisosXRol (Id_Rol_Usuario, Id_Permiso, Activo, Fecha_Asignacion)
 SELECT r.Id_Rol_Usuario, p.Id_Permiso, 1, GETDATE()
@@ -151,7 +175,7 @@ SELECT r.Id_Rol_Usuario, p.Id_Permiso, 1, GETDATE()
 FROM dbo.Emp_Roles_Usuarios r
 JOIN dbo.Seg_Permisos p ON p.Codigo IN (
  'turnos.propios.ver','turnos.operar','turnos.abrir','turnos.cerrar','ventas.operar','ventas.crear',
- 'ventas.crear_point','ventas.propias.ver','ventas.anular','bitacora.propia.ver','bitacora.consumos.crear',
+ 'ventas.crear_point','ventas.propias.ver','ventas.documentos.reimprimir','ventas.anular','bitacora.propia.ver','bitacora.consumos.crear',
  'bitacora.consumos.anular','bitacora.observacion.editar','bitacora.extracciones.crear',
  'inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver')
 WHERE UPPER(r.Nombre_Rol) IN ('BARISTA/VENDEDOR','VENDEDOR/BARISTA')

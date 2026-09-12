@@ -42,13 +42,18 @@ public static class Permissions
     public const string ExtraIngredientsCreate = "ingredientes_extra.crear";
     public const string ExtraIngredientsEdit = "ingredientes_extra.editar";
     public const string ExtraIngredientsStatusEdit = "ingredientes_extra.estado.modificar";
+    // Inventory catalogs have independent read permissions. InventoryCatalogsView is
+    // retained only as a legacy grant while existing installations are migrated.
     public const string InventoryCatalogsView = "configuracion_inventario.catalogos.ver";
+    public const string UnitsView = "configuracion_inventario.unidades.ver";
     public const string UnitsCreate = "configuracion_inventario.unidades.crear";
     public const string UnitsEdit = "configuracion_inventario.unidades.editar";
     public const string UnitsDelete = "configuracion_inventario.unidades.eliminar";
+    public const string MaterialCategoriesView = "configuracion_inventario.categorias_materia.ver";
     public const string MaterialCategoriesCreate = "configuracion_inventario.categorias_materia.crear";
     public const string MaterialCategoriesEdit = "configuracion_inventario.categorias_materia.editar";
     public const string MaterialCategoriesDelete = "configuracion_inventario.categorias_materia.eliminar";
+    public const string BrandsView = "configuracion_inventario.marcas.ver";
     public const string BrandsCreate = "configuracion_inventario.marcas.crear";
     public const string BrandsEdit = "configuracion_inventario.marcas.editar";
     public const string BrandsDelete = "configuracion_inventario.marcas.eliminar";
@@ -89,6 +94,7 @@ public static class Permissions
     public const string SalesCreate = "ventas.crear";
     public const string SalesCreatePoint = "ventas.crear_point";
     public const string OwnSalesView = "ventas.propias.ver";
+    public const string SalesDocumentsReprint = "ventas.documentos.reimprimir";
     public const string SalesVoid = "ventas.anular";
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";

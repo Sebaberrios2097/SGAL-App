@@ -229,6 +229,24 @@ namespace SieteVidasAPI.Controllers
             if (existingPermissionIds.Count != requested.Count)
                 return BadRequest(new { Mensaje = "Uno o más permisos no existen o están inactivos." });
 
+            var requestedCodes = await _context.SegPermisos.AsNoTracking()
+                .Where(x => requested.Contains(x.IdPermiso)).Select(x => x.Codigo).ToListAsync();
+            var missingDependencies = PermissionDependencies.MissingFrom(requestedCodes);
+            if (missingDependencies.Count > 0)
+                return BadRequest(new
+                {
+                    Mensaje = "La selección contiene acciones sin sus permisos de lectura u operación requeridos.",
+                    PermisosRequeridos = missingDependencies.OrderBy(x => x)
+                });
+
+            var callerPermissionIds = await _context.SegPermisosXRol.AsNoTracking()
+                .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
+                    .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
+                .Select(x => x.IdPermiso).Distinct().ToListAsync();
+            var outsideCaller = requested.Except(callerPermissionIds).Any();
+            if (outsideCaller)
+                return StatusCode(403, new { Mensaje = "No puede conceder permisos que usted no posee." });
+
             var grants = await _context.SegPermisosXRol.Where(x => x.IdRolUsuario == id).ToListAsync();
             foreach (var grant in grants) grant.Activo = requested.Contains(grant.IdPermiso);
             foreach (var permissionId in requested.Where(permissionId => grants.All(x => x.IdPermiso != permissionId)))

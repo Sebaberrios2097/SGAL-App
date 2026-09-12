@@ -19,7 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("catalogs")]
-        [Permission(Permissions.InventoryCatalogsView)]
+        [Permission(Permissions.InventoryCatalogsView + "|" + Permissions.UnitsView + "|" + Permissions.MaterialCategoriesView + "|" + Permissions.BrandsView)]
         public async Task<IActionResult> GetCatalogs()
         {
             return Ok(new
@@ -29,6 +29,21 @@ namespace SieteVidasAPI.Controllers
                 Marcas = await _context.InvMarcas.AsNoTracking().OrderBy(x => x.NombreMarca).ToListAsync()
             });
         }
+
+        [HttpGet("units")]
+        [Permission(Permissions.UnitsView)]
+        public async Task<IActionResult> GetUnits() => Ok(await _context.InvUnidadesMedida
+            .AsNoTracking().OrderBy(x => x.NombreUnidadMedida).ToListAsync());
+
+        [HttpGet("material-categories")]
+        [Permission(Permissions.MaterialCategoriesView)]
+        public async Task<IActionResult> GetMaterialCategories() => Ok(await _context.InvCategoriasMateria
+            .AsNoTracking().OrderBy(x => x.NombreCategoriaMateria).ToListAsync());
+
+        [HttpGet("brands")]
+        [Permission(Permissions.BrandsView)]
+        public async Task<IActionResult> GetBrands() => Ok(await _context.InvMarcas
+            .AsNoTracking().OrderBy(x => x.NombreMarca).ToListAsync());
 
         [HttpPost("units")]
         [Permission(Permissions.UnitsCreate)]
@@ -277,7 +292,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("raw-materials")]
-        [Permission(Permissions.RawMaterialsView)]
+        [Permission(Permissions.RawMaterialsView + "|" + Permissions.PresentationsView)]
         public async Task<IActionResult> GetRawMaterials()
         {
             return Ok(await _context.InvMateriaPrima.AsNoTracking()

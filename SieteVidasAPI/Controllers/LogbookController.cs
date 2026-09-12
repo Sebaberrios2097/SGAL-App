@@ -120,7 +120,7 @@ namespace SieteVidasAPI.Controllers
         /// Lo usa el POS para avisar antes de vender preparaciones que dependen de la calibración.
         /// </summary>
         [HttpGet("turn/{idTurno:int}/calibration")]
-        [Permission(Permissions.OwnLogbookView)]
+        [Permission(Permissions.OwnLogbookView + "|" + Permissions.SalesOperate)]
         public async Task<IActionResult> GetLastCalibration(int idTurno)
         {
             var idUsuario = User.GetUserId();

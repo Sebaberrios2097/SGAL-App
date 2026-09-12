@@ -20,7 +20,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("active")]
-        [Permission(Permissions.OwnTurnsView)]
+        [Permission(Permissions.OwnTurnsView + "|" + Permissions.SalesOperate)]
         public async Task<IActionResult> GetActiveTurn([FromQuery] int idUsuario)
         {
             idUsuario = User.GetUserId();

@@ -132,13 +132,15 @@ Cada ingrediente extra descuenta **una** materia prima (cantidad + unidad fija) 
 
 | Recurso | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|---|
-| Catálogos | Ver unidades, categorías de materia y marcas | `configuracion_inventario.catalogos.ver` | `GET /api/inventory-configuration/catalogs` |
+| Unidades de medida | Ver | `configuracion_inventario.unidades.ver` | `GET .../units` |
 | Unidades de medida | Crear | `configuracion_inventario.unidades.crear` | `POST .../units` |
 | Unidades de medida | Editar | `configuracion_inventario.unidades.editar` | `PUT .../units/{id}` |
 | Unidades de medida | Eliminar | `configuracion_inventario.unidades.eliminar` | `DELETE .../units/{id}` |
+| Categorías de materia | Ver | `configuracion_inventario.categorias_materia.ver` | `GET .../material-categories` |
 | Categorías de materia | Crear | `configuracion_inventario.categorias_materia.crear` | `POST .../material-categories` |
 | Categorías de materia | Editar | `configuracion_inventario.categorias_materia.editar` | `PUT .../material-categories/{id}` |
 | Categorías de materia | Eliminar | `configuracion_inventario.categorias_materia.eliminar` | `DELETE .../material-categories/{id}` |
+| Marcas | Ver | `configuracion_inventario.marcas.ver` | `GET .../brands` |
 | Marcas | Crear | `configuracion_inventario.marcas.crear` | `POST .../brands` |
 | Marcas | Editar | `configuracion_inventario.marcas.editar` | `PUT .../brands/{id}` |
 | Marcas | Eliminar | `configuracion_inventario.marcas.eliminar` | `DELETE .../brands/{id}` |
@@ -214,7 +216,7 @@ Los endpoints reciben `idUsuario` desde el cliente. El alcance “propio” debe
 | Iniciar venta con Mercado Pago Point | `ventas.crear_point` | `POST /api/sale/point` | Turno propio abierto |
 | Sincronizar el estado de cobro Point | `ventas.crear_point` | `POST /api/sale/point/{idVenta}/sync` | Venta/turno autorizado |
 | Ver ventas del turno | `ventas.propias.ver` | `GET /api/sale/turn/{idTurno}` | Turno propio, salvo permiso administrativo |
-| Imprimir boleta/comanda | `ventas.documentos.imprimir` | Solo frontend | Venta visible para el usuario |
+| Reimprimir boleta desde el historial | `ventas.documentos.reimprimir` | Solo frontend | Requiere además ver ventas propias |
 | Anular venta y opcionalmente devolver stock | `ventas.anular` | `POST /api/sale/{idVenta}/anular` | Acción crítica |
 
 El acceso a la pantalla exige actualmente el nombre de rol de barista y que el frontend detecte un turno propio abierto. Esa comprobación de interfaz no reemplaza la autorización en la API.

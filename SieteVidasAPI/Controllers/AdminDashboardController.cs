@@ -12,10 +12,12 @@ namespace SieteVidasAPI.Controllers;
 public class AdminDashboardController : ControllerBase
 {
     private readonly SieteVidasContext _context;
+    private readonly IPermissionService _permissions;
 
-    public AdminDashboardController(SieteVidasContext context)
+    public AdminDashboardController(SieteVidasContext context, IPermissionService permissions)
     {
         _context = context;
+        _permissions = permissions;
     }
 
     [HttpGet("monthly-summary")]
@@ -369,10 +371,14 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("turn-records/logbook/{idBitacora:int}")]
-    [Permission(Permissions.TurnRecordsLogbookView)]
+    [Permission(Permissions.TurnRecordsLogbookView + "|" + Permissions.OwnLogbookView)]
     public async Task<IActionResult> GetLogbookDetail(int idBitacora)
     {
-        var logbook = await _context.TurBitacora.AsNoTracking()
+        var query = _context.TurBitacora.AsNoTracking();
+        if (!await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.TurnRecordsLogbookView))
+            query = query.Where(x => x.IdTurnoNavigation.IdUsuario == User.GetUserId());
+
+        var logbook = await query
             .AsSplitQuery()
             .Where(x => x.IdBitacora == idBitacora)
             .Select(x => new
