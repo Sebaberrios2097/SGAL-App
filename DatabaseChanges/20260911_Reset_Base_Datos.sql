@@ -52,7 +52,6 @@ BEGIN TRY
         ('Inv_Materiales_Receta'),
         ('Inv_Recetas'),
         ('Inv_Presentaciones_Materia_Prima'),
-        ('Inv_Productos_Proveedores'),
         ('Inv_Productos_Cortesia'),
         ('Inv_Configuracion_Cortesia'),
         ('Inv_Descuentos_Productos'),

@@ -1,5 +1,6 @@
 using Infraestructura.Context;
 using Infraestructura.Data;
+using Infraestructura.Entities.SieteVidas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
@@ -60,6 +61,111 @@ namespace SieteVidasAPI.Controllers
                 new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
 
             return Ok(await BuildSessionAsync(user.IdUsuario, result.Cambio_Clave == true));
+        }
+
+        /// <summary>
+        /// Indica si el sistema requiere el registro inicial: es <c>true</c> cuando
+        /// no existe ningún usuario Desarrollador activo. El cliente debe mostrar el
+        /// formulario de creación del usuario base en lugar del login.
+        /// </summary>
+        [HttpGet("bootstrap-status")]
+        public async Task<IActionResult> BootstrapStatus()
+        {
+            return Ok(new { RequiresBootstrap = !await DeveloperExistsAsync() });
+        }
+
+        /// <summary>
+        /// Crea el usuario base (empleado + cuenta con rol Desarrollador) y deja la
+        /// sesión iniciada. Solo se permite mientras no exista ningún Desarrollador.
+        /// </summary>
+        [HttpPost("bootstrap")]
+        public async Task<IActionResult> Bootstrap([FromBody] CreateBaseUserDto dto)
+        {
+            // Solo disponible durante el arranque inicial del sistema.
+            if (await DeveloperExistsAsync())
+                return Conflict(new { Mensaje = "El registro inicial no está disponible: ya existe un usuario Desarrollador." });
+
+            var userName = dto.NombreUsuario?.Trim();
+            if (dto.Rut <= 0 || string.IsNullOrWhiteSpace(dto.Dv) || string.IsNullOrWhiteSpace(dto.Nombres) || string.IsNullOrWhiteSpace(dto.Apellido1))
+                return BadRequest(new { Mensaje = "Rut, Dv, Nombres y Apellido Paterno son obligatorios" });
+            if (string.IsNullOrWhiteSpace(userName))
+                return BadRequest(new { Mensaje = "El nombre de usuario es obligatorio" });
+            if (userName.Length > 50)
+                return BadRequest(new { Mensaje = "El nombre de usuario no puede superar los 50 caracteres" });
+            if (string.IsNullOrWhiteSpace(dto.Pass) || dto.Pass.Length < 4)
+                return BadRequest(new { Mensaje = "La contraseña debe tener al menos 4 caracteres" });
+
+            var devRole = await _context.EmpRolesUsuarios.AnyAsync(r => r.IdRolUsuario == RolesUsuario.Desarrollador);
+            if (!devRole)
+                return Conflict(new { Mensaje = "Falta el catálogo de roles: no existe el rol Desarrollador." });
+
+            if (await _context.EmpEmpleados.AnyAsync(e => e.Rut == dto.Rut && e.Activo))
+                return BadRequest(new { Mensaje = $"Ya existe un empleado activo con el RUT {dto.Rut}" });
+            var normalizedName = userName.ToLower();
+            if (await _context.EmpUsuarios.AnyAsync(u => u.NombreUsuario.ToLower() == normalizedName))
+                return BadRequest(new { Mensaje = "El nombre de usuario ya está en uso" });
+
+            // 1) Empleado
+            var employee = new EmpEmpleados
+            {
+                Rut = dto.Rut,
+                Dv = dto.Dv.ToUpper(),
+                Nombres = dto.Nombres.Trim(),
+                Alias = string.IsNullOrWhiteSpace(dto.Alias) ? null : dto.Alias.Trim(),
+                Apellido1 = dto.Apellido1.Trim(),
+                Apellido2 = string.IsNullOrWhiteSpace(dto.Apellido2) ? null : dto.Apellido2.Trim(),
+                NumeroTelefono = dto.NumeroTelefono,
+                Correo = string.IsNullOrWhiteSpace(dto.Correo) ? null : dto.Correo.Trim(),
+                FechaIngreso = DateOnly.FromDateTime(DateTime.Now),
+                Activo = true
+            };
+            _context.EmpEmpleados.Add(employee);
+            await _context.SaveChangesAsync();
+
+            // 2) Cuenta de usuario (el SP calcula el hash de la contraseña por defecto).
+            var createList = await _procedures.sp_Emp_Crea_UsuarioEmpleadoAsync(dto.Rut);
+            var created = createList?.FirstOrDefault();
+            if (created?.Id_Usuario_Creado == null)
+            {
+                // Revertimos el empleado para permitir reintentar el registro inicial.
+                _context.EmpEmpleados.Remove(employee);
+                await _context.SaveChangesAsync();
+                return BadRequest(new { Mensaje = created?.Mensaje ?? "Error al crear la cuenta de usuario" });
+            }
+            var userId = created.Id_Usuario_Creado.Value;
+
+            // 3) Nombre de usuario elegido + rol Desarrollador
+            var user = await _context.EmpUsuarios.FirstAsync(u => u.IdUsuario == userId);
+            user.NombreUsuario = userName;
+            employee.IdUsuario = userId;
+            _context.EmpRolesXusuario.Add(new EmpRolesXusuario
+            {
+                IdUsuario = userId,
+                IdRolUsuario = RolesUsuario.Desarrollador,
+                Activo = true,
+                FechaAsignacion = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+
+            // 4) Contraseña elegida (reset administrativo: no exige la contraseña actual).
+            var passList = await _procedures.sp_Emp_CambiaClaveAsync(userId, string.Empty, dto.Pass, true);
+            var passResult = passList?.FirstOrDefault();
+            if (passResult == null || passResult.Resultado != 1)
+                return BadRequest(new { Mensaje = passResult?.Mensaje ?? "Error al establecer la contraseña" });
+
+            // 5) Validamos e iniciamos sesión, igual que en el login normal.
+            var validaList = await _procedures.sp_Emp_ValidaAccesoAsync(userId, dto.Pass);
+            var valida = validaList?.FirstOrDefault();
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim(ClaimTypes.Name, userName),
+                new Claim("must_change_password", (valida?.Cambio_Clave == true).ToString().ToLowerInvariant())
+            };
+            await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
+
+            return Ok(await BuildSessionAsync(userId, valida?.Cambio_Clave == true));
         }
 
         [Authorize]
@@ -127,6 +233,15 @@ namespace SieteVidasAPI.Controllers
             }
 
             return Ok(new { Mensaje = result.Mensaje });
+        }
+
+        /// <summary>Existe al menos un usuario activo con el rol Desarrollador activo.</summary>
+        private Task<bool> DeveloperExistsAsync()
+        {
+            return _context.EmpRolesXusuario.AnyAsync(rx =>
+                rx.Activo &&
+                rx.IdRolUsuario == RolesUsuario.Desarrollador &&
+                rx.IdUsuarioNavigation.Activo);
         }
 
         private async Task<object> BuildSessionAsync(int userId, bool cambioClave)
