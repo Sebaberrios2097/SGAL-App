@@ -153,6 +153,12 @@ namespace SieteVidasAPI.Services
 
                     foreach (var (material, medida, esEleccionAlternativa) in materialesAConsumir)
                     {
+                        // Materia prima no controlada en inventario (p. ej. agua): no valida ni
+                        // descuenta stock y no se registra su consumo. La receta puede incluirla
+                        // solo como referencia.
+                        if (material.IdMateriaPrimaNavigation.NoDescuentaInventario)
+                            continue;
+
                         // Café por calibración: la cantidad no es la fija de la receta (en gramos),
                         // sino los gramos de la última extracción del turno. Sin extracción se
                         // bloquea la venta. La receta obliga a configurar el café en gramos, por lo
@@ -226,25 +232,30 @@ namespace SieteVidasAPI.Services
                         if (extra == null || !extra.Activo)
                             return new SaleLinesResult { Error = $"El ingrediente extra seleccionado para {prod.NombreProducto} no existe o no está activo." };
 
-                        var requiredExtra = decimal.Round(
-                            extra.CantidadRequerida * item.Cantidad
-                            * extra.IdUnidadMedidaNavigation.FactorConversionBase
-                            / extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
-                            3,
-                            MidpointRounding.AwayFromZero);
-                        if (requiredExtra <= 0)
-                            return new SaleLinesResult { Error = $"La cantidad configurada para el extra {extra.NombreIngredienteExtra} es demasiado pequeña." };
-                        if (extra.IdMateriaPrimaNavigation.Cantidad < requiredExtra)
-                            return new SaleLinesResult { Error = $"Stock insuficiente de {extra.IdMateriaPrimaNavigation.NombreMaterial} para el extra {extra.NombreIngredienteExtra}. Se requieren {requiredExtra} {extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.Abreviacion}." };
-
-                        extra.IdMateriaPrimaNavigation.Cantidad -= requiredExtra;
-                        detail.VenDetalleVentaMateriales.Add(new VenDetalleVentaMateriales
+                        // La materia prima marcada como no-descontable (p. ej. agua) no valida ni
+                        // descuenta stock; el recargo del extra se aplica igual más abajo.
+                        if (!extra.IdMateriaPrimaNavigation.NoDescuentaInventario)
                         {
-                            IdMateriaPrima = extra.IdMateriaPrima,
-                            CantidadDescontada = requiredExtra,
-                            EsEleccionAlternativa = false,
-                            Recargo = 0
-                        });
+                            var requiredExtra = decimal.Round(
+                                extra.CantidadRequerida * item.Cantidad
+                                * extra.IdUnidadMedidaNavigation.FactorConversionBase
+                                / extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
+                                3,
+                                MidpointRounding.AwayFromZero);
+                            if (requiredExtra <= 0)
+                                return new SaleLinesResult { Error = $"La cantidad configurada para el extra {extra.NombreIngredienteExtra} es demasiado pequeña." };
+                            if (extra.IdMateriaPrimaNavigation.Cantidad < requiredExtra)
+                                return new SaleLinesResult { Error = $"Stock insuficiente de {extra.IdMateriaPrimaNavigation.NombreMaterial} para el extra {extra.NombreIngredienteExtra}. Se requieren {requiredExtra} {extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.Abreviacion}." };
+
+                            extra.IdMateriaPrimaNavigation.Cantidad -= requiredExtra;
+                            detail.VenDetalleVentaMateriales.Add(new VenDetalleVentaMateriales
+                            {
+                                IdMateriaPrima = extra.IdMateriaPrima,
+                                CantidadDescontada = requiredExtra,
+                                EsEleccionAlternativa = false,
+                                Recargo = 0
+                            });
+                        }
                         detail.VenDetalleVentaIngrediente.Add(new VenDetalleVentaIngrediente
                         {
                             IdIngredienteExtra = extra.IdIngredienteExtra,

@@ -19,7 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("catalogs")]
-        [Permission(Permissions.InventoryCatalogsView + "|" + Permissions.UnitsView + "|" + Permissions.MaterialCategoriesView + "|" + Permissions.BrandsView)]
+        [Permission(Permissions.InventoryCatalogsView + "|" + Permissions.UnitsView + "|" + Permissions.MaterialCategoriesView + "|" + Permissions.BrandsView + "|" + Permissions.RawMaterialsView + "|" + Permissions.PresentationsView)]
         public async Task<IActionResult> GetCatalogs()
         {
             return Ok(new
@@ -31,17 +31,17 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("units")]
-        [Permission(Permissions.UnitsView)]
+        [Permission(Permissions.UnitsView + "|" + Permissions.RawMaterialsView + "|" + Permissions.PresentationsView + "|" + Permissions.RecipesView + "|" + Permissions.RecipesEdit + "|" + Permissions.StockEntry)]
         public async Task<IActionResult> GetUnits() => Ok(await _context.InvUnidadesMedida
             .AsNoTracking().OrderBy(x => x.NombreUnidadMedida).ToListAsync());
 
         [HttpGet("material-categories")]
-        [Permission(Permissions.MaterialCategoriesView)]
+        [Permission(Permissions.MaterialCategoriesView + "|" + Permissions.RawMaterialsView)]
         public async Task<IActionResult> GetMaterialCategories() => Ok(await _context.InvCategoriasMateria
             .AsNoTracking().OrderBy(x => x.NombreCategoriaMateria).ToListAsync());
 
         [HttpGet("brands")]
-        [Permission(Permissions.BrandsView)]
+        [Permission(Permissions.BrandsView + "|" + Permissions.RawMaterialsView)]
         public async Task<IActionResult> GetBrands() => Ok(await _context.InvMarcas
             .AsNoTracking().OrderBy(x => x.NombreMarca).ToListAsync());
 
@@ -292,7 +292,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("raw-materials")]
-        [Permission(Permissions.RawMaterialsView + "|" + Permissions.PresentationsView)]
+        [Permission(Permissions.RawMaterialsView + "|" + Permissions.PresentationsView + "|" + Permissions.RecipesView + "|" + Permissions.RecipesEdit + "|" + Permissions.StockEntry)]
         public async Task<IActionResult> GetRawMaterials()
         {
             return Ok(await _context.InvMateriaPrima.AsNoTracking()
@@ -307,6 +307,7 @@ namespace SieteVidasAPI.Controllers
                     x.Descripcion,
                     x.Cantidad,
                     x.EsCafeCalibrable,
+                    x.NoDescuentaInventario,
                     NombreMarca = x.IdMarcaNavigation.NombreMarca,
                     NombreCategoria = x.IdCategoriaMateriaNavigation.NombreCategoriaMateria,
                     NombreUnidad = x.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -333,8 +334,10 @@ namespace SieteVidasAPI.Controllers
                 IdUnidadMedida = dto.IdUnidadMedida,
                 NombreMaterial = dto.NombreMaterial.Trim(),
                 Descripcion = string.IsNullOrWhiteSpace(dto.Descripcion) ? null : dto.Descripcion.Trim(),
-                Cantidad = dto.Cantidad,
+                // Las materias que no se descuentan no llevan existencia: se guarda 0.
+                Cantidad = dto.NoDescuentaInventario ? 0 : dto.Cantidad,
                 EsCafeCalibrable = dto.EsCafeCalibrable,
+                NoDescuentaInventario = dto.NoDescuentaInventario,
                 Imagen = ParseImage(dto.ImagenBase64),
                 FechaCreacion = DateTime.Now
             };
@@ -358,8 +361,10 @@ namespace SieteVidasAPI.Controllers
                     || await _context.VenDetalleVentaMateriales.AnyAsync(x => x.IdMateriaPrima == id)))
                 return Conflict(new { mensaje = "No se puede cambiar la unidad de inventario porque ya existen descuentos históricos para esta materia prima." });
 
-            var quantityToStore = dto.Cantidad;
-            if (entity.IdUnidadMedida != dto.IdUnidadMedida)
+            // Las materias que no se descuentan no llevan existencia: se guarda 0 y no hay
+            // conversión de stock al cambiar de unidad.
+            var quantityToStore = dto.NoDescuentaInventario ? 0 : dto.Cantidad;
+            if (!dto.NoDescuentaInventario && entity.IdUnidadMedida != dto.IdUnidadMedida)
             {
                 var oldUnit = await _context.InvUnidadesMedida.FindAsync(entity.IdUnidadMedida);
                 var newUnit = await _context.InvUnidadesMedida.FindAsync(dto.IdUnidadMedida);
@@ -375,6 +380,7 @@ namespace SieteVidasAPI.Controllers
             entity.Descripcion = string.IsNullOrWhiteSpace(dto.Descripcion) ? null : dto.Descripcion.Trim();
             entity.Cantidad = quantityToStore;
             entity.EsCafeCalibrable = dto.EsCafeCalibrable;
+            entity.NoDescuentaInventario = dto.NoDescuentaInventario;
             if (dto.ImagenBase64 == string.Empty) entity.Imagen = null;
             else if (dto.ImagenBase64 != null) entity.Imagen = ParseImage(dto.ImagenBase64);
             await _context.SaveChangesAsync();
@@ -387,7 +393,7 @@ namespace SieteVidasAPI.Controllers
             await _context.InvMateriaPrima.FindAsync(id), "Materia prima");
 
         [HttpGet("raw-material-presentations")]
-        [Permission(Permissions.PresentationsView)]
+        [Permission(Permissions.PresentationsView + "|" + Permissions.StockEntry)]
         public async Task<IActionResult> GetRawMaterialPresentations([FromQuery] int? idMateriaPrima = null)
         {
             var query = _context.InvPresentacionesMateriaPrima.AsNoTracking().AsQueryable();
@@ -464,6 +470,8 @@ namespace SieteVidasAPI.Controllers
             if (presentation == null) return NotFound(new { mensaje = "Presentación activa no encontrada." });
 
             var material = presentation.IdMateriaPrimaNavigation;
+            if (material.NoDescuentaInventario)
+                return BadRequest(new { mensaje = "Esta materia prima no se descuenta del inventario, por lo que no lleva existencias." });
             var added = ConvertQuantity(
                 presentation.CantidadContenido * dto.CantidadPresentaciones,
                 presentation.IdUnidadMedidaNavigation,
@@ -485,12 +493,15 @@ namespace SieteVidasAPI.Controllers
         private async Task<string?> ValidateRawMaterial(RawMaterialDto dto, int? idMateriaPrima = null)
         {
             if (string.IsNullOrWhiteSpace(dto.NombreMaterial)) return "El nombre es obligatorio.";
-            if (dto.Cantidad < 0) return "La cantidad no puede ser negativa.";
+            if (dto.NoDescuentaInventario && dto.EsCafeCalibrable)
+                return "Una materia prima no puede ser café calibrable y a la vez no descontarse del inventario.";
+            // Las materias que no se descuentan no llevan existencia: se omiten los chequeos de cantidad.
+            if (!dto.NoDescuentaInventario && dto.Cantidad < 0) return "La cantidad no puede ser negativa.";
             if (!await _context.InvMarcas.AnyAsync(x => x.IdMarca == dto.IdMarca)) return "La marca no es válida.";
             if (!await _context.InvCategoriasMateria.AnyAsync(x => x.IdCategoriaMateria == dto.IdCategoriaMateria)) return "La categoría no es válida.";
             var unit = await _context.InvUnidadesMedida.FindAsync(dto.IdUnidadMedida);
             if (unit == null) return "La unidad de medida no es válida.";
-            if (unit.TipoMagnitud == "Unidad" && decimal.Truncate(dto.Cantidad) != dto.Cantidad)
+            if (!dto.NoDescuentaInventario && unit.TipoMagnitud == "Unidad" && decimal.Truncate(dto.Cantidad) != dto.Cantidad)
                 return "Las existencias medidas en unidades deben ser números enteros.";
             if (idMateriaPrima.HasValue)
             {
@@ -520,6 +531,7 @@ namespace SieteVidasAPI.Controllers
                 .FirstOrDefaultAsync(x => x.IdMateriaPrima == dto.IdMateriaPrima);
             var unit = await _context.InvUnidadesMedida.FindAsync(dto.IdUnidadMedida);
             if (material == null) return "La materia prima no es válida.";
+            if (material.NoDescuentaInventario) return "Esta materia prima no se descuenta del inventario, por lo que no admite presentaciones ni ingreso de stock.";
             if (unit == null) return "La unidad de medida no es válida.";
             if (unit.TipoMagnitud != material.IdUnidadMedidaNavigation.TipoMagnitud)
                 return "La unidad de la presentación no es compatible con la unidad de inventario de la materia prima.";

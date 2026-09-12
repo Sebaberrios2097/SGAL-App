@@ -19,7 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
-        [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.LogbookConsumptionsCreate)]
+        [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> GetProducts()
         {
             // Recetas activas con sus materiales (incluida la materia base de cada alternativa y si

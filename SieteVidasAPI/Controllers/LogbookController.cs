@@ -222,6 +222,10 @@ namespace SieteVidasAPI.Controllers
 
                 foreach (var material in recipe.InvMaterialesReceta)
                 {
+                    // Materia prima no controlada en inventario (p. ej. agua): no descuenta stock.
+                    if (material.IdMateriaPrimaNavigation.NoDescuentaInventario)
+                        continue;
+
                     var required = decimal.Round(
                         material.CantidadRequerida * dto.Cantidad
                         * material.IdUnidadMedidaNavigation.FactorConversionBase

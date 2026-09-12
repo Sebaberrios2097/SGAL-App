@@ -495,7 +495,9 @@ namespace SieteVidasAPI.Controllers
                 }
             }
 
-            if (materials.Any(x => x.CantidadRequerida <= 0))
+            // Las materias que no se descuentan (p. ej. agua) llevan cantidad solo de referencia:
+            // se permite 0 o vacío. El resto sí debe indicar una cantidad mayor que cero.
+            if (materials.Any(x => x.CantidadRequerida <= 0 && !rawMaterials[x.IdMateriaPrima].NoDescuentaInventario))
                 return (null, "La cantidad requerida de cada materia prima debe ser mayor que cero.");
 
             var unitIds = materials.Select(x => x.IdUnidadMedida).Distinct().ToList();
@@ -511,7 +513,8 @@ namespace SieteVidasAPI.Controllers
                 var stockUnit = rawMaterials[material.IdMateriaPrima].IdUnidadMedidaNavigation;
                 if (recipeUnit.TipoMagnitud != stockUnit.TipoMagnitud)
                     return (null, $"La unidad {recipeUnit.Abreviacion} no es compatible con {rawMaterials[material.IdMateriaPrima].NombreMaterial}.");
-                if (recipeUnit.TipoMagnitud == "Unidad" && decimal.Truncate(material.CantidadRequerida) != material.CantidadRequerida)
+                if (!rawMaterials[material.IdMateriaPrima].NoDescuentaInventario
+                    && recipeUnit.TipoMagnitud == "Unidad" && decimal.Truncate(material.CantidadRequerida) != material.CantidadRequerida)
                     return (null, $"La cantidad de {rawMaterials[material.IdMateriaPrima].NombreMaterial} debe ser un número entero.");
             }
 

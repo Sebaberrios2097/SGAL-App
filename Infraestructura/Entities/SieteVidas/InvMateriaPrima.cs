@@ -42,6 +42,14 @@ public partial class InvMateriaPrima
     [Column("Es_Cafe_Calibrable")]
     public bool EsCafeCalibrable { get; set; }
 
+    /// <summary>
+    /// Marca la materia prima como no controlada en inventario (p. ej. el agua). No exige
+    /// existencia al crearla y las recetas que la usen no descuentan stock durante la venta,
+    /// los ingredientes extra ni los consumos de bitácora. Excluyente con <see cref="EsCafeCalibrable"/>.
+    /// </summary>
+    [Column("No_Descuenta_Inventario")]
+    public bool NoDescuentaInventario { get; set; }
+
     [Column("Fecha_Creacion", TypeName = "datetime")]
     public DateTime FechaCreacion { get; set; }
 

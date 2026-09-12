@@ -243,15 +243,10 @@ namespace SieteVidasAPI.Controllers
             if (existingPermissionIds.Count != requested.Count)
                 return BadRequest(new { Mensaje = "Uno o más permisos no existen o están inactivos." });
 
-            var requestedCodes = await _context.SegPermisos.AsNoTracking()
-                .Where(x => requested.Contains(x.IdPermiso)).Select(x => x.Codigo).ToListAsync();
-            var missingDependencies = PermissionDependencies.MissingFrom(requestedCodes);
-            if (missingDependencies.Count > 0)
-                return BadRequest(new
-                {
-                    Mensaje = "La selección contiene acciones sin sus permisos de lectura u operación requeridos.",
-                    PermisosRequeridos = missingDependencies.OrderBy(x => x)
-                });
+            // Los permisos son completamente independientes: no se exige que la selección
+            // incluya permisos de lectura/operación de otros recursos. Cada pantalla que
+            // necesita datos de referencia (unidades, categorías, materias primas, productos…)
+            // los lee por un endpoint que acepta el permiso de esa misma pantalla.
 
             // El Desarrollador (superusuario) puede conceder cualquier permiso. El resto solo puede
             // agregar o quitar permisos dentro de su propio alcance; los permisos que el rol ya tiene

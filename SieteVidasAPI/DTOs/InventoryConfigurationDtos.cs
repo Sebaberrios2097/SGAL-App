@@ -38,6 +38,10 @@ namespace SieteVidasAPI.DTOs
         /// <summary>Marca esta materia prima como el café cuya cantidad en recetas se toma de
         /// la última calibración (extracción) del turno. Solo una puede estar marcada.</summary>
         public bool EsCafeCalibrable { get; set; }
+
+        /// <summary>Marca la materia prima como no controlada en inventario (p. ej. el agua):
+        /// no exige existencia y las recetas que la usen no descuentan stock.</summary>
+        public bool NoDescuentaInventario { get; set; }
     }
 
     public class RecipeUpdateDto

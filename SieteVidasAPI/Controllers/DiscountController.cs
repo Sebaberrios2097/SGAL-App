@@ -19,7 +19,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet]
-        [Permission(Permissions.DiscountsView + "|" + Permissions.SalesOperate)]
+        [Permission(Permissions.DiscountsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate)]
         public async Task<IActionResult> GetDiscounts()
         {
             var discounts = await _context.InvDescuentosProductos
