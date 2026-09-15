@@ -59,7 +59,7 @@ namespace SieteVidasAPI.Controllers
         }
 
         [HttpGet("product/{idProducto:int}")]
-        [Permission(Permissions.RecipesView)]
+        [Permission(Permissions.RecipesView + "|" + Permissions.SalesComandasManage)]
         public async Task<IActionResult> GetByProduct(int idProducto)
         {
             var product = await _context.InvProductos.AsNoTracking()

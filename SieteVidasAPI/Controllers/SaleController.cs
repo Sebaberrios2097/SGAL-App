@@ -211,8 +211,36 @@ namespace SieteVidasAPI.Controllers
                 : BadRequest(new { mensaje = result.Error });
         }
 
+        /// <summary>
+        /// Marca la comanda (preparación) de una venta como terminada o la reabre.
+        /// El estado vive en la venta: Fecha_Comanda_Terminada NULL = pendiente.
+        /// </summary>
+        [HttpPost("{idVenta}/comanda")]
+        [Permission(Permissions.SalesComandasManage)]
+        public async Task<IActionResult> ActualizarComanda(int idVenta, [FromBody] ComandaEstadoDto dto)
+        {
+            if (!await SaleBelongsToCurrentUser(idVenta)) return Forbid();
+
+            var venta = await _context.VenVentas.FirstOrDefaultAsync(x => x.IdVenta == idVenta);
+            if (venta == null) return NotFound(new { mensaje = "Venta no encontrada." });
+
+            // Solo las ventas concretadas tienen comanda que preparar.
+            if (venta.IdEstadoVenta != EstadosVenta.Terminada)
+                return BadRequest(new { mensaje = "La venta no está en un estado con comanda activa." });
+
+            venta.FechaComandaTerminada = dto.Terminada ? DateTime.Now : null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                venta.IdVenta,
+                ComandaTerminada = venta.FechaComandaTerminada != null,
+                venta.FechaComandaTerminada
+            });
+        }
+
         [HttpGet("turn/{idTurno}")]
-        [Permission(Permissions.OwnSalesView + "|" + Permissions.TurnRecordsSalesView)]
+        [Permission(Permissions.OwnSalesView + "|" + Permissions.TurnRecordsSalesView + "|" + Permissions.SalesComandasManage)]
         public async Task<IActionResult> GetSalesByTurn(int idTurno)
         {
             var ownsTurn = await _context.TurTurno.AnyAsync(x => x.IdTurno == idTurno && x.IdUsuario == User.GetUserId());
@@ -231,6 +259,8 @@ namespace SieteVidasAPI.Controllers
                     v.MontoTotal,
                     v.IdEstadoVenta,
                     v.IdEstadoVentaNavigation.NombreEstadoVenta,
+                    v.FechaComandaTerminada,
+                    ComandaTerminada = v.FechaComandaTerminada != null,
                     MetodosPago = v.VenMetodosPagoVenta.Select(mp => new
                     {
                         mp.IdMetodoPago,

@@ -31,4 +31,11 @@ namespace SieteVidasAPI.DTOs
         public int IdMateriaPrimaBase { get; set; }
         public int IdMateriaPrimaSeleccionada { get; set; }
     }
+
+    /// <summary>Cambio de estado de la comanda (preparación) de una venta.</summary>
+    public class ComandaEstadoDto
+    {
+        /// <summary>true marca la comanda como terminada; false la reabre.</summary>
+        public bool Terminada { get; set; }
+    }
 }

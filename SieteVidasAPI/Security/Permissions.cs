@@ -98,6 +98,7 @@ public static class Permissions
     public const string SalesDocumentsReprint = "ventas.documentos.reimprimir";
     public const string SalesVoid = "ventas.anular";
     public const string SalesDiscountApply = "ventas.descuento.aplicar";
+    public const string SalesComandasManage = "ventas.comandas.gestionar";
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";
     public const string LogbookConsumptionsVoid = "bitacora.consumos.anular";

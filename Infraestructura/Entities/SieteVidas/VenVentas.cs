@@ -54,6 +54,11 @@ public partial class VenVentas
     [Column("Monto_IVA")]
     public int? MontoIva { get; set; }
 
+    /// <summary>Momento en que la comanda (preparación) se dio por terminada.
+    /// NULL = comanda pendiente de preparar.</summary>
+    [Column("Fecha_Comanda_Terminada", TypeName = "datetime")]
+    public DateTime? FechaComandaTerminada { get; set; }
+
     [ForeignKey("IdClienteEmpresa")]
     [InverseProperty("VenVentas")]
     public virtual SiiClientesEmpresa? IdClienteEmpresaNavigation { get; set; }
