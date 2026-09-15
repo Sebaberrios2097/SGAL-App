@@ -460,6 +460,11 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdTurnoNavigation).WithMany(p => p.VenVentas)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Ven_Ventas_Tur_Turno");
+
+            entity.HasOne(d => d.IdBitacoraNavigation).WithMany(p => p.VenVentas)
+                .HasForeignKey(d => d.IdBitacora)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Ven_Ventas_Tur_Bitacora");
         });
 
         OnModelCreatingPartial(modelBuilder);

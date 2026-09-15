@@ -27,7 +27,11 @@ namespace SieteVidasAPI.Services
     {
         public string? Error { get; init; }
 
+        /// <summary>Total a cobrar (en consumos de empleado, excluye las líneas de cortesía).</summary>
         public int Total { get; init; }
+
+        /// <summary>Valor de las líneas marcadas como cortesía (informativo; no se cobra).</summary>
+        public int MontoCortesia { get; init; }
 
         public bool EsValido => Error == null;
     }
@@ -39,6 +43,13 @@ namespace SieteVidasAPI.Services
     public interface ISaleLinesService
     {
         Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Igual que <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int, CancellationToken)"/> pero,
+        /// para consumos de empleado, marca automáticamente como cortesía las líneas elegibles según los
+        /// cupos diarios (global y por producto) del usuario, excluyéndolas del total a cobrar.
+        /// </summary>
+        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default);
 
         Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default);
     }
@@ -52,9 +63,46 @@ namespace SieteVidasAPI.Services
             _context = context;
         }
 
-        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default)
+        public Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default)
+            => BuildAsync(idVenta, items, idTurno, false, 0, cancellationToken);
+
+        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default)
         {
             int total = 0;
+            int montoCortesia = 0;
+
+            // Cupos de cortesía del usuario para hoy (solo para consumos de empleado). Se marca la
+            // línea completa como cortesía si su cantidad cabe en el cupo global y en el del producto.
+            var cortesiaProductos = new Dictionary<int, int>();   // idProducto -> límite diario del producto
+            int cortesiaRestanteGlobal = 0;
+            var cortesiaRestantePorProducto = new Dictionary<int, int>(); // idProducto -> restante hoy
+            if (aplicarCortesia)
+            {
+                var dayStart = DateTime.Today;
+                var dayEnd = dayStart.AddDays(1);
+                var limiteGlobal = await _context.InvConfiguracionCortesia
+                    .Where(x => x.IdConfiguracion == 1)
+                    .Select(x => (int?)x.LimiteDiarioGlobal).FirstOrDefaultAsync(cancellationToken) ?? 2;
+                cortesiaProductos = await _context.InvProductosCortesia.AsNoTracking()
+                    .Where(x => x.Activo == 1 && x.IdProductoNavigation.Activo)
+                    .ToDictionaryAsync(x => x.IdProducto, x => x.CantidadDiaria, cancellationToken);
+                // Cortesías ya consumidas hoy por el usuario (líneas de cortesía de ventas de consumo).
+                var consumidasHoy = await _context.VenDetalleVenta.AsNoTracking()
+                    .Where(d => d.EsCortesia
+                        && d.IdVentaNavigation.IdBitacora != null
+                        && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                        && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                    .GroupBy(d => d.IdProducto)
+                    .Select(g => new { IdProducto = g.Key, Cantidad = g.Sum(x => x.Cantidad) })
+                    .ToListAsync(cancellationToken);
+                var totalConsumidasHoy = consumidasHoy.Sum(x => x.Cantidad);
+                cortesiaRestanteGlobal = Math.Max(0, limiteGlobal - totalConsumidasHoy);
+                foreach (var kv in cortesiaProductos)
+                {
+                    var usadas = consumidasHoy.FirstOrDefault(x => x.IdProducto == kv.Key)?.Cantidad ?? 0;
+                    cortesiaRestantePorProducto[kv.Key] = Math.Max(0, kv.Value - usadas);
+                }
+            }
 
             // Los gramos del café por calibración salen de la última extracción del turno
             // abierto. Se consulta una sola vez y de forma perezosa: solo si alguna receta usa
@@ -287,8 +335,26 @@ namespace SieteVidasAPI.Services
                 finalUnitPrice += recargoUnitario;
 
                 int subtotal = finalUnitPrice * item.Cantidad;
-                total += subtotal;
 
+                // Cortesía automática (consumos de empleado): la línea completa es cortesía si el
+                // producto está habilitado y su cantidad cabe en el cupo global y en el del producto.
+                bool esCortesiaLinea = false;
+                if (aplicarCortesia
+                    && cortesiaProductos.ContainsKey(prod.IdProducto)
+                    && item.Cantidad <= cortesiaRestanteGlobal
+                    && item.Cantidad <= cortesiaRestantePorProducto.GetValueOrDefault(prod.IdProducto, 0))
+                {
+                    esCortesiaLinea = true;
+                    cortesiaRestanteGlobal -= item.Cantidad;
+                    cortesiaRestantePorProducto[prod.IdProducto] -= item.Cantidad;
+                    montoCortesia += subtotal;
+                }
+                else
+                {
+                    total += subtotal;
+                }
+
+                detail.EsCortesia = esCortesiaLinea;
                 detail.PrecioNormal = prod.Precio + recargoUnitario;
                 detail.PrecioUnitario = finalUnitPrice;
                 detail.Subtotal = subtotal;
@@ -296,7 +362,7 @@ namespace SieteVidasAPI.Services
                 _context.VenDetalleVenta.Add(detail);
             }
 
-            return new SaleLinesResult { Total = total };
+            return new SaleLinesResult { Total = total, MontoCortesia = montoCortesia };
         }
 
         /// <summary>

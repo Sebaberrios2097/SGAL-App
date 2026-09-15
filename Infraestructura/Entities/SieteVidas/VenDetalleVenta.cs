@@ -32,6 +32,10 @@ public partial class VenDetalleVenta
     [Column("Ind_Exento")]
     public bool? IndExento { get; set; }
 
+    /// <summary>La línea (o porción) es cortesía: su valor no se cobra al empleado.</summary>
+    [Column("Es_Cortesia")]
+    public bool EsCortesia { get; set; }
+
     [ForeignKey("IdProducto")]
     [InverseProperty("VenDetalleVenta")]
     public virtual InvProductos IdProductoNavigation { get; set; } = null!;

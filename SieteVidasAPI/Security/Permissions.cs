@@ -7,6 +7,7 @@ public static class Permissions
     public const string TurnRecordsDashboardView = "registros_turnos.dashboard.ver";
     public const string TurnRecordsLogbookView = "registros_turnos.bitacora.ver";
     public const string TurnRecordsSalesView = "registros_turnos.ventas.ver";
+    public const string ConsumptionsMarkPaid = "registros_turnos.consumos.pagar";
 
     public const string UsersView = "usuarios.ver";
     public const string EmployeesCreate = "usuarios.empleado.crear";

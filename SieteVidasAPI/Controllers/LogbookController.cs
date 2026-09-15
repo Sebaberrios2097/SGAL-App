@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SieteVidasAPI.DTOs;
 using System.Data;
 using SieteVidasAPI.Security;
+using SieteVidasAPI.Services;
 
 namespace SieteVidasAPI.Controllers
 {
@@ -42,11 +43,14 @@ namespace SieteVidasAPI.Controllers
 
             var dayStart = DateTime.Today;
             var dayEnd = dayStart.AddDays(1);
-            var courtesyConsumedToday = await _context.TurProductosBitacora
-                .Where(x => x.Activo && x.EsCortesia
-                    && x.FechaConsumo >= dayStart && x.FechaConsumo < dayEnd
-                    && x.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario == idUsuario)
-                .SumAsync(x => (int?)x.Cantidad) ?? 0;
+
+            // Cortesías consumidas hoy por el usuario: líneas de cortesía de sus ventas de consumo.
+            var courtesyConsumedToday = await _context.VenDetalleVenta.AsNoTracking()
+                .Where(d => d.EsCortesia
+                    && d.IdVentaNavigation.IdBitacora != null
+                    && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                    && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                .SumAsync(d => (int?)d.Cantidad) ?? 0;
             var courtesyLimit = await _context.InvConfiguracionCortesia
                 .Where(x => x.IdConfiguracion == 1)
                 .Select(x => (int?)x.LimiteDiarioGlobal)
@@ -60,28 +64,36 @@ namespace SieteVidasAPI.Controllers
                     x.IdProducto,
                     x.IdProductoNavigation.NombreProducto,
                     x.CantidadDiaria,
-                    ConsumidoHoy = _context.TurProductosBitacora
-                        .Where(c => c.Activo && c.EsCortesia && c.IdProducto == x.IdProducto
-                            && c.FechaConsumo >= dayStart && c.FechaConsumo < dayEnd
-                            && c.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario == idUsuario)
-                        .Sum(c => (int?)c.Cantidad) ?? 0
+                    ConsumidoHoy = _context.VenDetalleVenta
+                        .Where(d => d.EsCortesia && d.IdProducto == x.IdProducto
+                            && d.IdVentaNavigation.IdBitacora != null
+                            && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                            && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                        .Sum(d => (int?)d.Cantidad) ?? 0
                 }).ToListAsync();
 
-            var consumedProducts = logbook == null
+            // Consumos del turno: ventas de consumo asociadas a la bitácora, con su detalle.
+            var consumos = logbook == null
                 ? []
-                : await _context.TurProductosBitacora.AsNoTracking()
-                    .Where(x => x.IdBitacora == logbook.IdBitacora)
-                    .OrderByDescending(x => x.FechaConsumo)
-                    .Select(x => new
+                : await _context.VenVentas.AsNoTracking()
+                    .Where(v => v.IdBitacora == logbook.IdBitacora && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                    .OrderByDescending(v => v.FechaVenta)
+                    .Select(v => new
                     {
-                        x.IdProductosBitacora,
-                        x.IdProducto,
-                        x.IdProductoNavigation.NombreProducto,
-                        x.Cantidad,
-                        x.EsCortesia,
-                        x.FechaConsumo,
-                        x.Activo,
-                        x.Observacion
+                        v.IdVenta,
+                        v.FechaVenta,
+                        v.PagadoPorEmpleado,
+                        MontoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                        MontoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                        Items = v.VenDetalleVenta.Select(d => new
+                        {
+                            d.IdProducto,
+                            d.IdProductoNavigation.NombreProducto,
+                            d.Cantidad,
+                            d.Subtotal,
+                            d.EsCortesia,
+                            Extras = d.VenDetalleVentaIngrediente.Select(x => new { Nombre = x.IdMateriaPrimaNavigation.NombreMaterial, x.Precio })
+                        }).ToList()
                     }).ToListAsync();
 
             var calibracion = await GetCalibrationMaterialsAsync();
@@ -97,7 +109,7 @@ namespace SieteVidasAPI.Controllers
                 IdBitacora = logbook?.IdBitacora,
                 FechaCreacion = logbook?.FechaCreacion,
                 Observaciones = logbook?.Observaciones,
-                ProductosConsumidos = consumedProducts,
+                Consumos = consumos,
                 Cortesia = new
                 {
                     LimiteDiarioGlobal = courtesyLimit,
@@ -173,164 +185,6 @@ namespace SieteVidasAPI.Controllers
             return Ok(new { TieneCalibracion = gramos.HasValue, Gramos = gramos });
         }
 
-        [HttpPost("products")]
-        [Permission(Permissions.LogbookConsumptionsCreate)]
-        public async Task<IActionResult> AddConsumedProduct([FromBody] LogbookProductCreateDto dto)
-        {
-            dto.IdUsuario = User.GetUserId();
-            if (dto.IdUsuario <= 0 || dto.IdTurno <= 0 || dto.IdProducto <= 0)
-                return BadRequest(new { mensaje = "Usuario, turno y producto son obligatorios." });
-            if (dto.Cantidad <= 0)
-                return BadRequest(new { mensaje = "La cantidad debe ser mayor que cero." });
-            if (dto.Observacion?.Length > 300)
-                return BadRequest(new { mensaje = "La observación no puede superar los 300 caracteres." });
-
-            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-
-            var turn = await _context.TurTurno
-                .FirstOrDefaultAsync(x => x.IdTurno == dto.IdTurno && x.IdUsuario == dto.IdUsuario);
-            if (turn == null) return NotFound(new { mensaje = "Turno no encontrado para el usuario." });
-            if (turn.IdEstadoTurno != 1)
-                return Conflict(new { mensaje = "No se pueden registrar consumos en un turno finalizado." });
-
-            var logbook = await _context.TurBitacora.FirstOrDefaultAsync(x => x.IdTurno == dto.IdTurno);
-            if (logbook == null) return NotFound(new { mensaje = "El turno no tiene una bitácora asociada." });
-
-            var product = await _context.InvProductos
-                .Include(x => x.InvRecetas.Where(r => r.Estado))
-                    .ThenInclude(r => r.InvMaterialesReceta)
-                        .ThenInclude(m => m.IdMateriaPrimaNavigation)
-                            .ThenInclude(m => m.IdUnidadMedidaNavigation)
-                .Include(x => x.InvRecetas.Where(r => r.Estado))
-                    .ThenInclude(r => r.InvMaterialesReceta)
-                        .ThenInclude(m => m.IdUnidadMedidaNavigation)
-                .FirstOrDefaultAsync(x => x.IdProducto == dto.IdProducto && x.Activo);
-            if (product == null) return BadRequest(new { mensaje = "El producto no existe o está inactivo." });
-
-            var courtesyRemaining = 0;
-            if (dto.SolicitarComoCortesia)
-            {
-                var courtesy = await _context.InvProductosCortesia
-                    .FirstOrDefaultAsync(x => x.IdProducto == dto.IdProducto && x.Activo == 1);
-                if (courtesy == null)
-                    return Conflict(new { mensaje = "El producto seleccionado no está habilitado como cortesía." });
-
-                var dayStart = DateTime.Today;
-                var dayEnd = dayStart.AddDays(1);
-                var globalLimit = await _context.InvConfiguracionCortesia
-                    .Where(x => x.IdConfiguracion == 1)
-                    .Select(x => (int?)x.LimiteDiarioGlobal)
-                    .FirstOrDefaultAsync() ?? 2;
-                var consumedToday = await _context.TurProductosBitacora
-                    .Where(x => x.Activo && x.EsCortesia
-                        && x.FechaConsumo >= dayStart && x.FechaConsumo < dayEnd
-                        && x.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario == dto.IdUsuario)
-                    .SumAsync(x => (int?)x.Cantidad) ?? 0;
-                var productConsumedToday = await _context.TurProductosBitacora
-                    .Where(x => x.Activo && x.EsCortesia && x.IdProducto == dto.IdProducto
-                        && x.FechaConsumo >= dayStart && x.FechaConsumo < dayEnd
-                        && x.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario == dto.IdUsuario)
-                    .SumAsync(x => (int?)x.Cantidad) ?? 0;
-
-                if (consumedToday + dto.Cantidad > globalLimit)
-                    return Conflict(new { mensaje = $"El consumo supera el cupo global. Quedan {Math.Max(0, globalLimit - consumedToday)} cortesías disponibles hoy." });
-                if (productConsumedToday + dto.Cantidad > courtesy.CantidadDiaria)
-                    return Conflict(new { mensaje = $"El consumo supera el límite diario de {courtesy.CantidadDiaria} para este producto." });
-                courtesyRemaining = globalLimit - consumedToday - dto.Cantidad;
-            }
-
-            var consumption = new TurProductosBitacora
-            {
-                IdBitacora = logbook.IdBitacora,
-                IdProducto = dto.IdProducto,
-                Cantidad = dto.Cantidad,
-                EsCortesia = dto.SolicitarComoCortesia,
-                FechaConsumo = DateTime.Now,
-                Activo = true,
-                Observacion = string.IsNullOrWhiteSpace(dto.Observacion) ? null : dto.Observacion.Trim()
-            };
-            _context.TurProductosBitacora.Add(consumption);
-
-            if (product.RequiereReceta == true)
-            {
-                var recipe = product.InvRecetas.FirstOrDefault();
-                if (recipe == null || recipe.InvMaterialesReceta.Count == 0)
-                    return Conflict(new { mensaje = "El producto no tiene una receta activa configurada." });
-
-                foreach (var material in recipe.InvMaterialesReceta)
-                {
-                    // Materia prima no controlada en inventario (p. ej. agua): no descuenta stock.
-                    if (material.IdMateriaPrimaNavigation.NoDescuentaInventario)
-                        continue;
-
-                    var required = decimal.Round(
-                        material.CantidadRequerida * dto.Cantidad
-                        * material.IdUnidadMedidaNavigation.FactorConversionBase
-                        / material.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
-                        3,
-                        MidpointRounding.AwayFromZero);
-                    if (required <= 0)
-                        return Conflict(new { mensaje = $"La cantidad configurada para {material.IdMateriaPrimaNavigation.NombreMaterial} es demasiado pequeña para la precisión del inventario." });
-                    if (material.IdMateriaPrimaNavigation.Cantidad < required)
-                        return Conflict(new { mensaje = $"Stock insuficiente de {material.IdMateriaPrimaNavigation.NombreMaterial}. Se requieren {required} {material.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.Abreviacion}." });
-                    material.IdMateriaPrimaNavigation.Cantidad -= required;
-                    consumption.TurProductosBitacoraMateriales.Add(new TurProductosBitacoraMateriales
-                    {
-                        IdMateriaPrima = material.IdMateriaPrima,
-                        CantidadDescontada = required
-                    });
-                }
-            }
-            else if (product.Stock.HasValue)
-            {
-                if (product.Stock.Value < dto.Cantidad)
-                    return Conflict(new { mensaje = $"Stock insuficiente de {product.NombreProducto}." });
-                product.Stock -= dto.Cantidad;
-            }
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok(new
-            {
-                mensaje = dto.SolicitarComoCortesia ? "Cortesía registrada correctamente." : "Consumo registrado correctamente.",
-                consumption.IdProductosBitacora,
-                CortesiasRestantesHoy = dto.SolicitarComoCortesia ? courtesyRemaining : (int?)null
-            });
-        }
-
-        [HttpPut("products/{id:int}/void")]
-        [Permission(Permissions.LogbookConsumptionsVoid)]
-        public async Task<IActionResult> VoidConsumedProduct(int id, [FromBody] LogbookProductVoidDto dto)
-        {
-            dto.IdUsuario = User.GetUserId();
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            var consumption = await _context.TurProductosBitacora
-                .Include(x => x.IdBitacoraNavigation).ThenInclude(x => x.IdTurnoNavigation)
-                .Include(x => x.IdProductoNavigation)
-                .Include(x => x.TurProductosBitacoraMateriales).ThenInclude(x => x.IdMateriaPrimaNavigation)
-                .FirstOrDefaultAsync(x => x.IdProductosBitacora == id);
-
-            if (consumption == null || consumption.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario != dto.IdUsuario)
-                return NotFound(new { mensaje = "Consumo no encontrado para el usuario." });
-            if (!consumption.Activo) return Conflict(new { mensaje = "El consumo ya está anulado." });
-            if (consumption.IdBitacoraNavigation.IdTurnoNavigation.IdEstadoTurno != 1)
-                return Conflict(new { mensaje = "No se puede modificar la bitácora de un turno finalizado." });
-
-            if (consumption.TurProductosBitacoraMateriales.Count > 0)
-            {
-                foreach (var material in consumption.TurProductosBitacoraMateriales)
-                    material.IdMateriaPrimaNavigation.Cantidad += material.CantidadDescontada;
-            }
-            else if (consumption.IdProductoNavigation.Stock.HasValue)
-            {
-                consumption.IdProductoNavigation.Stock += consumption.Cantidad;
-            }
-
-            consumption.Activo = false;
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok(new { mensaje = "Consumo anulado y existencias repuestas." });
-        }
 
         [HttpPut("observation")]
         [Permission(Permissions.LogbookObservationEdit)]
@@ -538,6 +392,37 @@ namespace SieteVidasAPI.Controllers
                 .FirstOrDefaultAsync();
 
             return Ok(new { tieneExtraccion = previous != null, extraccion = previous });
+        }
+
+        /// <summary>
+        /// Elimina una extracción del turno abierto del usuario y repone al inventario el café que
+        /// había descontado (por si se registró con un error).
+        /// </summary>
+        [HttpDelete("extractions/{id:int}")]
+        [Permission(Permissions.LogbookExtractionsCreate)]
+        public async Task<IActionResult> DeleteExtraction(int id)
+        {
+            var idUsuario = User.GetUserId();
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+            var extraction = await _context.TurExtracciones
+                .Include(e => e.IdBitacoraNavigation).ThenInclude(b => b.IdTurnoNavigation)
+                .Include(e => e.IdMateriaPrimaNavigation)
+                .FirstOrDefaultAsync(e => e.IdExtraccion == id);
+
+            if (extraction == null || extraction.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario != idUsuario)
+                return NotFound(new { mensaje = "Extracción no encontrada para el usuario." });
+            if (extraction.IdBitacoraNavigation.IdTurnoNavigation.IdEstadoTurno != 1)
+                return Conflict(new { mensaje = "No se puede modificar la bitácora de un turno finalizado." });
+
+            // Repone el café descontado por la extracción.
+            if (extraction.CantidadDescontada > 0 && extraction.IdMateriaPrimaNavigation != null)
+                extraction.IdMateriaPrimaNavigation.Cantidad += extraction.CantidadDescontada;
+
+            _context.TurExtracciones.Remove(extraction);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return Ok(new { mensaje = "Extracción eliminada y café repuesto." });
         }
     }
 }

@@ -53,10 +53,26 @@ namespace SieteVidasAPI.Controllers
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // Consumo de empleado: se asocia a la bitácora del turno (se crea si no existe) y
+                // queda por cobrar. La cortesía se aplica automáticamente por línea.
+                int? idBitacora = null;
+                if (dto.EsConsumoEmpleado)
+                {
+                    var logbook = await _context.TurBitacora.FirstOrDefaultAsync(b => b.IdTurno == dto.IdTurno);
+                    if (logbook == null)
+                    {
+                        logbook = new TurBitacora { IdTurno = dto.IdTurno, FechaCreacion = DateTime.Now };
+                        _context.TurBitacora.Add(logbook);
+                        await _context.SaveChangesAsync();
+                    }
+                    idBitacora = logbook.IdBitacora;
+                }
+
                 // Initialize sale header
                 var sale = new VenVentas
                 {
                     IdTurno = dto.IdTurno,
+                    IdBitacora = idBitacora,
                     IdEstadoVenta = EstadosVenta.Terminada,
                     FechaVenta = DateTime.Now,
                     MontoTotal = 0,
@@ -67,10 +83,32 @@ namespace SieteVidasAPI.Controllers
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
-                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno);
+                var lines = dto.EsConsumoEmpleado
+                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno, true, User.GetUserId(), default)
+                    : await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno);
                 if (!lines.EsValido)
                 {
                     return BadRequest(new { mensaje = lines.Error });
+                }
+
+                // Consumo de empleado: por cobrar (sin descuento manual ni métodos de pago). El
+                // monto total es lo adeudado (excluye cortesías).
+                if (dto.EsConsumoEmpleado)
+                {
+                    int adeudado = lines.Total;
+                    sale.MontoTotal = adeudado;
+                    sale.MontoNeto = (int)Math.Round(adeudado / 1.19);
+                    sale.MontoIva = adeudado - sale.MontoNeto;
+                    _context.Entry(sale).State = EntityState.Modified;
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return Ok(new
+                    {
+                        mensaje = "Consumo de empleado registrado.",
+                        idVenta = sale.IdVenta,
+                        montoAdeudado = adeudado,
+                        montoCortesia = lines.MontoCortesia
+                    });
                 }
 
                 int totalBruto = lines.Total;
@@ -249,8 +287,10 @@ namespace SieteVidasAPI.Controllers
             // Las canceladas son intentos de cobro que nunca se concretaron: no son
             // parte del historial de ventas del turno. Las anuladas sí se muestran,
             // porque fueron ventas reales que después se revirtieron.
+            // Los consumos de empleado (Id_Bitacora != null) no son ventas normales del turno:
+            // se ven en la bitácora y en el panel de turnos, no en este listado ni en la caja.
             var sales = await _context.VenVentas
-                .Where(v => v.IdTurno == idTurno && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                .Where(v => v.IdTurno == idTurno && v.IdEstadoVenta != EstadosVenta.Cancelada && v.IdBitacora == null)
                 .OrderByDescending(v => v.FechaVenta)
                 .Select(v => new
                 {
@@ -295,6 +335,24 @@ namespace SieteVidasAPI.Controllers
                 .ToListAsync();
 
             return Ok(sales);
+        }
+
+        /// <summary>
+        /// El administrador marca (o desmarca) como pagada por el empleado una venta de consumo,
+        /// para no descontarla nuevamente en el futuro.
+        /// </summary>
+        [HttpPut("{idVenta:int}/consumption-paid")]
+        [Permission(Permissions.ConsumptionsMarkPaid)]
+        public async Task<IActionResult> SetConsumptionPaid(int idVenta, [FromBody] ConsumptionPaidDto dto)
+        {
+            var sale = await _context.VenVentas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+            if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
+            if (sale.IdBitacora == null)
+                return BadRequest(new { mensaje = "La venta no es un consumo de empleado." });
+
+            sale.PagadoPorEmpleado = dto.Pagado;
+            await _context.SaveChangesAsync();
+            return Ok(new { sale.IdVenta, sale.PagadoPorEmpleado });
         }
 
         private Task<bool> SaleBelongsToCurrentUser(int idVenta) => _context.VenVentas

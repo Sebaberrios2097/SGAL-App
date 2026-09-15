@@ -8,6 +8,12 @@ namespace SieteVidasAPI.DTOs
 
         /// <summary>Porcentaje de descuento aplicado al total (0 = sin descuento).</summary>
         public decimal PorcentajeDescuento { get; set; }
+
+        /// <summary>
+        /// Si es true, la venta es un "consumo de empleado": se asocia a la bitácora del turno,
+        /// queda por cobrar (sin métodos de pago) y aplica cortesía automática.
+        /// </summary>
+        public bool EsConsumoEmpleado { get; set; }
     }
 
     public class SalePaymentMethodDto
@@ -30,6 +36,12 @@ namespace SieteVidasAPI.DTOs
     {
         public int IdMateriaPrimaBase { get; set; }
         public int IdMateriaPrimaSeleccionada { get; set; }
+    }
+
+    /// <summary>Marca (o desmarca) una venta de consumo como pagada por el empleado.</summary>
+    public class ConsumptionPaidDto
+    {
+        public bool Pagado { get; set; }
     }
 
     /// <summary>Cambio de estado de la comanda (preparación) de una venta.</summary>

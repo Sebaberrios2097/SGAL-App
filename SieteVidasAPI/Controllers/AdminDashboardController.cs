@@ -28,7 +28,7 @@ public class AdminDashboardController : ControllerBase
             return BadRequest(new { mensaje = "El año o mes no es válido." });
 
         var sales = _context.VenVentas.AsNoTracking()
-            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.FechaVenta >= start && x.FechaVenta < end);
+            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.IdBitacora == null && x.FechaVenta >= start && x.FechaVenta < end);
         var totals = await sales.GroupBy(_ => 1).Select(g => new
         {
             TotalVentas = g.Sum(x => x.MontoTotal),
@@ -42,6 +42,7 @@ public class AdminDashboardController : ControllerBase
 
         var paymentMethods = await _context.VenMetodosPagoVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new { x.IdMetodoPago, x.IdMetodoPagoNavigation.NombreMetodoPago })
             .Select(g => new { g.Key.IdMetodoPago, g.Key.NombreMetodoPago, Monto = g.Sum(x => x.Monto) })
@@ -49,6 +50,7 @@ public class AdminDashboardController : ControllerBase
 
         var topProducts = await _context.VenDetalleVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new { x.IdProducto, x.IdProductoNavigation.NombreProducto })
             .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
@@ -56,6 +58,7 @@ public class AdminDashboardController : ControllerBase
 
         var topCategories = await _context.VenDetalleVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new
             {
@@ -99,7 +102,7 @@ public class AdminDashboardController : ControllerBase
         if (gran is not ("day" or "week" or "month")) gran = "day";
 
         var sales = _context.VenVentas.AsNoTracking()
-            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.FechaVenta >= start && x.FechaVenta < end);
+            .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.IdBitacora == null && x.FechaVenta >= start && x.FechaVenta < end);
 
         var totals = await sales.GroupBy(_ => 1).Select(g => new
         {
@@ -158,6 +161,7 @@ public class AdminDashboardController : ControllerBase
 
         var paymentMethods = await _context.VenMetodosPagoVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new { x.IdMetodoPago, x.IdMetodoPagoNavigation.NombreMetodoPago })
             .Select(g => new { g.Key.IdMetodoPago, g.Key.NombreMetodoPago, Monto = g.Sum(x => x.Monto) })
@@ -165,6 +169,7 @@ public class AdminDashboardController : ControllerBase
 
         var topProducts = await _context.VenDetalleVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new { x.IdProducto, x.IdProductoNavigation.NombreProducto })
             .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
@@ -172,6 +177,7 @@ public class AdminDashboardController : ControllerBase
 
         var topCategories = await _context.VenDetalleVenta.AsNoTracking()
             .Where(x => x.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && x.IdVentaNavigation.IdBitacora == null
                 && x.IdVentaNavigation.FechaVenta >= start && x.IdVentaNavigation.FechaVenta < end)
             .GroupBy(x => new { x.IdProductoNavigation.IdCategoriaProducto, x.IdProductoNavigation.IdCategoriaProductoNavigation.NombreCategoriaProducto })
             .Select(g => new { g.Key.IdCategoriaProducto, NombreCategoria = g.Key.NombreCategoriaProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
@@ -257,14 +263,16 @@ public class AdminDashboardController : ControllerBase
                 t.IdEstadoTurno,
                 Estado = t.IdEstadoTurnoNavigation.NombreEstadoTurno,
                 t.DiferenciaTotal,
-                CantidadVentas = t.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada),
-                Monto = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0,
-                Unidades = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada)
+                // Ventas normales del turno (excluye consumos de empleado, Id_Bitacora != null).
+                CantidadVentas = t.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null),
+                Monto = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null).Sum(v => (int?)v.MontoTotal) ?? 0,
+                Unidades = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null)
                     .SelectMany(v => v.VenDetalleVenta).Sum(d => (int?)d.Cantidad) ?? 0,
-                ConsumoUnidades = t.TurBitacora.SelectMany(b => b.TurProductosBitacora)
-                    .Where(p => p.Activo && !p.EsCortesia).Sum(p => (int?)p.Cantidad) ?? 0,
-                CortesiaUnidades = t.TurBitacora.SelectMany(b => b.TurProductosBitacora)
-                    .Where(p => p.Activo && p.EsCortesia).Sum(p => (int?)p.Cantidad) ?? 0
+                // Consumos del empleado del turno (ventas de consumo asociadas a la bitácora).
+                ConsumoUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                    .SelectMany(v => v.VenDetalleVenta).Where(d => !d.EsCortesia).Sum(d => (int?)d.Cantidad) ?? 0,
+                CortesiaUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                    .SelectMany(v => v.VenDetalleVenta).Where(d => d.EsCortesia).Sum(d => (int?)d.Cantidad) ?? 0
             })
             .ToListAsync();
 
@@ -345,9 +353,10 @@ public class AdminDashboardController : ControllerBase
             .OrderByDescending(x => x.monto)
             .ToList();
 
-        // Productos vendidos durante los turnos del rango (unidades y monto).
+        // Productos vendidos durante los turnos del rango (unidades y monto; excluye consumos).
         var productosVendidos = await _context.VenDetalleVenta.AsNoTracking()
             .Where(d => d.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                && d.IdVentaNavigation.IdBitacora == null
                 && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
                 && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
             .GroupBy(d => new { d.IdProducto, d.IdProductoNavigation.NombreProducto })
@@ -355,34 +364,32 @@ public class AdminDashboardController : ControllerBase
             .OrderByDescending(x => x.cantidad).ThenByDescending(x => x.monto)
             .Take(15).ToListAsync();
 
-        // Consumos y cortesías de bitácora durante los turnos del rango, agrupados por el
-        // propietario del turno (barista) y el producto. Permite ver, de forma clara, todo lo
-        // que consumió cada dueño de turno en el rango completo (no un total agregado confuso).
-        var consumosPorBarista = await _context.TurProductosBitacora.AsNoTracking()
-            .Where(p => p.Activo
-                && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura >= start
-                && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura < end)
-            .GroupBy(p => new
+        // Ventas de consumo del empleado durante los turnos del rango, con su detalle. El frontend
+        // las agrupa por barista y permite marcarlas como pagadas. Muestra adeudado vs cortesía.
+        var consumosPorBarista = await _context.VenVentas.AsNoTracking()
+            .Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada
+                && v.IdTurnoNavigation.FechaApertura >= start && v.IdTurnoNavigation.FechaApertura < end)
+            .OrderByDescending(v => v.FechaVenta)
+            .Select(v => new
             {
-                p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario,
-                Usuario = p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuarioNavigation.NombreUsuario,
-                Empleado = p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuarioNavigation.EmpEmpleados
+                v.IdVenta,
+                v.FechaVenta,
+                v.PagadoPorEmpleado,
+                idUsuario = v.IdTurnoNavigation.IdUsuario,
+                usuario = v.IdTurnoNavigation.IdUsuarioNavigation.NombreUsuario,
+                empleado = v.IdTurnoNavigation.IdUsuarioNavigation.EmpEmpleados
                     .Where(e => e.Activo).Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
-                p.IdProducto,
-                p.IdProductoNavigation.NombreProducto
+                montoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                montoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                items = v.VenDetalleVenta.Select(d => new
+                {
+                    d.IdProducto,
+                    NombreProducto = d.IdProductoNavigation.NombreProducto,
+                    d.Cantidad,
+                    d.EsCortesia,
+                    d.Subtotal
+                }).ToList()
             })
-            .Select(g => new
-            {
-                g.Key.IdUsuario,
-                g.Key.Usuario,
-                g.Key.Empleado,
-                g.Key.IdProducto,
-                g.Key.NombreProducto,
-                cantidad = g.Sum(x => x.Cantidad),
-                consumos = g.Where(x => !x.EsCortesia).Sum(x => (int?)x.Cantidad) ?? 0,
-                cortesias = g.Where(x => x.EsCortesia).Sum(x => (int?)x.Cantidad) ?? 0
-            })
-            .OrderByDescending(x => x.cantidad)
             .ToListAsync();
 
         // Detalle turno a turno para la tabla inferior.
@@ -457,8 +464,8 @@ public class AdminDashboardController : ControllerBase
                 CantidadTurnos = g.Count(),
                 TurnosAbiertos = g.Count(x => x.IdEstadoTurno == 1),
                 CantidadBitacoras = g.Sum(x => x.TurBitacora.Count),
-                CantidadVentas = g.Sum(x => x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada)),
-                TotalVentas = g.Sum(x => x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0)
+                CantidadVentas = g.Sum(x => x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null)),
+                TotalVentas = g.Sum(x => x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null).Sum(v => (int?)v.MontoTotal) ?? 0)
             }).OrderBy(x => x.Fecha).ToListAsync();
 
         var tipsByDay = await GetTipsByDayAsync(start, end);
@@ -498,8 +505,8 @@ public class AdminDashboardController : ControllerBase
                 x.IdEstadoTurno,
                 Estado = x.IdEstadoTurnoNavigation.NombreEstadoTurno,
                 x.DiferenciaTotal,
-                CantidadVentas = x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada),
-                TotalVentas = x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada).Sum(v => (int?)v.MontoTotal) ?? 0,
+                CantidadVentas = x.VenVentas.Count(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null),
+                TotalVentas = x.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null).Sum(v => (int?)v.MontoTotal) ?? 0,
                 Bitacoras = x.TurBitacora.Select(b => new
                 {
                     b.IdBitacora,

@@ -16,6 +16,17 @@ public partial class VenVentas
     [Column("Id_Turno")]
     public int IdTurno { get; set; }
 
+    /// <summary>
+    /// Si != null, la venta es un "consumo de empleado" asociado a esta bitácora (por cobrar al
+    /// empleado); no forma parte de los ingresos/efectivo normales del turno.
+    /// </summary>
+    [Column("Id_Bitacora")]
+    public int? IdBitacora { get; set; }
+
+    /// <summary>El administrador marca que el empleado ya pagó su consumo.</summary>
+    [Column("Pagado_Por_Empleado")]
+    public bool PagadoPorEmpleado { get; set; }
+
     [Column("Id_Estado_Venta")]
     public int IdEstadoVenta { get; set; }
 
@@ -78,6 +89,10 @@ public partial class VenVentas
     [ForeignKey("IdTurno")]
     [InverseProperty("VenVentas")]
     public virtual TurTurno IdTurnoNavigation { get; set; } = null!;
+
+    [ForeignKey("IdBitacora")]
+    [InverseProperty("VenVentas")]
+    public virtual TurBitacora? IdBitacoraNavigation { get; set; }
 
     [InverseProperty("IdVentaNavigation")]
     public virtual ICollection<VenDetalleVenta> VenDetalleVenta { get; set; } = new List<VenDetalleVenta>();

@@ -31,4 +31,8 @@ public partial class TurBitacora
 
     [InverseProperty("IdBitacoraNavigation")]
     public virtual ICollection<TurProductosBitacora> TurProductosBitacora { get; set; } = new List<TurProductosBitacora>();
+
+    /// <summary>Ventas de consumo del empleado asociadas a esta bitácora (por cobrar).</summary>
+    [InverseProperty("IdBitacoraNavigation")]
+    public virtual ICollection<VenVentas> VenVentas { get; set; } = new List<VenVentas>();
 }
