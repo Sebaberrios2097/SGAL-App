@@ -286,8 +286,8 @@ namespace SieteVidasAPI.Controllers
                         IngredientesExtra = d.VenDetalleVentaIngrediente
                             .Select(x => new
                             {
-                                x.IdIngredienteExtra,
-                                Nombre = x.IdIngredienteExtraNavigation.NombreIngredienteExtra,
+                                IdIngredienteExtra = x.IdMateriaPrima,
+                                Nombre = x.IdMateriaPrimaNavigation.NombreMaterial,
                                 x.Precio
                             })
                     })

@@ -24,9 +24,14 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesView)]
         public async Task<IActionResult> GetRoles()
         {
-            var roles = await _context.EmpRolesUsuarios
-                .OrderBy(r => r.NombreRol)
-                .ToListAsync();
+            // El rol Desarrollador (superusuario) solo es visible para el propio Desarrollador:
+            // nadie más puede verlo, asignarlo ni editar sus permisos.
+            var esDev = await _permissions.IsDeveloperAsync(User.GetUserId());
+            var query = _context.EmpRolesUsuarios.AsQueryable();
+            if (!esDev)
+                query = query.Where(r => r.IdRolUsuario != RolesUsuario.Desarrollador);
+
+            var roles = await query.OrderBy(r => r.NombreRol).ToListAsync();
             return Ok(roles);
         }
 
@@ -58,6 +63,9 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesEdit)]
         public async Task<IActionResult> UpdateRole(int id, [FromBody] string roleName)
         {
+            if (await IsProtectedDeveloperRoleAsync(id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
+
             if (string.IsNullOrWhiteSpace(roleName))
             {
                 return BadRequest(new { Mensaje = "El nombre del rol es obligatorio" });
@@ -87,6 +95,9 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesDelete)]
         public async Task<IActionResult> DeleteRole(int id)
         {
+            if (await IsProtectedDeveloperRoleAsync(id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
+
             var role = await _context.EmpRolesUsuarios.FindAsync(id);
             if (role == null)
             {
@@ -130,6 +141,10 @@ namespace SieteVidasAPI.Controllers
             // El Desarrollador (superusuario) puede asignar cualquier rol sin restricción.
             if (!await _permissions.IsDeveloperAsync(User.GetUserId()))
             {
+                // Nadie fuera del Desarrollador puede asignar el rol Desarrollador.
+                if (newRoleIds.Contains(RolesUsuario.Desarrollador))
+                    return StatusCode(403, new { Mensaje = "No puede asignar el rol Desarrollador." });
+
                 var callerPermissions = (await _context.SegPermisosXRol.AsNoTracking()
                     .Where(x => x.Activo && x.Permiso.Activo && x.Rol.EmpRolesXusuario
                         .Any(ur => ur.IdUsuario == User.GetUserId() && ur.Activo))
@@ -216,6 +231,8 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesView)]
         public async Task<IActionResult> GetRolePermissions(int id)
         {
+            if (await IsProtectedDeveloperRoleAsync(id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
             if (!await _context.EmpRolesUsuarios.AnyAsync(x => x.IdRolUsuario == id))
                 return NotFound(new { Mensaje = "Rol no encontrado" });
             // Solo permisos activos: los permisos legacy desactivados no se muestran ni se reenvían.
@@ -234,6 +251,8 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.RolesPermissionsAssign)]
         public async Task<IActionResult> SetRolePermissions(int id, [FromBody] AssignPermissionsDto dto)
         {
+            if (await IsProtectedDeveloperRoleAsync(id))
+                return NotFound(new { Mensaje = "Rol no encontrado" });
             if (!await _context.EmpRolesUsuarios.AnyAsync(x => x.IdRolUsuario == id))
                 return NotFound(new { Mensaje = "Rol no encontrado" });
 
@@ -303,6 +322,16 @@ namespace SieteVidasAPI.Controllers
                 });
             await _context.SaveChangesAsync();
             return Ok(new { Mensaje = "Permisos actualizados.", PermissionIds = requested.OrderBy(x => x) });
+        }
+
+        /// <summary>
+        /// True si el rol es el Desarrollador y el usuario actual no es Desarrollador: en ese caso
+        /// el rol se trata como inexistente (no se ve, ni se edita, ni se le tocan permisos).
+        /// </summary>
+        private async Task<bool> IsProtectedDeveloperRoleAsync(int roleId)
+        {
+            if (roleId != RolesUsuario.Desarrollador) return false;
+            return !await _permissions.IsDeveloperAsync(User.GetUserId());
         }
     }
 }

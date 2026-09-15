@@ -102,8 +102,6 @@ public partial class SieteVidasContext : DbContext
 
     public virtual DbSet<VenVentas> VenVentas { get; set; }
 
-    public virtual DbSet<InvIngredientesExtra> InvIngredientesExtra { get; set; }
-
     public virtual DbSet<VenDetalleVentaIngrediente> VenDetalleVentaIngrediente { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -119,6 +117,7 @@ public partial class SieteVidasContext : DbContext
         {
             entity.Property(e => e.Activo).HasComment("Solo puede haber un rut activo a la vez. Si se desactiva y se necesita volver a registrar al mismo empleado, se debe crear un nuevo registro.");
             entity.Property(e => e.Dv).IsFixedLength();
+            entity.Property(e => e.TipoDocumento).IsFixedLength().HasDefaultValue("RUN");
 
             entity.HasOne(d => d.IdUsuarioNavigation).WithMany(p => p.EmpEmpleados).HasConstraintName("FK_Emp_Empleados_Emp_Usuarios");
         });
@@ -187,6 +186,11 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvMateriaPrima)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Materia_Prima_Inv_Unidades_Medida");
+
+            entity.HasOne(d => d.IdUnidadIngredienteExtraNavigation).WithMany(p => p.InvMateriaPrimaComoUnidadExtra)
+                .HasForeignKey(d => d.IdUnidadIngredienteExtra)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Inv_Materia_Prima_Unidad_Ingrediente_Extra");
         });
 
         modelBuilder.Entity<InvMaterialesReceta>(entity =>
@@ -208,26 +212,15 @@ public partial class SieteVidasContext : DbContext
                 .HasConstraintName("FK_Inv_Materiales_Receta_Inv_Unidades_Medida");
         });
 
-        modelBuilder.Entity<InvIngredientesExtra>(entity =>
-        {
-            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvIngredientesExtra)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Inv_Ingredientes_Extra_Inv_Materia_Prima");
-
-            entity.HasOne(d => d.IdUnidadMedidaNavigation).WithMany(p => p.InvIngredientesExtra)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Inv_Ingredientes_Extra_Inv_Unidades_Medida");
-        });
-
         modelBuilder.Entity<VenDetalleVentaIngrediente>(entity =>
         {
             entity.HasOne(d => d.IdDetalleVentaNavigation).WithMany(p => p.VenDetalleVentaIngrediente)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_Ven_Detalle_Venta_Ingredientes_Ven_Detalle_Venta");
 
-            entity.HasOne(d => d.IdIngredienteExtraNavigation).WithMany(p => p.VenDetalleVentaIngrediente)
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.VenDetalleVentaIngrediente)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Ven_Detalle_Venta_Ingredientes_Inv_Ingredientes_Extra");
+                .HasConstraintName("FK_Ven_Detalle_Venta_Ingredientes_Inv_Materia_Prima");
         });
 
         modelBuilder.Entity<InvPresentacionesMateriaPrima>(entity =>
@@ -296,11 +289,6 @@ public partial class SieteVidasContext : DbContext
             entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvRecetas)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Recetas_Inv_Productos");
-
-            entity.HasOne(d => d.IdRecetaBaseNavigation).WithMany(p => p.InvRecetasComoBase)
-                .HasForeignKey(d => d.IdRecetaBase)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_Inv_Recetas_Receta_Base");
         });
 
         modelBuilder.Entity<SiiCafFolios>(entity =>

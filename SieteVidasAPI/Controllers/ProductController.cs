@@ -22,16 +22,13 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> GetProducts()
         {
-            // Recetas activas con sus materiales (incluida la materia base de cada alternativa y si
-            // es café calibrable). Se cargan una vez para componer, en memoria, la receta de cada
-            // producto con la de su preparación base recorriendo la cadena de bases.
+            // Receta activa de cada producto con sus materiales (materia base de cada alternativa y
+            // si es café calibrable). Cada producto con receta tiene la suya propia e independiente.
             var recetas = await _context.InvRecetas.AsNoTracking()
                 .Where(r => r.Estado)
                 .Select(r => new
                 {
-                    r.IdReceta,
                     r.IdProducto,
-                    r.IdRecetaBase,
                     Materiales = r.InvMaterialesReceta.Select(m => new
                     {
                         m.IdMateriaPrima,
@@ -45,10 +42,7 @@ namespace SieteVidasAPI.Controllers
                     }).ToList()
                 })
                 .ToListAsync();
-            var recetaPorId = recetas.ToDictionary(r => r.IdReceta);
-            var recetaRaizPorProducto = recetas
-                .Where(r => r.IdProducto != null)
-                .ToDictionary(r => r.IdProducto!.Value, r => r.IdReceta);
+            var recetaPorProducto = recetas.ToDictionary(r => r.IdProducto);
 
             var products = await _context.InvProductos
                 .Include(p => p.IdCategoriaProductoNavigation)
@@ -78,27 +72,20 @@ namespace SieteVidasAPI.Controllers
                 var alternativas = new List<object>();
                 bool requiereCalibracion = false;
 
-                if (p.RequiereReceta && recetaRaizPorProducto.TryGetValue(p.IdProducto, out var idRecetaRaiz))
+                if (p.RequiereReceta && recetaPorProducto.TryGetValue(p.IdProducto, out var receta))
                 {
-                    int? actual = idRecetaRaiz;
-                    var visitados = new HashSet<int>();
-                    while (actual.HasValue && visitados.Add(actual.Value)
-                        && recetaPorId.TryGetValue(actual.Value, out var receta))
+                    foreach (var m in receta.Materiales)
                     {
-                        foreach (var m in receta.Materiales)
-                        {
-                            if (m.EsCafeCalibrable) requiereCalibracion = true;
-                            if (m.IdMateriaPrimaReemplazada.HasValue)
-                                alternativas.Add(new
-                                {
-                                    IdMateriaPrimaBase = m.IdMateriaPrimaReemplazada.Value,
-                                    NombreMateriaPrimaBase = m.NombreMateriaPrimaReemplazada,
-                                    IdMateriaPrimaAlternativa = m.IdMateriaPrima,
-                                    NombreMateriaPrimaAlternativa = m.NombreMateriaPrima,
-                                    m.Recargo
-                                });
-                        }
-                        actual = receta.IdRecetaBase;
+                        if (m.EsCafeCalibrable) requiereCalibracion = true;
+                        if (m.IdMateriaPrimaReemplazada.HasValue)
+                            alternativas.Add(new
+                            {
+                                IdMateriaPrimaBase = m.IdMateriaPrimaReemplazada.Value,
+                                NombreMateriaPrimaBase = m.NombreMateriaPrimaReemplazada,
+                                IdMateriaPrimaAlternativa = m.IdMateriaPrima,
+                                NombreMateriaPrimaAlternativa = m.NombreMateriaPrima,
+                                m.Recargo
+                            });
                     }
                 }
 
@@ -131,13 +118,14 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.ProductsCreate)]
         public async Task<IActionResult> CreateProduct([FromBody] ProductDto dto)
         {
-            if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto) || string.IsNullOrWhiteSpace(dto.CodigoProducto))
+            if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto))
             {
-                return BadRequest(new { Mensaje = "El código y el nombre del producto son obligatorios" });
+                return BadRequest(new { Mensaje = "El nombre del producto es obligatorio" });
             }
 
-            var productCode = dto.CodigoProducto.Trim().ToUpperInvariant();
-            if (productCode.Length > 50)
+            // El código es opcional: si viene vacío se guarda como null.
+            var productCode = string.IsNullOrWhiteSpace(dto.CodigoProducto) ? null : dto.CodigoProducto.Trim().ToUpperInvariant();
+            if (productCode != null && productCode.Length > 50)
                 return BadRequest(new { Mensaje = "El código del producto no puede superar los 50 caracteres" });
 
             var category = await _context.InvCategoriaProductos.FindAsync(dto.IdCategoriaProducto);
@@ -154,7 +142,7 @@ namespace SieteVidasAPI.Controllers
                 return BadRequest(new { Mensaje = "El producto ya existe" });
             }
 
-            if (await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode))
+            if (productCode != null && await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode))
                 return BadRequest(new { Mensaje = "Ya existe un producto con ese código" });
 
             byte[]? imageBytes = null;
@@ -213,13 +201,14 @@ namespace SieteVidasAPI.Controllers
         [Permission(Permissions.ProductsEdit)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductDto dto)
         {
-            if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto) || string.IsNullOrWhiteSpace(dto.CodigoProducto))
+            if (dto == null || string.IsNullOrWhiteSpace(dto.NombreProducto))
             {
-                return BadRequest(new { Mensaje = "El código y el nombre del producto son obligatorios" });
+                return BadRequest(new { Mensaje = "El nombre del producto es obligatorio" });
             }
 
-            var productCode = dto.CodigoProducto.Trim().ToUpperInvariant();
-            if (productCode.Length > 50)
+            // El código es opcional: si viene vacío se guarda como null.
+            var productCode = string.IsNullOrWhiteSpace(dto.CodigoProducto) ? null : dto.CodigoProducto.Trim().ToUpperInvariant();
+            if (productCode != null && productCode.Length > 50)
                 return BadRequest(new { Mensaje = "El código del producto no puede superar los 50 caracteres" });
 
             var product = await _context.InvProductos.FindAsync(id);
@@ -242,7 +231,7 @@ namespace SieteVidasAPI.Controllers
                 return BadRequest(new { Mensaje = "Ya existe otro producto con ese nombre" });
             }
 
-            if (await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode && p.IdProducto != id))
+            if (productCode != null && await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode && p.IdProducto != id))
                 return BadRequest(new { Mensaje = "Ya existe otro producto con ese código" });
 
             if (dto.ImagenBase64 == "")

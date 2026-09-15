@@ -355,14 +355,27 @@ public class AdminDashboardController : ControllerBase
             .OrderByDescending(x => x.cantidad).ThenByDescending(x => x.monto)
             .Take(15).ToListAsync();
 
-        // Consumos y cortesías registrados en bitácora durante los turnos del rango.
-        var consumosBitacora = await _context.TurProductosBitacora.AsNoTracking()
+        // Consumos y cortesías de bitácora durante los turnos del rango, agrupados por el
+        // propietario del turno (barista) y el producto. Permite ver, de forma clara, todo lo
+        // que consumió cada dueño de turno en el rango completo (no un total agregado confuso).
+        var consumosPorBarista = await _context.TurProductosBitacora.AsNoTracking()
             .Where(p => p.Activo
                 && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura >= start
                 && p.IdBitacoraNavigation.IdTurnoNavigation.FechaApertura < end)
-            .GroupBy(p => new { p.IdProducto, p.IdProductoNavigation.NombreProducto })
+            .GroupBy(p => new
+            {
+                p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuario,
+                Usuario = p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuarioNavigation.NombreUsuario,
+                Empleado = p.IdBitacoraNavigation.IdTurnoNavigation.IdUsuarioNavigation.EmpEmpleados
+                    .Where(e => e.Activo).Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
+                p.IdProducto,
+                p.IdProductoNavigation.NombreProducto
+            })
             .Select(g => new
             {
+                g.Key.IdUsuario,
+                g.Key.Usuario,
+                g.Key.Empleado,
                 g.Key.IdProducto,
                 g.Key.NombreProducto,
                 cantidad = g.Sum(x => x.Cantidad),
@@ -370,7 +383,7 @@ public class AdminDashboardController : ControllerBase
                 cortesias = g.Where(x => x.EsCortesia).Sum(x => (int?)x.Cantidad) ?? 0
             })
             .OrderByDescending(x => x.cantidad)
-            .Take(15).ToListAsync();
+            .ToListAsync();
 
         // Detalle turno a turno para la tabla inferior.
         var detalleTurnos = turnos.Select(t => new
@@ -406,12 +419,10 @@ public class AdminDashboardController : ControllerBase
             ventaPromedioTurno = turnos.Count > 0 ? (decimal)totalVentas / turnos.Count : 0,
             totalPropinas,
             diferenciaCajaTotal,
-            consumoUnidades = turnos.Sum(t => t.ConsumoUnidades),
-            cortesiaUnidades = turnos.Sum(t => t.CortesiaUnidades),
             series,
             porBarista,
             productosVendidos,
-            consumosBitacora,
+            consumosPorBarista,
             turnos = detalleTurnos
         });
     }

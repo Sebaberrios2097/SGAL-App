@@ -20,8 +20,9 @@ public partial class VenDetalleVentaIngrediente
     [Column("Id_Detalle_Venta")]
     public int IdDetalleVenta { get; set; }
 
-    [Column("Id_Ingrediente_Extra")]
-    public int IdIngredienteExtra { get; set; }
+    /// <summary>Materia prima marcada como ingrediente extra elegida para la línea de venta.</summary>
+    [Column("Id_Materia_Prima")]
+    public int IdMateriaPrima { get; set; }
 
     public int Precio { get; set; }
 
@@ -29,7 +30,7 @@ public partial class VenDetalleVentaIngrediente
     [InverseProperty("VenDetalleVentaIngrediente")]
     public virtual VenDetalleVenta IdDetalleVentaNavigation { get; set; } = null!;
 
-    [ForeignKey("IdIngredienteExtra")]
+    [ForeignKey("IdMateriaPrima")]
     [InverseProperty("VenDetalleVentaIngrediente")]
-    public virtual InvIngredientesExtra IdIngredienteExtraNavigation { get; set; } = null!;
+    public virtual InvMateriaPrima IdMateriaPrimaNavigation { get; set; } = null!;
 }

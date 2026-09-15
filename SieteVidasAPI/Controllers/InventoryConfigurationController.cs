@@ -308,6 +308,8 @@ namespace SieteVidasAPI.Controllers
                     x.Cantidad,
                     x.EsCafeCalibrable,
                     x.NoDescuentaInventario,
+                    x.RecargoBase,
+                    x.RecargoModificable,
                     NombreMarca = x.IdMarcaNavigation.NombreMarca,
                     NombreCategoria = x.IdCategoriaMateriaNavigation.NombreCategoriaMateria,
                     NombreUnidad = x.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -338,6 +340,8 @@ namespace SieteVidasAPI.Controllers
                 Cantidad = dto.NoDescuentaInventario ? 0 : dto.Cantidad,
                 EsCafeCalibrable = dto.EsCafeCalibrable,
                 NoDescuentaInventario = dto.NoDescuentaInventario,
+                RecargoBase = dto.RecargoBase < 0 ? 0 : dto.RecargoBase,
+                RecargoModificable = dto.RecargoBase > 0 && dto.RecargoModificable,
                 Imagen = ParseImage(dto.ImagenBase64),
                 FechaCreacion = DateTime.Now
             };
@@ -381,6 +385,8 @@ namespace SieteVidasAPI.Controllers
             entity.Cantidad = quantityToStore;
             entity.EsCafeCalibrable = dto.EsCafeCalibrable;
             entity.NoDescuentaInventario = dto.NoDescuentaInventario;
+            entity.RecargoBase = dto.RecargoBase < 0 ? 0 : dto.RecargoBase;
+            entity.RecargoModificable = dto.RecargoBase > 0 && dto.RecargoModificable;
             if (dto.ImagenBase64 == string.Empty) entity.Imagen = null;
             else if (dto.ImagenBase64 != null) entity.Imagen = ParseImage(dto.ImagenBase64);
             await _context.SaveChangesAsync();

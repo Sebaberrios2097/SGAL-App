@@ -3,7 +3,9 @@ namespace SieteVidasAPI.DTOs
     public class ProductDto
     {
         public int IdCategoriaProducto { get; set; }
-        public string CodigoProducto { get; set; } = null!;
+
+        /// <summary>Código opcional del producto. Puede quedar vacío.</summary>
+        public string? CodigoProducto { get; set; }
         public string NombreProducto { get; set; } = null!;
         public string? DescripcionProducto { get; set; }
         public int Precio { get; set; }

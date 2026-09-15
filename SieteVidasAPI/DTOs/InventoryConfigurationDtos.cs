@@ -42,24 +42,16 @@ namespace SieteVidasAPI.DTOs
         /// <summary>Marca la materia prima como no controlada en inventario (p. ej. el agua):
         /// no exige existencia y las recetas que la usen no descuentan stock.</summary>
         public bool NoDescuentaInventario { get; set; }
+
+        /// <summary>Recargo base (cargo adicional) al usarse como opción de un ingrediente. 0 = sin cargo.</summary>
+        public int RecargoBase { get; set; }
+
+        /// <summary>Si el recargo base puede ajustarse por receta (true) o queda fijo (false).</summary>
+        public bool RecargoModificable { get; set; }
     }
 
     public class RecipeUpdateDto
     {
-        /// <summary>Preparación base opcional (receta marcada como base) sobre la que se construye la receta.</summary>
-        public int? IdRecetaBase { get; set; }
-
-        public List<RecipeMaterialDto> Materiales { get; set; } = new();
-    }
-
-    /// <summary>Crear o actualizar una preparación base independiente (receta sin producto).</summary>
-    public class BasePreparationDto
-    {
-        public string Nombre { get; set; } = string.Empty;
-
-        /// <summary>Otra preparación base opcional sobre la que se construye ésta.</summary>
-        public int? IdRecetaBase { get; set; }
-
         public List<RecipeMaterialDto> Materiales { get; set; } = new();
     }
 

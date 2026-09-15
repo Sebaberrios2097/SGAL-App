@@ -22,6 +22,19 @@ public partial class EmpEmpleados
     [Unicode(false)]
     public string Dv { get; set; } = null!;
 
+    /// <summary>
+    /// Distingue empleados de la cafetería (false) de "externos" (true) que también acceden al
+    /// sistema con sus roles pero no forman parte del personal.
+    /// </summary>
+    [Column("Es_Externo")]
+    public bool EsExterno { get; set; }
+
+    /// <summary>Tipo de documento del identificador: "RUN" persona natural, "RUT" empresa.</summary>
+    [Column("Tipo_Documento")]
+    [StringLength(3)]
+    [Unicode(false)]
+    public string TipoDocumento { get; set; } = "RUN";
+
     [StringLength(100)]
     public string Nombres { get; set; } = null!;
 

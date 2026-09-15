@@ -39,6 +39,7 @@ public partial class InvUnidadesMedida
     [InverseProperty("IdUnidadMedidaNavigation")]
     public virtual ICollection<InvPresentacionesMateriaPrima> InvPresentacionesMateriaPrima { get; set; } = new List<InvPresentacionesMateriaPrima>();
 
-    [InverseProperty("IdUnidadMedidaNavigation")]
-    public virtual ICollection<InvIngredientesExtra> InvIngredientesExtra { get; set; } = new List<InvIngredientesExtra>();
+    /// <summary>Materias primas que usan esta unidad para su consumo como ingrediente extra.</summary>
+    [InverseProperty("IdUnidadIngredienteExtraNavigation")]
+    public virtual ICollection<InvMateriaPrima> InvMateriaPrimaComoUnidadExtra { get; set; } = new List<InvMateriaPrima>();
 }

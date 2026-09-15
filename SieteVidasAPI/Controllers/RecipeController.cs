@@ -23,15 +23,12 @@ namespace SieteVidasAPI.Controllers
         public async Task<IActionResult> GetAll()
         {
             var recipes = await _context.InvRecetas.AsNoTracking()
-                .OrderBy(x => x.IdProducto != null ? x.IdProductoNavigation!.NombreProducto : x.Nombre)
+                .OrderBy(x => x.IdProductoNavigation.NombreProducto)
                 .Select(x => new
                 {
                     x.IdReceta,
                     x.IdProducto,
-                    Nombre = x.IdProducto != null ? x.IdProductoNavigation!.NombreProducto : x.Nombre,
-                    x.EsPreparacionBase,
-                    x.IdRecetaBase,
-                    NombreBase = x.IdRecetaBaseNavigation != null ? x.IdRecetaBaseNavigation.Nombre : null,
+                    Nombre = x.IdProductoNavigation.NombreProducto,
                     x.Estado,
                     x.FechaCreacion,
                     x.FechaModificacion,
@@ -42,6 +39,7 @@ namespace SieteVidasAPI.Controllers
                             m.IdMateriaPrima,
                             NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
                             m.IdMateriaPrimaNavigation.EsCafeCalibrable,
+                            m.IdMateriaPrimaNavigation.NoDescuentaInventario,
                             m.CantidadRequerida,
                             m.IdUnidadMedida,
                             NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
@@ -56,6 +54,22 @@ namespace SieteVidasAPI.Controllers
                 }).ToListAsync();
 
             return Ok(recipes);
+        }
+
+        /// <summary>
+        /// Productos marcados con receta pero que aún no tienen una receta activa configurada.
+        /// Alimenta el botón "Crear Receta" de la vista de recetas.
+        /// </summary>
+        [HttpGet("products-without-recipe")]
+        [Permission(Permissions.RecipesEdit)]
+        public async Task<IActionResult> GetProductsWithoutRecipe()
+        {
+            var products = await _context.InvProductos.AsNoTracking()
+                .Where(p => p.Activo && p.RequiereReceta == true && !p.InvRecetas.Any(r => r.Estado))
+                .OrderBy(p => p.NombreProducto)
+                .Select(p => new { p.IdProducto, p.NombreProducto })
+                .ToListAsync();
+            return Ok(products);
         }
 
         [HttpGet("product/{idProducto:int}")]
@@ -77,8 +91,6 @@ namespace SieteVidasAPI.Controllers
                 .Select(x => new
                 {
                     x.IdReceta,
-                    x.IdRecetaBase,
-                    NombreBase = x.IdRecetaBaseNavigation != null ? x.IdRecetaBaseNavigation.Nombre : null,
                     x.FechaCreacion,
                     x.FechaModificacion,
                     Materiales = x.InvMaterialesReceta.Select(m => new
@@ -115,9 +127,6 @@ namespace SieteVidasAPI.Controllers
                 .Include(x => x.InvMaterialesReceta)
                 .FirstOrDefaultAsync(x => x.IdProducto == idProducto && x.Estado);
 
-            var baseError = await ValidateBaseRecipeAsync(dto.IdRecetaBase, existingRecipe?.IdReceta);
-            if (baseError != null) return BadRequest(new { mensaje = baseError });
-
             var (materials, materialsError) = await BuildValidatedMaterialsAsync(dto.Materiales);
             if (materialsError != null) return BadRequest(new { mensaje = materialsError });
 
@@ -129,8 +138,6 @@ namespace SieteVidasAPI.Controllers
                 recipe = new InvRecetas
                 {
                     IdProducto = idProducto,
-                    EsPreparacionBase = false,
-                    IdRecetaBase = dto.IdRecetaBase,
                     Estado = true,
                     FechaCreacion = DateTime.Now
                 };
@@ -141,7 +148,6 @@ namespace SieteVidasAPI.Controllers
             {
                 recipe = existingRecipe;
                 _context.InvMaterialesReceta.RemoveRange(recipe.InvMaterialesReceta);
-                recipe.IdRecetaBase = dto.IdRecetaBase;
                 recipe.FechaModificacion = DateTime.Now;
             }
 
@@ -149,266 +155,6 @@ namespace SieteVidasAPI.Controllers
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
             return Ok(new { mensaje = "Receta guardada correctamente.", recipe.IdReceta });
-        }
-
-        // ---- Preparaciones base independientes (recetas sin producto) --------
-
-        [HttpGet("base")]
-        [Permission(Permissions.RecipesView)]
-        public async Task<IActionResult> GetBasePreparations()
-        {
-            var bases = await _context.InvRecetas.AsNoTracking()
-                .Where(x => x.EsPreparacionBase)
-                .OrderBy(x => x.Nombre)
-                .Select(x => new
-                {
-                    x.IdReceta,
-                    x.Nombre,
-                    x.IdRecetaBase,
-                    NombreBase = x.IdRecetaBaseNavigation != null ? x.IdRecetaBaseNavigation.Nombre : null,
-                    x.Estado,
-                    x.FechaCreacion,
-                    x.FechaModificacion,
-                    Materiales = x.InvMaterialesReceta
-                        .OrderBy(m => m.IdMateriaPrimaNavigation.NombreMaterial)
-                        .Select(m => new
-                    {
-                        m.IdMateriaPrima,
-                        NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
-                        m.IdMateriaPrimaNavigation.EsCafeCalibrable,
-                        m.IdUnidadMedida,
-                        NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
-                        AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
-                        m.CantidadRequerida,
-                        m.IdMateriaPrimaReemplazada,
-                        NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
-                            ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
-                            : null,
-                        m.Recargo,
-                        m.UsaMismaMedidaQuePrincipal
-                    }).ToList()
-                }).ToListAsync();
-            return Ok(bases);
-        }
-
-        [HttpGet("base/{idReceta:int}")]
-        [Permission(Permissions.RecipesView)]
-        public async Task<IActionResult> GetBasePreparation(int idReceta)
-        {
-            var preparation = await _context.InvRecetas.AsNoTracking()
-                .Where(x => x.IdReceta == idReceta && x.EsPreparacionBase)
-                .Select(x => new
-                {
-                    x.IdReceta,
-                    x.Nombre,
-                    x.IdRecetaBase,
-                    NombreBase = x.IdRecetaBaseNavigation != null ? x.IdRecetaBaseNavigation.Nombre : null,
-                    x.Estado,
-                    x.FechaCreacion,
-                    x.FechaModificacion,
-                    Materiales = x.InvMaterialesReceta.Select(m => new
-                    {
-                        m.IdMateriaPrima,
-                        NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
-                        m.IdMateriaPrimaNavigation.EsCafeCalibrable,
-                        m.IdUnidadMedida,
-                        NombreUnidad = m.IdUnidadMedidaNavigation.NombreUnidadMedida,
-                        AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
-                        m.CantidadRequerida,
-                        m.IdMateriaPrimaReemplazada,
-                        NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
-                            ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
-                            : null,
-                        m.Recargo,
-                        m.UsaMismaMedidaQuePrincipal
-                    }).ToList()
-                }).FirstOrDefaultAsync();
-
-            return preparation == null
-                ? NotFound(new { mensaje = "Preparación base no encontrada." })
-                : Ok(preparation);
-        }
-
-        [HttpPost("base")]
-        [Permission(Permissions.RecipesEdit)]
-        public async Task<IActionResult> CreateBasePreparation([FromBody] BasePreparationDto dto)
-        {
-            var nombre = dto.Nombre?.Trim();
-            if (string.IsNullOrWhiteSpace(nombre))
-                return BadRequest(new { mensaje = "El nombre de la preparación base es obligatorio." });
-            if (nombre.Length > 100)
-                return BadRequest(new { mensaje = "El nombre no puede superar los 100 caracteres." });
-            if (await _context.InvRecetas.AnyAsync(x => x.EsPreparacionBase && x.Nombre == nombre))
-                return BadRequest(new { mensaje = "Ya existe una preparación base con ese nombre." });
-
-            var baseError = await ValidateBaseRecipeAsync(dto.IdRecetaBase, null);
-            if (baseError != null) return BadRequest(new { mensaje = baseError });
-
-            var (materials, materialsError) = await BuildValidatedMaterialsAsync(dto.Materiales);
-            if (materialsError != null) return BadRequest(new { mensaje = materialsError });
-
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            var recipe = new InvRecetas
-            {
-                IdProducto = null,
-                Nombre = nombre,
-                EsPreparacionBase = true,
-                IdRecetaBase = dto.IdRecetaBase,
-                Estado = true,
-                FechaCreacion = DateTime.Now
-            };
-            _context.InvRecetas.Add(recipe);
-            await _context.SaveChangesAsync();
-
-            _context.InvMaterialesReceta.AddRange(MapMaterials(recipe.IdReceta, materials!));
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok(new { mensaje = "Preparación base creada correctamente.", recipe.IdReceta });
-        }
-
-        [HttpPut("base/{idReceta:int}")]
-        [Permission(Permissions.RecipesEdit)]
-        public async Task<IActionResult> UpdateBasePreparation(int idReceta, [FromBody] BasePreparationDto dto)
-        {
-            var recipe = await _context.InvRecetas
-                .Include(x => x.InvMaterialesReceta)
-                .FirstOrDefaultAsync(x => x.IdReceta == idReceta && x.EsPreparacionBase);
-            if (recipe == null) return NotFound(new { mensaje = "Preparación base no encontrada." });
-
-            var nombre = dto.Nombre?.Trim();
-            if (string.IsNullOrWhiteSpace(nombre))
-                return BadRequest(new { mensaje = "El nombre de la preparación base es obligatorio." });
-            if (nombre.Length > 100)
-                return BadRequest(new { mensaje = "El nombre no puede superar los 100 caracteres." });
-            if (await _context.InvRecetas.AnyAsync(x => x.EsPreparacionBase && x.Nombre == nombre && x.IdReceta != idReceta))
-                return BadRequest(new { mensaje = "Ya existe otra preparación base con ese nombre." });
-
-            var baseError = await ValidateBaseRecipeAsync(dto.IdRecetaBase, idReceta);
-            if (baseError != null) return BadRequest(new { mensaje = baseError });
-
-            var (materials, materialsError) = await BuildValidatedMaterialsAsync(dto.Materiales);
-            if (materialsError != null) return BadRequest(new { mensaje = materialsError });
-
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            _context.InvMaterialesReceta.RemoveRange(recipe.InvMaterialesReceta);
-            recipe.Nombre = nombre;
-            recipe.IdRecetaBase = dto.IdRecetaBase;
-            recipe.FechaModificacion = DateTime.Now;
-            _context.InvMaterialesReceta.AddRange(MapMaterials(recipe.IdReceta, materials!));
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok(new { mensaje = "Preparación base actualizada correctamente.", recipe.IdReceta });
-        }
-
-        [HttpDelete("base/{idReceta:int}")]
-        [Permission(Permissions.RecipesEdit)]
-        public async Task<IActionResult> DeleteBasePreparation(int idReceta)
-        {
-            var recipe = await _context.InvRecetas
-                .Include(x => x.InvMaterialesReceta)
-                .FirstOrDefaultAsync(x => x.IdReceta == idReceta && x.EsPreparacionBase);
-            if (recipe == null) return NotFound(new { mensaje = "Preparación base no encontrada." });
-
-            // Impide borrar una base en uso por otras recetas.
-            if (await _context.InvRecetas.AnyAsync(x => x.IdRecetaBase == idReceta))
-                return BadRequest(new { mensaje = "No se puede eliminar: otras recetas la usan como base." });
-
-            _context.InvMaterialesReceta.RemoveRange(recipe.InvMaterialesReceta);
-            _context.InvRecetas.Remove(recipe);
-            await _context.SaveChangesAsync();
-            return Ok(new { mensaje = "Preparación base eliminada correctamente." });
-        }
-
-        /// <summary>
-        /// Preparaciones base que pueden usarse como base de una receta: preparaciones base activas,
-        /// excluyendo (si se indica <paramref name="excludeRecipe"/>) la propia receta y aquellas cuya
-        /// cadena de bases la incluye (para no generar dependencias circulares).
-        /// </summary>
-        [HttpGet("base-candidates")]
-        [Permission(Permissions.RecipesView)]
-        public async Task<IActionResult> GetBaseCandidates([FromQuery] int? excludeRecipe = null)
-        {
-            var bases = await _context.InvRecetas.AsNoTracking()
-                .Where(r => r.EsPreparacionBase && r.Estado)
-                .Select(r => new { r.IdReceta, r.Nombre, r.IdRecetaBase })
-                .ToListAsync();
-            var baseDe = bases.ToDictionary(r => r.IdReceta, r => r.IdRecetaBase);
-
-            // ¿El candidato tiene a excludeRecipe en su cadena de bases? Entonces sería un ciclo.
-            bool GeneraCiclo(int candidato)
-            {
-                if (excludeRecipe == null) return false;
-                int? cursor = candidato;
-                var visitados = new HashSet<int>();
-                while (cursor.HasValue)
-                {
-                    if (cursor.Value == excludeRecipe.Value) return true;
-                    if (!visitados.Add(cursor.Value)) break;
-                    cursor = baseDe.TryGetValue(cursor.Value, out var next) ? next : null;
-                }
-                return false;
-            }
-
-            var candidatos = bases
-                .Where(r => r.IdReceta != excludeRecipe && !GeneraCiclo(r.IdReceta))
-                .OrderBy(r => r.Nombre, StringComparer.Create(new System.Globalization.CultureInfo("es"), true))
-                .Select(r => new { r.IdReceta, r.Nombre })
-                .ToList();
-            return Ok(candidatos);
-        }
-
-        /// <summary>
-        /// Materiales heredados de una preparación base (recorriendo su cadena de bases), aplanados y
-        /// con nombres, para mostrarlos como bloque de solo lectura en el editor de recetas.
-        /// </summary>
-        [HttpGet("composed/{idRecetaBase:int}")]
-        [Permission(Permissions.RecipesView)]
-        public async Task<IActionResult> GetComposedMaterials(int idRecetaBase)
-        {
-            var materiales = new List<object>();
-            var visitados = new HashSet<int>();
-            int? actual = idRecetaBase;
-            while (actual.HasValue)
-            {
-                if (!visitados.Add(actual.Value)) break;
-                var receta = await _context.InvRecetas.AsNoTracking()
-                    .Where(r => r.IdReceta == actual.Value && r.Estado)
-                    .Select(r => new
-                    {
-                        r.IdRecetaBase,
-                        NombrePreparacion = r.IdProducto != null ? r.IdProductoNavigation!.NombreProducto : r.Nombre,
-                        Materiales = r.InvMaterialesReceta.Select(m => new
-                        {
-                            m.IdMateriaPrima,
-                            NombreMaterial = m.IdMateriaPrimaNavigation.NombreMaterial,
-                            m.IdMateriaPrimaNavigation.EsCafeCalibrable,
-                            m.CantidadRequerida,
-                            AbreviacionUnidad = m.IdUnidadMedidaNavigation.Abreviacion,
-                            m.IdMateriaPrimaReemplazada,
-                            NombreMateriaPrimaReemplazada = m.IdMateriaPrimaReemplazadaNavigation != null
-                                ? m.IdMateriaPrimaReemplazadaNavigation.NombreMaterial
-                                : null,
-                            m.Recargo
-                        }).ToList()
-                    }).FirstOrDefaultAsync();
-                if (receta == null) break;
-
-                foreach (var m in receta.Materiales)
-                    materiales.Add(new
-                    {
-                        receta.NombrePreparacion,
-                        m.IdMateriaPrima,
-                        m.NombreMaterial,
-                        m.EsCafeCalibrable,
-                        m.CantidadRequerida,
-                        m.AbreviacionUnidad,
-                        m.IdMateriaPrimaReemplazada,
-                        m.NombreMateriaPrimaReemplazada,
-                        m.Recargo
-                    });
-                actual = receta.IdRecetaBase;
-            }
-            return Ok(materiales);
         }
 
         // ---- Helpers ---------------------------------------------------------
@@ -424,40 +170,6 @@ namespace SieteVidasAPI.Controllers
                 Recargo = material.IdMateriaPrimaReemplazada.HasValue ? material.Recargo : 0,
                 UsaMismaMedidaQuePrincipal = material.IdMateriaPrimaReemplazada.HasValue && material.UsaMismaMedidaQuePrincipal
             });
-
-        /// <summary>
-        /// Valida que la preparación base indicada sea una base activa y que no genere ciclos con la
-        /// receta que se está editando (<paramref name="currentRecipeId"/>, null si es nueva).
-        /// </summary>
-        private async Task<string?> ValidateBaseRecipeAsync(int? idRecetaBase, int? currentRecipeId)
-        {
-            if (!idRecetaBase.HasValue) return null;
-            if (currentRecipeId.HasValue && idRecetaBase.Value == currentRecipeId.Value)
-                return "Una preparación no puede usarse como su propia base.";
-
-            var baseRecipe = await _context.InvRecetas.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.IdReceta == idRecetaBase.Value);
-            if (baseRecipe == null || !baseRecipe.EsPreparacionBase)
-                return "La preparación base seleccionada no es válida.";
-            if (!baseRecipe.Estado)
-                return "La preparación base seleccionada está inactiva.";
-
-            // Detección de ciclos sobre el grafo de bases.
-            var cadena = await _context.InvRecetas.AsNoTracking()
-                .Where(r => r.IdRecetaBase != null)
-                .Select(r => new { r.IdReceta, r.IdRecetaBase })
-                .ToDictionaryAsync(r => r.IdReceta, r => r.IdRecetaBase);
-            int? cursor = idRecetaBase.Value;
-            var visitados = new HashSet<int>();
-            while (cursor.HasValue)
-            {
-                if (currentRecipeId.HasValue && cursor.Value == currentRecipeId.Value)
-                    return "La preparación base genera una dependencia circular.";
-                if (!visitados.Add(cursor.Value)) break;
-                cursor = cadena.TryGetValue(cursor.Value, out var next) ? next : null;
-            }
-            return null;
-        }
 
         /// <summary>
         /// Valida y normaliza la lista de materiales de una receta (dedupe, alternativas, unidades,
@@ -498,6 +210,12 @@ namespace SieteVidasAPI.Controllers
                     alternative.CantidadRequerida = baseMaterial.CantidadRequerida;
                     alternative.IdUnidadMedida = baseMaterial.IdUnidadMedida;
                 }
+
+                // Recargo por opción: si la materia tiene un recargo base no modificable, se fija
+                // a ese valor (0 si no tiene). Si es modificable, se respeta el valor recibido.
+                var altMateria = rawMaterials[alternative.IdMateriaPrima];
+                if (!altMateria.RecargoModificable)
+                    alternative.Recargo = altMateria.RecargoBase;
             }
 
             // Las materias que no se descuentan (p. ej. agua) llevan cantidad solo de referencia:

@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Infraestructura.Entities.SieteVidas;
 
 [Table("Inv_Productos")]
-[Index("CodigoProducto", Name = "UX_Inv_Productos_Codigo_Producto", IsUnique = true)]
+// El código de producto es opcional; la unicidad se aplica solo a los códigos no nulos
+// mediante un índice único filtrado definido en la base de datos.
 public partial class InvProductos
 {
     [Key]
@@ -20,7 +21,7 @@ public partial class InvProductos
     [Column("Codigo_Producto")]
     [StringLength(50)]
     [Unicode(false)]
-    public string CodigoProducto { get; set; } = null!;
+    public string? CodigoProducto { get; set; }
 
     [Column("Nombre_Producto")]
     [StringLength(150)]

@@ -35,6 +35,8 @@ namespace SieteVidasAPI.Controllers
                     e.IdEmpleado,
                     e.Rut,
                     e.Dv,
+                    e.EsExterno,
+                    e.TipoDocumento,
                     e.Nombres,
                     e.Alias,
                     e.Apellido1,
@@ -50,8 +52,11 @@ namespace SieteVidasAPI.Controllers
                         e.IdUsuarioNavigation.NombreUsuario,
                         e.IdUsuarioNavigation.Activo,
                         e.IdUsuarioNavigation.FechaCreacion,
+                        // Ordenados por fecha de asignación: el primero es el primer rol otorgado.
                         Roles = e.IdUsuarioNavigation.EmpRolesXusuario
                             .Where(rx => rx.Activo)
+                            .OrderBy(rx => rx.FechaAsignacion)
+                            .ThenBy(rx => rx.IdRolUsuario)
                             .Select(rx => new
                             {
                                 rx.IdRolUsuario,
@@ -77,6 +82,8 @@ namespace SieteVidasAPI.Controllers
                     e.IdEmpleado,
                     e.Rut,
                     e.Dv,
+                    e.EsExterno,
+                    e.TipoDocumento,
                     e.Nombres,
                     e.Alias,
                     e.Apellido1,
@@ -110,19 +117,25 @@ namespace SieteVidasAPI.Controllers
                 return BadRequest(new { Mensaje = "Rut, Dv, Nombres y Apellido Paterno son obligatorios" });
             }
 
+            var tipoDocumento = NormalizeTipoDocumento(dto.TipoDocumento);
+            if (tipoDocumento == null)
+                return BadRequest(new { Mensaje = "El tipo de documento debe ser RUN o RUT" });
+
             // Check if Rut already exists and is active
             var existing = await _context.EmpEmpleados
                 .FirstOrDefaultAsync(e => e.Rut == dto.Rut && e.Activo);
 
             if (existing != null)
             {
-                return BadRequest(new { Mensaje = $"Ya existe un empleado activo con el RUT {dto.Rut}" });
+                return BadRequest(new { Mensaje = $"Ya existe un registro activo con el RUT {dto.Rut}" });
             }
 
             var employee = new EmpEmpleados
             {
                 Rut = dto.Rut,
                 Dv = dto.Dv.ToUpper(),
+                EsExterno = dto.EsExterno,
+                TipoDocumento = tipoDocumento,
                 Nombres = dto.Nombres,
                 Alias = string.IsNullOrWhiteSpace(dto.Alias) ? null : dto.Alias.Trim(),
                 Apellido1 = dto.Apellido1,
@@ -151,10 +164,16 @@ namespace SieteVidasAPI.Controllers
                 (!string.IsNullOrWhiteSpace(dto.Correo) && dto.Correo.Trim().Length > 150))
                 return BadRequest(new { Mensaje = "Uno o más datos del empleado superan el largo permitido" });
 
+            var tipoDocumento = NormalizeTipoDocumento(dto.TipoDocumento);
+            if (tipoDocumento == null)
+                return BadRequest(new { Mensaje = "El tipo de documento debe ser RUN o RUT" });
+
             var employee = await _context.EmpEmpleados.FindAsync(id);
             if (employee == null)
                 return NotFound(new { Mensaje = "Empleado no encontrado" });
 
+            employee.EsExterno = dto.EsExterno;
+            employee.TipoDocumento = tipoDocumento;
             employee.Nombres = dto.Nombres.Trim();
             employee.Alias = string.IsNullOrWhiteSpace(dto.Alias) ? null : dto.Alias.Trim();
             employee.Apellido1 = dto.Apellido1.Trim();
@@ -278,6 +297,13 @@ namespace SieteVidasAPI.Controllers
 
             await _context.SaveChangesAsync();
             return Ok(new { Mensaje = $"Estado del empleado actualizado a {(active ? "Activo" : "Inactivo")}" });
+        }
+
+        /// <summary>Normaliza el tipo de documento a "RUN"/"RUT"; devuelve null si no es válido.</summary>
+        private static string? NormalizeTipoDocumento(string? tipo)
+        {
+            var value = (tipo ?? "RUN").Trim().ToUpperInvariant();
+            return value is "RUN" or "RUT" ? value : null;
         }
     }
 }

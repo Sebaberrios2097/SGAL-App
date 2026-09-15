@@ -105,12 +105,13 @@ namespace SieteVidasAPI.Services
                 // unidad de inventario. El snapshot permite reponer exactamente al anular.
                 if (prod.RequiereReceta == true)
                 {
-                    // Compone la receta del producto con la de su preparación base (recursivo).
-                    var (materialesReceta, errorReceta) = await ComponerRecetaAsync(prod.IdProducto, prod.NombreProducto, cancellationToken);
-                    if (errorReceta != null)
-                        return new SaleLinesResult { Error = errorReceta };
+                    // Cada producto con receta tiene la suya propia e independiente.
+                    var receta = await CargarRecetaActivaAsync(prod.IdProducto, cancellationToken);
+                    if (receta == null || receta.InvMaterialesReceta.Count == 0)
+                        return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no tiene una receta activa configurada." };
+                    var materialesReceta = receta.InvMaterialesReceta.ToList();
 
-                    var gruposAlternativas = materialesReceta!
+                    var gruposAlternativas = materialesReceta
                         .Where(m => m.IdMateriaPrimaReemplazada.HasValue)
                         .GroupBy(m => m.IdMateriaPrimaReemplazada!.Value)
                         .ToDictionary(g => g.Key, g => g.ToList());
@@ -123,7 +124,7 @@ namespace SieteVidasAPI.Services
 
                     var seleccionPorBase = selecciones.ToDictionary(s => s.IdMateriaPrimaBase);
 
-                    foreach (var materialBase in materialesReceta!.Where(m => !m.IdMateriaPrimaReemplazada.HasValue))
+                    foreach (var materialBase in materialesReceta.Where(m => !m.IdMateriaPrimaReemplazada.HasValue))
                     {
                         if (!gruposAlternativas.TryGetValue(materialBase.IdMateriaPrima, out var alternativas))
                         {
@@ -219,35 +220,39 @@ namespace SieteVidasAPI.Services
                     if (!prod.AceptaIngredientesExtra)
                         return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no admite ingredientes extra." };
 
-                    var extras = await _context.InvIngredientesExtra
-                        .Include(e => e.IdUnidadMedidaNavigation)
-                        .Include(e => e.IdMateriaPrimaNavigation)
-                            .ThenInclude(m => m.IdUnidadMedidaNavigation)
-                        .Where(e => idsExtra.Contains(e.IdIngredienteExtra))
+                    // Los extras son materias primas marcadas con "Uso para ingrediente extra".
+                    var extras = await _context.InvMateriaPrima
+                        .Include(m => m.IdUnidadMedidaNavigation)
+                        .Include(m => m.IdUnidadIngredienteExtraNavigation)
+                        .Where(m => idsExtra.Contains(m.IdMateriaPrima))
                         .ToListAsync(cancellationToken);
 
                     foreach (var idExtra in idsExtra)
                     {
-                        var extra = extras.FirstOrDefault(e => e.IdIngredienteExtra == idExtra);
-                        if (extra == null || !extra.Activo)
+                        var extra = extras.FirstOrDefault(m => m.IdMateriaPrima == idExtra);
+                        if (extra == null || !extra.UsoIngredienteExtra
+                            || extra.PrecioIngredienteExtra == null
+                            || extra.IdUnidadIngredienteExtraNavigation == null)
                             return new SaleLinesResult { Error = $"El ingrediente extra seleccionado para {prod.NombreProducto} no existe o no está activo." };
 
                         // La materia prima marcada como no-descontable (p. ej. agua) no valida ni
-                        // descuenta stock; el recargo del extra se aplica igual más abajo.
-                        if (!extra.IdMateriaPrimaNavigation.NoDescuentaInventario)
+                        // descuenta stock (su cantidad es referencial); el recargo se aplica igual.
+                        if (!extra.NoDescuentaInventario)
                         {
+                            if (extra.CantidadIngredienteExtra == null)
+                                return new SaleLinesResult { Error = $"El ingrediente extra {extra.NombreMaterial} no tiene una cantidad configurada." };
                             var requiredExtra = decimal.Round(
-                                extra.CantidadRequerida * item.Cantidad
-                                * extra.IdUnidadMedidaNavigation.FactorConversionBase
-                                / extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.FactorConversionBase,
+                                extra.CantidadIngredienteExtra.Value * item.Cantidad
+                                * extra.IdUnidadIngredienteExtraNavigation.FactorConversionBase
+                                / extra.IdUnidadMedidaNavigation.FactorConversionBase,
                                 3,
                                 MidpointRounding.AwayFromZero);
                             if (requiredExtra <= 0)
-                                return new SaleLinesResult { Error = $"La cantidad configurada para el extra {extra.NombreIngredienteExtra} es demasiado pequeña." };
-                            if (extra.IdMateriaPrimaNavigation.Cantidad < requiredExtra)
-                                return new SaleLinesResult { Error = $"Stock insuficiente de {extra.IdMateriaPrimaNavigation.NombreMaterial} para el extra {extra.NombreIngredienteExtra}. Se requieren {requiredExtra} {extra.IdMateriaPrimaNavigation.IdUnidadMedidaNavigation.Abreviacion}." };
+                                return new SaleLinesResult { Error = $"La cantidad configurada para el extra {extra.NombreMaterial} es demasiado pequeña." };
+                            if (extra.Cantidad < requiredExtra)
+                                return new SaleLinesResult { Error = $"Stock insuficiente de {extra.NombreMaterial} para el extra. Se requieren {requiredExtra} {extra.IdUnidadMedidaNavigation.Abreviacion}." };
 
-                            extra.IdMateriaPrimaNavigation.Cantidad -= requiredExtra;
+                            extra.Cantidad -= requiredExtra;
                             detail.VenDetalleVentaMateriales.Add(new VenDetalleVentaMateriales
                             {
                                 IdMateriaPrima = extra.IdMateriaPrima,
@@ -258,10 +263,10 @@ namespace SieteVidasAPI.Services
                         }
                         detail.VenDetalleVentaIngrediente.Add(new VenDetalleVentaIngrediente
                         {
-                            IdIngredienteExtra = extra.IdIngredienteExtra,
-                            Precio = extra.Precio
+                            IdMateriaPrima = extra.IdMateriaPrima,
+                            Precio = extra.PrecioIngredienteExtra.Value
                         });
-                        recargoUnitario += extra.Precio;
+                        recargoUnitario += extra.PrecioIngredienteExtra.Value;
                     }
                 }
 
@@ -304,47 +309,6 @@ namespace SieteVidasAPI.Services
                 .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdUnidadMedidaNavigation)
                 .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdMateriaPrimaNavigation).ThenInclude(mp => mp.IdUnidadMedidaNavigation)
                 .FirstOrDefaultAsync(r => r.IdProducto == idProducto && r.Estado, cancellationToken);
-        }
-
-        /// <summary>Carga una receta activa por su Id (usado para recorrer la cadena de preparaciones base).</summary>
-        private Task<InvRecetas?> CargarRecetaActivaPorIdAsync(int idReceta, CancellationToken cancellationToken)
-        {
-            return _context.InvRecetas
-                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdUnidadMedidaNavigation)
-                .Include(r => r.InvMaterialesReceta).ThenInclude(m => m.IdMateriaPrimaNavigation).ThenInclude(mp => mp.IdUnidadMedidaNavigation)
-                .FirstOrDefaultAsync(r => r.IdReceta == idReceta && r.Estado, cancellationToken);
-        }
-
-        /// <summary>
-        /// Compone la lista de materiales a consumir para un producto: los de su propia receta
-        /// más los de su preparación base, recorriendo la cadena de bases (receta -> receta).
-        /// Detecta ciclos y exige que cada preparación de la cadena tenga materiales activos.
-        /// </summary>
-        private async Task<(List<InvMaterialesReceta>? Materiales, string? Error)> ComponerRecetaAsync(
-            int idProducto, string nombreProducto, CancellationToken cancellationToken)
-        {
-            var recetaRaiz = await CargarRecetaActivaAsync(idProducto, cancellationToken);
-            if (recetaRaiz == null || recetaRaiz.InvMaterialesReceta.Count == 0)
-                return (null, $"El producto {nombreProducto} no tiene una receta activa configurada.");
-
-            var materiales = new List<InvMaterialesReceta>(recetaRaiz.InvMaterialesReceta);
-            var visitados = new HashSet<int> { recetaRaiz.IdReceta };
-            int? actual = recetaRaiz.IdRecetaBase;
-
-            while (actual.HasValue)
-            {
-                if (!visitados.Add(actual.Value))
-                    return (null, $"La receta de {nombreProducto} tiene una preparación base que forma un ciclo.");
-
-                var receta = await CargarRecetaActivaPorIdAsync(actual.Value, cancellationToken);
-                if (receta == null || receta.InvMaterialesReceta.Count == 0)
-                    return (null, $"La preparación base de {nombreProducto} no tiene una receta activa configurada.");
-
-                materiales.AddRange(receta.InvMaterialesReceta);
-                actual = receta.IdRecetaBase;
-            }
-
-            return (materiales, null);
         }
 
         /// <summary>

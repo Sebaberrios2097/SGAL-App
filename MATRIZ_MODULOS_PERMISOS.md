@@ -21,11 +21,11 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Código | Módulo visible | Pantallas principales | Acceso actual en frontend |
 |---|---|---|---|
 | `inicio` | Inicio y panel administrativo | `/dashboard` | `inicio.dashboard.ver`; es el respaldo de `/` cuando el usuario no opera turnos |
-| `usuarios` | Empleados | `/employees`, `/employees/:id/edit` | Permisos modulares `usuarios.*` |
+| `usuarios` | Usuarios (empleados y externos) | `/employees`, `/employees/:id/edit` | Permisos modulares `usuarios.*` |
 | `roles` | Roles | `/roles` | `ADMINISTRADOR` |
-| `inventario` | Productos, categorías y descuentos | `/inventory` | `ADMINISTRADOR` |
-| `recetas` | Recetas | `/recipes`, `/inventory/products/:idProducto/recipe` | `ADMINISTRADOR` |
-| `ingredientes_extra` | Ingredientes extra | `/settings/extra-ingredients` | `ADMINISTRADOR` |
+| `inventario` | Productos y descuentos (categorías en Configuración) | `/inventory`, `/settings/product-categories` | `ADMINISTRADOR` |
+| `recetas` | Recetas (una por producto, sin preparaciones base) | `/recipes`, `/inventory/products/:idProducto/recipe` | `ADMINISTRADOR` |
+| `ingredientes_extra` | Ingredientes extra (materias primas marcadas) | `/settings/extra-ingredients` | `ADMINISTRADOR` |
 | `configuracion_inventario` | Parámetros de inventario | `/settings/:section` | `ADMINISTRADOR` |
 | `proveedores` | Proveedores | `/providers` | `ADMINISTRADOR` |
 | `ordenes_compra` | Órdenes de compra | `/purchase-orders`, `/purchase-orders/:id` | `ADMINISTRADOR` |
@@ -71,7 +71,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Asignar o quitar roles a una cuenta | `usuarios.roles.asignar` | `POST /api/role/users/{userId}/roles` |
 | Restablecer contraseña | `usuarios.password.restablecer` | `POST /api/auth/change-password` |
 
-La edición separa los permisos sobre datos personales, cuenta de acceso y contraseña para que cada rol pueda recibir solo la capacidad necesaria.
+La edición separa los permisos sobre datos personales, cuenta de acceso y contraseña para que cada rol pueda recibir solo la capacidad necesaria. La tabla `Emp_Empleados` aloja tanto a **empleados** de la cafetería como a **externos** (`Es_Externo`), que también acceden al sistema con sus roles. Cada registro indica su tipo de documento en `Tipo_Documento` (`RUN` persona natural / `RUT` empresa); el identificador sigue siendo obligatorio y único para todos.
 
 ### 4. Roles y permisos
 
@@ -91,7 +91,7 @@ La edición separa los permisos sobre datos personales, cuenta de acceso y contr
 
 | Recurso | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|---|
-| Productos | Listar y ver stock/configuración | `inventario.productos.ver` | `GET /api/product` |
+| Productos | Listar y ver stock/configuración (el código es opcional y no se muestra en la lista) | `inventario.productos.ver` | `GET /api/product` |
 | Productos | Crear | `inventario.productos.crear` | `POST /api/product` |
 | Productos | Editar | `inventario.productos.editar` | `PUT /api/product/{id}` |
 | Productos | Activar o desactivar | `inventario.productos.estado.modificar` | `PUT /api/product/{id}/status` |
@@ -106,28 +106,30 @@ La edición separa los permisos sobre datos personales, cuenta de acceso y contr
 
 No existe actualmente un endpoint para editar un descuento; solo se puede crear, cambiar su estado o eliminarlo.
 
+El mantenedor de **categorías de producto** se muestra en la sección **Configuración** del menú (`/settings/product-categories`, permiso `inventario.categorias.ver`), separado de la pantalla de productos. Los endpoints y permisos `inventario.categorias.*` no cambian.
+
 ### 6. Recetas
 
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
 | Listar recetas | `recetas.ver` | `GET /api/recipe` |
 | Ver receta de un producto | `recetas.ver` | `GET /api/recipe/product/{idProducto}` |
+| Productos con receta pendientes (sin receta activa) | `recetas.editar` | `GET /api/recipe/products-without-recipe` |
 | Crear o reemplazar la receta de un producto | `recetas.editar` | `PUT /api/recipe/product/{idProducto}` |
 
-La edición contempla ingredientes base, cantidades y alternativas de ingredientes.
+Cada producto con receta tiene su propia receta independiente y autocontenida. Se eliminó el concepto de "preparación base": la edición contempla ingredientes, cantidades y alternativas de ingredientes. Desde la vista de recetas se puede crear una receta para un producto que la requiere pero aún no la tiene.
 
 ### 6b. Ingredientes extra
 
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
-| Listar ingredientes extra | `ingredientes_extra.ver` | `GET /api/extra-ingredient` |
+| Listar materias primas marcadas como extra | `ingredientes_extra.ver` | `GET /api/extra-ingredient` |
 | Opciones de formulario (materias primas y unidades) | `ingredientes_extra.ver` | `GET /api/extra-ingredient/options` |
 | Catálogo activo para el punto de venta | `ventas.operar` \| `ventas.crear` \| `ingredientes_extra.ver` | `GET /api/extra-ingredient/active` |
-| Crear ingrediente extra | `ingredientes_extra.crear` | `POST /api/extra-ingredient` |
-| Editar ingrediente extra | `ingredientes_extra.editar` | `PUT /api/extra-ingredient/{id}` |
-| Activar o desactivar | `ingredientes_extra.estado.modificar` | `PUT /api/extra-ingredient/{id}/status` |
+| Marcar/editar una materia prima como extra | `ingredientes_extra.crear` \| `ingredientes_extra.editar` | `PUT /api/extra-ingredient/{idMateriaPrima}` |
+| Quitar una materia prima del catálogo de extras | `ingredientes_extra.estado.modificar` | `PUT /api/extra-ingredient/{idMateriaPrima}/status` |
 
-Cada ingrediente extra descuenta **una** materia prima (cantidad + unidad fija) y suma su precio como recargo. El producto declara con una bandera (`Inv_Productos.Acepta_Ingredientes_Extra`, editable con `inventario.productos.editar`) si admite extras; si la tiene, en la venta cada línea del carrito puede activar/desactivar **cualquier** extra activo del catálogo. El consumo de materia prima se registra en `Ven_Detalle_Venta_Materiales` y la elección en `Ven_Detalle_Venta_Ingredientes`.
+Ya no existe una tabla propia de ingredientes extra: cualquier **materia prima** puede marcarse con `Inv_Materia_Prima.Uso_Ingrediente_Extra` y define su recargo (`Precio_Ingrediente_Extra`), la cantidad que consume (`Cantidad_Ingrediente_Extra`) y su unidad (`Id_Unidad_Ingrediente_Extra`). El producto declara con una bandera (`Inv_Productos.Acepta_Ingredientes_Extra`, editable con `inventario.productos.editar`) si admite extras; si la tiene, en la venta cada línea del carrito puede activar/desactivar **cualquier** extra activo del catálogo. El consumo de materia prima se registra en `Ven_Detalle_Venta_Materiales` y la elección en `Ven_Detalle_Venta_Ingredientes` (que ahora referencia `Id_Materia_Prima`).
 
 ### 7. Configuración de inventario
 
