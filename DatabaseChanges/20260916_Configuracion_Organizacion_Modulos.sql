@@ -1,6 +1,3 @@
-SET XACT_ABORT ON;
-BEGIN TRANSACTION;
-
 /*
   Configuración de una instalación SGAL.
 
@@ -17,6 +14,14 @@ IF COL_LENGTH('dbo.Seg_Modulos', 'Descripcion') IS NULL
 IF COL_LENGTH('dbo.Seg_Modulos', 'Es_Nucleo') IS NULL
     ALTER TABLE dbo.Seg_Modulos ADD Es_Nucleo bit NOT NULL
         CONSTRAINT DF_Seg_Modulos_Es_Nucleo DEFAULT (0);
+
+/* SQL Server compila todo el lote antes de ejecutar los ALTER TABLE. El cambio
+   de lote permite que las columnas nuevas estén disponibles para los INSERT y
+   UPDATE posteriores. Este archivo debe ejecutarse con SSMS o sqlcmd. */
+GO
+
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
 
 IF OBJECT_ID('dbo.Org_Configuracion', 'U') IS NULL
 BEGIN
