@@ -16,13 +16,14 @@ namespace SgalApp.Infrastructure.Extensions
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            //// Obtener pass de usuario desde variable de entorno
-            //var PASS = Environment.GetEnvironmentVariable("PASS") ?? "";
+            string sgalDatabase = configuration.GetConnectionString("SgalConnection")
+                ?? throw new InvalidOperationException(
+                    "No se configuró ConnectionStrings:SgalConnection. " +
+                    "Use User Secrets en desarrollo o ConnectionStrings__SgalConnection en el servidor.");
 
-            //// Cadenas de conexión con reemplazo de caracteres por pass designada
-            //string db = configuration.GetConnectionString("ConnectionString")?.Replace("{PASS}", PASS) ?? "";
-
-            string sgalDatabase = configuration.GetConnectionString("SgalConnection") ?? "";
+            if (string.IsNullOrWhiteSpace(sgalDatabase))
+                throw new InvalidOperationException(
+                    "ConnectionStrings:SgalConnection está vacía. Configure una cadena SQL Server válida.");
 
             // Contextos
             services.AddDbContext<SgalContext>(options =>

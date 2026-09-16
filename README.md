@@ -32,4 +32,12 @@ npm run dev
 
 Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`; la configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`.
 
+En desarrollo, configura la conexión sin guardarla en Git:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:SgalConnection" "Server=SERVIDOR;Database=SGAL;..." --project SgalApp.Api/SgalApp.Api.csproj
+```
+
+En Docker o en el servidor se utiliza la variable `ConnectionStrings__SgalConnection`, incluida como referencia en `.env.example`. Si falta la configuración, la API se detiene al iniciar con un mensaje explícito en lugar de fallar al atender la primera solicitud.
+
 No se incluyen credenciales ni datos del cliente original. Usa `.env.example` como base para la configuración privada de cada instalación.
