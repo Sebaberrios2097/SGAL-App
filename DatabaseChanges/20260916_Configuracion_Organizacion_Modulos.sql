@@ -21,7 +21,8 @@ IF COL_LENGTH('dbo.Seg_Modulos', 'Es_Nucleo') IS NULL
 GO
 
 SET XACT_ABORT ON;
-BEGIN TRANSACTION;
+BEGIN TRY
+    BEGIN TRANSACTION;
 
 IF OBJECT_ID('dbo.Org_Configuracion', 'U') IS NULL
 BEGIN
@@ -79,7 +80,7 @@ BEGIN
         CONSTRAINT FK_Seg_Modulos_Dependencias_Modulo FOREIGN KEY (Id_Modulo)
             REFERENCES dbo.Seg_Modulos(Id_Modulo) ON DELETE CASCADE,
         CONSTRAINT FK_Seg_Modulos_Dependencias_Requerido FOREIGN KEY (Id_Modulo_Requerido)
-            REFERENCES dbo.Seg_Modulos(Id_Modulo_Requerido)
+            REFERENCES dbo.Seg_Modulos(Id_Modulo)
     );
 END;
 
@@ -186,4 +187,10 @@ WHERE UPPER(r.Nombre_Rol) = 'ADMINISTRADOR'
       WHERE x.Id_Rol_Usuario = r.Id_Rol_Usuario AND x.Id_Permiso = p.Id_Permiso
   );
 
-COMMIT;
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0
+        ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
