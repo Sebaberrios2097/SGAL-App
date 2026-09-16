@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { 
-  Plus, 
   Edit2, 
   Trash2, 
   AlertCircle,
-  X,
   Check,
   ShieldCheck
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import DataTable from '../components/DataTable';
 
 const RoleManagement = () => {
+  const { can } = useAuth();
+  const location = useLocation();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,18 +23,9 @@ const RoleManagement = () => {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [roleInputError, setRoleInputError] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 5;
 
   useEffect(() => {
-    const totalPages = Math.ceil(roles.length / ITEMS_PER_PAGE);
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [roles.length, currentPage]);
-
-  useEffect(() => {
-    document.title = "Mantenedor de Roles - Siete Vidas";
+    document.title = `Mantenedor de roles - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
     fetchRoles();
   }, []);
 
@@ -142,7 +136,7 @@ const RoleManagement = () => {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className={location.state?.fromPermissions ? 'role-management-return' : 'animate-fade-in'}>
       <header className="page-header">
         <div>
           <h2 className="page-title text-gradient">Mantenedor de Roles</h2>
@@ -164,7 +158,7 @@ const RoleManagement = () => {
         alignItems: 'start'
       }}>
         {/* Form panel */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
+        {(can('roles.crear') || can('roles.editar')) && <div className="glass-panel" style={{ padding: '24px' }}>
           <h3 style={{ fontSize: '1.2rem', marginBottom: '16px', fontWeight: '700' }}>
             {editingRole ? 'Editar Rol' : 'Crear Nuevo Rol'}
           </h3>
@@ -208,7 +202,7 @@ const RoleManagement = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '10px' }}>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '10px' }} disabled={editingRole ? !can('roles.editar') : !can('roles.crear')}>
                 {editingRole ? 'Actualizar' : 'Guardar'}
               </button>
               {editingRole && (
@@ -218,7 +212,7 @@ const RoleManagement = () => {
               )}
             </div>
           </form>
-        </div>
+        </div>}
 
         {/* List panel */}
         <div>
@@ -234,94 +228,32 @@ const RoleManagement = () => {
               }} />
             </div>
           ) : (
-            <div className="table-container">
-              <div className="table-scroll-wrapper">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Nombre del Rol</th>
-                      <th className="col-actions">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roles.length === 0 ? (
-                      <tr>
-                        <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>
-                          No hay roles registrados en el sistema.
-                        </td>
-                      </tr>
-                    ) : (
-                      roles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((role) => (
-                        <tr key={role.idRolUsuario}>
-                          <td style={{ fontWeight: '600', color: 'var(--text-muted)' }}>#{role.idRolUsuario}</td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '600' }}>
-                              <ShieldCheck size={18} color="var(--primary-color)" />
-                              <span>{role.nombreRol}</span>
-                            </div>
-                          </td>
-                          <td className="col-actions">
-                            <div className="actions-wrapper">
-                              <button 
-                                onClick={() => handleEditClick(role)}
-                                className="btn btn-secondary" 
-                                style={{ padding: '8px', borderRadius: '8px' }}
-                                data-tooltip="Editar"
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteClick(role)}
-                                className="btn btn-danger" 
-                                style={{ padding: '8px', borderRadius: '8px' }}
-                                data-tooltip="Eliminar"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 16px',
-                borderTop: '1.5px solid var(--panel-border)',
-                backgroundColor: 'rgba(0, 0, 0, 0.01)',
-                borderRadius: '0 0 12px 12px'
-              }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 12px', fontSize: '0.8rem', height: '32px' }}
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                >
-                  Anterior
-                </button>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                  Página {currentPage} de {Math.ceil(roles.length / ITEMS_PER_PAGE)}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 12px', fontSize: '0.8rem', height: '32px' }}
-                  disabled={currentPage === Math.ceil(roles.length / ITEMS_PER_PAGE)}
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(roles.length / ITEMS_PER_PAGE)))}
-                >
-                  Siguiente
-                </button>
-              </div>
-            </div>
+            <DataTable
+              rows={roles}
+              rowKey={role => role.idRolUsuario}
+              search={role => role.nombreRol}
+              searchPlaceholder="Buscar rol…"
+              emptyMessage="No hay roles registrados en el sistema."
+              columns={[
+                { key: 'nombre', header: 'Nombre del Rol', sortValue: r => r.nombreRol, cell: r => (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600 }}>
+                    <ShieldCheck size={18} color="var(--primary-color)" />
+                    <span>{r.nombreRol}</span>
+                  </div>
+                ) },
+                { key: 'acciones', header: 'Acciones', headerClassName: 'col-actions', cellClassName: 'col-actions', cell: r => (
+                  <div className="actions-wrapper">
+                    {can('roles.permisos.asignar') && <Link to={`/roles/${r.idRolUsuario}/permissions`} state={{ fromRoles: true }} className="btn btn-secondary" style={{ padding: '8px', borderRadius: '8px' }} title="Administrar permisos" aria-label={`Administrar permisos de ${r.nombreRol}`}><ShieldCheck size={14} /></Link>}
+                    {can('roles.editar') && <button onClick={() => handleEditClick(r)} className="btn btn-secondary" style={{ padding: '8px', borderRadius: '8px' }} title="Editar"><Edit2 size={14} /></button>}
+                    {can('roles.eliminar') && <button onClick={() => handleDeleteClick(r)} className="btn btn-danger" style={{ padding: '8px', borderRadius: '8px' }} title="Eliminar"><Trash2 size={14} /></button>}
+                  </div>
+                ) }
+              ]}
+            />
           )}
         </div>
       </div>
+
     </div>
   );
 };

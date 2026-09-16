@@ -1,0 +1,38 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace SgalApp.Api.DTOs;
+
+public sealed class UpdateOrganizationBrandingDto
+{
+    [Required, StringLength(120)]
+    public string NombreComercial { get; set; } = string.Empty;
+
+    [StringLength(180)]
+    public string? RazonSocial { get; set; }
+
+    [StringLength(300)]
+    public string? Descripcion { get; set; }
+
+    [StringLength(250)]
+    public string? TextoPieDocumentos { get; set; }
+
+    [StringLength(160)]
+    public string? ContactoPublico { get; set; }
+
+    [Required, StringLength(7, MinimumLength = 7)]
+    public string ColorPrimario { get; set; } = "#1F4E5F";
+
+    [Required, StringLength(7, MinimumLength = 7)]
+    public string ColorSecundario { get; set; } = "#163A47";
+
+    [Required, StringLength(7, MinimumLength = 7)]
+    public string ColorAcento { get; set; } = "#D97706";
+
+    [Required, StringLength(7, MinimumLength = 7)]
+    public string ColorFondo { get; set; } = "#F8FAFC";
+}
+
+public sealed class UpdateOrganizationModulesDto
+{
+    public List<string> CodigosHabilitados { get; set; } = [];
+}

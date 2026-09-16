@@ -1,5 +1,5 @@
 /* ============================================================================
-   RESET TOTAL DE LA BASE DE DATOS — Siete Vidas
+   RESET TOTAL DE LA BASE DE DATOS — SGAL App
    ----------------------------------------------------------------------------
    Vacía toda la data operacional, transaccional y maestra para "empezar de 0",
    conservando ÚNICAMENTE los catálogos que la aplicación referencia por Id fijo

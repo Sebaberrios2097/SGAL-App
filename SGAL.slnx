@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SgalApp.Infrastructure/SgalApp.Infrastructure.csproj" />
+  <Project Path="SgalApp.Api/SgalApp.Api.csproj" />
+</Solution>

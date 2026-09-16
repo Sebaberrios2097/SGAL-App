@@ -1,78 +1,273 @@
-import { Banknote, CalendarDays, CreditCard, DollarSign, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
+import {
+  Banknote, CalendarDays, Coins, CreditCard, DollarSign, ReceiptText, Scale,
+  ShoppingBag, TrendingDown, TrendingUp, Wallet
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
+  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
+} from 'recharts';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
-const currentMonth = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-};
+const shortMoney = value => Math.abs(value) >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const COLORS = ['var(--primary-color)', '#0d8a4d', '#52b788', '#95d5b2', '#2563eb', '#d97706'];
 
-const MetricCard = ({ icon: Icon, label, value, detail, color = '#004c25' }) => <div className="card" style={{ padding: '20px', display: 'flex', gap: '15px', alignItems: 'center' }}>
-  <div style={{ width: '46px', height: '46px', flex: '0 0 auto', borderRadius: '13px', background: `${color}14`, display: 'grid', placeItems: 'center' }}><Icon size={23} color={color} /></div>
-  <div><div style={{ color: 'var(--text-muted)', fontSize: '.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div><div style={{ fontSize: '1.55rem', fontWeight: 800, lineHeight: 1.2 }}>{value}</div><div style={{ color: 'var(--text-muted)', fontSize: '.75rem', marginTop: '3px' }}>{detail}</div></div>
-</div>;
+const MetricCard = ({ icon: Icon, label, value, detail, color = 'var(--primary-color)' }) => (
+  <div className="card" style={{ padding: '18px', display: 'flex', gap: '14px', alignItems: 'center' }}>
+    <div style={{ width: '44px', height: '44px', flex: '0 0 auto', borderRadius: '13px', background: `${color}14`, display: 'grid', placeItems: 'center' }}><Icon size={22} color={color} /></div>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+      <div style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.2 }}>{value}</div>
+      {detail && <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', marginTop: '2px' }}>{detail}</div>}
+    </div>
+  </div>
+);
 
-const SalesLineChart = ({ data, days }) => {
-  const values = Array.from({ length: days }, (_, index) => data.find(item => item.dia === index + 1)?.monto || 0);
-  const max = Math.max(...values, 1);
-  const points = values.map((value, index) => `${40 + index * (700 / Math.max(days - 1, 1))},${180 - value / max * 135}`).join(' ');
-  return <div style={{ overflowX: 'auto' }}><svg viewBox="0 0 760 220" role="img" aria-label="Flujo de ventas diario" style={{ width: '100%', minWidth: '620px', display: 'block' }}>
-    {[0, .25, .5, .75, 1].map(level => <g key={level}><line x1="40" y1={180 - level * 135} x2="740" y2={180 - level * 135} stroke="#e2e8f0" strokeWidth="1" /><text x="34" y={184 - level * 135} textAnchor="end" fill="#64748b" fontSize="10">{max * level >= 1000 ? `${Math.round(max * level / 1000)}k` : Math.round(max * level)}</text></g>)}
-    <polygon points={`40,180 ${points} 740,180`} fill="rgba(0,76,37,.10)" />
-    <polyline points={points} fill="none" stroke="#006b37" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-    {values.map((value, index) => value > 0 && <circle key={index} cx={40 + index * (700 / Math.max(days - 1, 1))} cy={180 - value / max * 135} r="3.5" fill="#fff" stroke="#006b37" strokeWidth="2"><title>Día {index + 1}: {money(value)}</title></circle>)}
-    {values.map((_, index) => ((index + 1) === 1 || (index + 1) % 5 === 0 || index + 1 === days) && <text key={index} x={40 + index * (700 / Math.max(days - 1, 1))} y="203" textAnchor="middle" fill="#64748b" fontSize="10">{index + 1}</text>)}
-  </svg></div>;
-};
+const Toggle = ({ options, value, onChange }) => (
+  <div style={{ display: 'inline-flex', border: '1px solid var(--panel-border)', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
+    {options.map(o => (
+      <button key={o.value} type="button" onClick={() => onChange(o.value)} style={{
+        padding: '5px 11px', fontSize: '0.74rem', fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        background: value === o.value ? 'var(--primary-color)' : '#fff', color: value === o.value ? '#fff' : 'var(--text-muted)'
+      }}>{o.label}</button>
+    ))}
+  </div>
+);
 
-const Ranking = ({ items, nameKey, empty }) => {
-  const maximum = Math.max(...items.map(item => item.cantidad), 1);
-  return <div style={{ display: 'grid', gap: '14px' }}>{items.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '36px 0' }}>{empty}</div> : items.map((item, index) => <div key={item.idProducto || item.idCategoriaProducto}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '.84rem', marginBottom: '6px' }}><span><strong style={{ color: '#006b37', marginRight: '8px' }}>#{index + 1}</strong>{item[nameKey]}</span><span style={{ fontWeight: 700 }}>{item.cantidad} uds.</span></div>
-    <div style={{ height: '8px', borderRadius: '999px', background: '#e8eef0', overflow: 'hidden' }}><div style={{ height: '100%', width: `${item.cantidad / maximum * 100}%`, minWidth: '5px', borderRadius: 'inherit', background: index === 0 ? '#006b37' : index === 1 ? '#2c9461' : '#81b89b' }} /></div>
-    <div style={{ color: 'var(--text-muted)', fontSize: '.7rem', marginTop: '3px', textAlign: 'right' }}>{money(item.monto)}</div>
-  </div>)}</div>;
-};
+const ChartCard = ({ title, subtitle, icon: Icon, controls, children }) => (
+  <div className="card">
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        {Icon && <Icon size={18} color="var(--primary-color)" />}
+        <div><h3 style={{ margin: 0 }}>{title}</h3>{subtitle && <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', margin: '2px 0 0' }}>{subtitle}</p>}</div>
+      </div>
+      {controls}
+    </div>
+    {children}
+  </div>
+);
 
-const PaymentFlow = ({ items, total }) => <div style={{ display: 'grid', gap: '12px' }}>{items.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '28px' }}>Sin pagos registrados en el período.</div> : <>
-  <div style={{ display: 'flex', height: '18px', overflow: 'hidden', borderRadius: '999px', background: '#e2e8f0' }}>{items.map((item, index) => <div key={item.idMetodoPago} title={`${item.nombreMetodoPago}: ${money(item.monto)}`} style={{ width: `${item.monto / Math.max(total, 1) * 100}%`, background: ['#004c25', '#0d8a4d', '#52b788', '#95d5b2'][index % 4] }} />)}</div>
-  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px' }}>{items.map((item, index) => <div key={item.idMetodoPago} style={{ padding: '11px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '.75rem' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ['#004c25', '#0d8a4d', '#52b788', '#95d5b2'][index % 4] }} />{item.nombreMetodoPago}</div><strong>{money(item.monto)}</strong></div>)}</div>
-  </>}</div>;
+const axisProps = { fontSize: 11, stroke: '#94a3b8', tickLine: false };
+const tooltipStyle = { fontSize: '0.8rem', borderRadius: '10px', border: '1px solid var(--panel-border)' };
 
 const AdminDashboard = () => {
-  const [month, setMonth] = useState(currentMonth);
+  const today = useMemo(() => new Date(), []);
+  const [preset, setPreset] = useState('30d');
+  const [customFrom, setCustomFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29)));
+  const [customTo, setCustomTo] = useState(iso(today));
+  const [granularity, setGranularity] = useState('day');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [year, monthNumber] = month.split('-').map(Number);
+
+  // Toggles por gráfico
+  const [flowType, setFlowType] = useState('area');
+  const [salesType, setSalesType] = useState('bar');
+
+  const { from, to } = useMemo(() => {
+    const t = new Date();
+    if (preset === 'custom') return { from: customFrom, to: customTo };
+    if (preset === 'today') return { from: iso(t), to: iso(t) };
+    if (preset === '7d') { const s = new Date(t); s.setDate(s.getDate() - 6); return { from: iso(s), to: iso(t) }; }
+    if (preset === 'month') return { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), to: iso(new Date(t.getFullYear(), t.getMonth() + 1, 0)) };
+    const s = new Date(t); s.setDate(s.getDate() - 29); return { from: iso(s), to: iso(t) };
+  }, [preset, customFrom, customTo]);
 
   useEffect(() => {
-    document.title = 'Panel administrativo - Siete Vidas';
+    document.title = `Panel administrativo - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    if (!from || !to) return;
     setLoading(true); setError('');
-    fetch(`/api/admin-dashboard/monthly-summary?year=${year}&month=${monthNumber}`)
+    fetch(`/api/admin-dashboard/overview?from=${from}&to=${to}&granularity=${granularity}`)
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.mensaje || 'No fue posible cargar el panel.'); return result; })
       .then(setData).catch(err => setError(err.message)).finally(() => setLoading(false));
-  }, [year, monthNumber]);
+  }, [from, to, granularity]);
 
-  const monthLabel = useMemo(() => new Date(year, monthNumber - 1, 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }), [year, monthNumber]);
+  const rangeLabel = useMemo(() => {
+    if (!from || !to) return '';
+    const f = new Date(`${from}T00:00:00`), t = new Date(`${to}T00:00:00`);
+    return `${f.toLocaleDateString('es-CL')} – ${t.toLocaleDateString('es-CL')}`;
+  }, [from, to]);
+
+  const presets = [
+    { value: 'today', label: 'Hoy' },
+    { value: '7d', label: '7 días' },
+    { value: '30d', label: '30 días' },
+    { value: 'month', label: 'Este mes' },
+    { value: 'custom', label: 'Personalizado' }
+  ];
+
   return <div className="animate-fade-in">
-    <div className="page-header" style={{ alignItems: 'end' }}><div><h2 className="page-title">Panel administrativo</h2><p className="page-subtitle">Resumen de rendimiento de {monthLabel}.</p></div><div style={{ display: 'flex', gap: '10px', alignItems: 'end' }}><label className="input-group" style={{ margin: 0 }}><span className="input-label">Período</span><input className="input-field" type="month" value={month} onChange={event => setMonth(event.target.value)} /></label><Link className="btn btn-secondary" to="/admin/turn-records"><CalendarDays size={17} /> Registros de turnos</Link></div></div>
-    {error && <div className="card" style={{ color: '#b91c1c' }}>{error}</div>}
+    <div style={{ marginBottom: '18px' }}>
+      <h2 className="page-title">Panel administrativo</h2>
+      <p className="page-subtitle" style={{ marginBottom: '14px' }}>Indicadores del negocio · {rangeLabel}</p>
+      <div className="card" style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <span className="input-label">Período</span>
+          <Toggle options={presets} value={preset} onChange={setPreset} />
+        </div>
+        {preset === 'custom' && <>
+          <label className="input-group" style={{ margin: 0 }}><span className="input-label">Desde</span><input className="input-field" type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)} /></label>
+          <label className="input-group" style={{ margin: 0 }}><span className="input-label">Hasta</span><input className="input-field" type="date" value={customTo} min={customFrom} onChange={e => setCustomTo(e.target.value)} /></label>
+        </>}
+        <label className="input-group" style={{ margin: 0, marginLeft: 'auto' }}><span className="input-label">Agrupar</span>
+          <select className="input-field" value={granularity} onChange={e => setGranularity(e.target.value)}>
+            <option value="day">Por día</option>
+            <option value="week">Por semana</option>
+            <option value="month">Por mes</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    {error && <div className="card" style={{ color: '#b91c1c', marginBottom: '16px' }}>{error}</div>}
     {loading ? <div className="card" style={{ textAlign: 'center' }}>Preparando indicadores…</div> : data && <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: '16px', marginBottom: '18px' }}>
-        <MetricCard icon={DollarSign} label="Flujo del mes" value={money(data.totalVentas)} detail="Ventas terminadas" />
-        <MetricCard icon={ShoppingBag} label="Cantidad de ventas" value={data.cantidadVentas.toLocaleString('es-CL')} detail="Operaciones completadas" color="#0d8a4d" />
-        <MetricCard icon={ReceiptText} label="Ticket promedio" value={money(Math.round(data.ticketPromedio))} detail="Promedio por venta" color="#2563eb" />
-        <MetricCard icon={CalendarDays} label="Turnos registrados" value={data.cantidadTurnos} detail="Durante el período" color="#d97706" />
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+        <MetricCard icon={DollarSign} label="Ingresos" value={money(data.totalIngresos)} detail="Ventas terminadas" />
+        <MetricCard icon={TrendingDown} label="Egresos" value={money(data.totalEgresos)} detail="Compras recibidas" color="#dc2626" />
+        <MetricCard icon={Scale} label="Resultado" value={money(data.resultado)} detail="Ingresos − Egresos" color={data.resultado >= 0 ? '#0d8a4d' : '#dc2626'} />
+        <MetricCard icon={ShoppingBag} label="Ventas" value={Number(data.cantidadVentas).toLocaleString('es-CL')} detail="Operaciones" color="#2563eb" />
+        <MetricCard icon={ReceiptText} label="Ticket promedio" value={money(Math.round(data.ticketPromedio))} detail="Por venta" color="#0d8a4d" />
+        <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />
+        <MetricCard icon={Wallet} label="Diferencia de caja" value={money(data.diferenciaCajaTotal)} detail="Sobrante/faltante" color={data.diferenciaCajaTotal === 0 ? '#0d8a4d' : '#dc2626'} />
+        <MetricCard icon={CalendarDays} label="Turnos" value={data.cantidadTurnos} detail="En el período" color="#6d28d9" />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(290px, 1fr)', gap: '18px', marginBottom: '18px' }}>
-        <div className="card"><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}><div><h3>Flujo de ventas diario</h3><p style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>Ingresos por día del mes</p></div><TrendingUp color="#006b37" /></div><SalesLineChart data={data.ventasDiarias} days={data.periodo.dias} /></div>
-        <div className="card"><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '22px' }}><div><h3>Medios de pago</h3><p style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>Distribución del flujo</p></div><CreditCard color="#006b37" /></div><PaymentFlow items={data.metodosPago} total={data.totalVentas} /></div>
+
+      {/* Ingresos vs Egresos */}
+      <div style={{ marginBottom: '18px' }}>
+        <ChartCard title="Ingresos vs Egresos" subtitle="Flujo del negocio en el período" icon={TrendingUp}
+          controls={<Toggle options={[{ value: 'area', label: 'Área' }, { value: 'line', label: 'Línea' }, { value: 'bar', label: 'Barras' }]} value={flowType} onChange={setFlowType} />}>
+          <ResponsiveContainer width="100%" height={300}>
+            {flowType === 'bar' ? (
+              <BarChart data={data.series} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
+                <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
+                <Bar name="Ingresos" dataKey="ingresos" fill="var(--primary-color)" radius={[4, 4, 0, 0]} />
+                <Bar name="Egresos" dataKey="egresos" fill="#dc2626" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            ) : flowType === 'line' ? (
+              <LineChart data={data.series} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
+                <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
+                <Line name="Ingresos" dataKey="ingresos" stroke="var(--primary-color)" strokeWidth={2.5} dot={false} />
+                <Line name="Egresos" dataKey="egresos" stroke="#dc2626" strokeWidth={2.5} dot={false} />
+                <Line name="Resultado" dataKey="resultado" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+              </LineChart>
+            ) : (
+              <AreaChart data={data.series} margin={{ left: 4, right: 8 }}>
+                <defs>
+                  <linearGradient id="gIng" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--primary-color)" stopOpacity={0.3} /><stop offset="100%" stopColor="var(--primary-color)" stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gEgr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#dc2626" stopOpacity={0.25} /><stop offset="100%" stopColor="#dc2626" stopOpacity={0} /></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
+                <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
+                <Area name="Ingresos" dataKey="ingresos" stroke="var(--primary-color)" strokeWidth={2.5} fill="url(#gIng)" />
+                <Area name="Egresos" dataKey="egresos" stroke="#dc2626" strokeWidth={2.5} fill="url(#gEgr)" />
+              </AreaChart>
+            )}
+          </ResponsiveContainer>
+        </ChartCard>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '18px' }}>
-        <div className="card"><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><h3>Productos más vendidos</h3><p style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>Ordenados por unidades vendidas</p></div><ShoppingBag color="#006b37" /></div><Ranking items={data.productosMasVendidos} nameKey="nombreProducto" empty="No hay productos vendidos en este mes." /></div>
-        <div className="card"><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><h3>Categorías más vendidas</h3><p style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>Participación por unidades</p></div><Banknote color="#006b37" /></div><Ranking items={data.categoriasMasVendidas} nameKey="nombreCategoria" empty="No hay categorías vendidas en este mes." /></div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(280px, 1fr)', gap: '18px', marginBottom: '18px' }}>
+        {/* Ventas por período */}
+        <ChartCard title="Ventas por período" subtitle="Cantidad de operaciones" icon={ShoppingBag}
+          controls={<Toggle options={[{ value: 'bar', label: 'Barras' }, { value: 'line', label: 'Línea' }]} value={salesType} onChange={setSalesType} />}>
+          <ResponsiveContainer width="100%" height={260}>
+            {salesType === 'line' ? (
+              <LineChart data={data.series} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} allowDecimals={false} width={36} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line name="Ventas" dataKey="cantidadVentas" stroke="#2563eb" strokeWidth={2.5} dot={false} />
+              </LineChart>
+            ) : (
+              <BarChart data={data.series} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} allowDecimals={false} width={36} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar name="Ventas" dataKey="cantidadVentas" fill="#2563eb" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {/* Medios de pago */}
+        <ChartCard title="Medios de pago" subtitle="Distribución del flujo" icon={CreditCard}>
+          {data.metodosPago.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '60px 0' }}>Sin pagos en el período.</div> : <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie data={data.metodosPago} dataKey="monto" nameKey="nombreMetodoPago" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                {data.metodosPago.map((e, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
+            </PieChart>
+          </ResponsiveContainer>}
+        </ChartCard>
+      </div>
+
+      {/* Flujo de caja */}
+      <div style={{ marginBottom: '18px' }}>
+        <ChartCard title="Flujo de caja" subtitle="Cuadratura de turnos: esperado vs. real" icon={Wallet}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>EFECTIVO APERTURA</div><strong style={{ fontSize: '1.1rem' }}>{money(data.flujoCaja.efectivoApertura)}</strong></div>
+            <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>EFECTIVO CIERRE</div><strong style={{ fontSize: '1.1rem' }}>{money(data.flujoCaja.efectivoCierre)}</strong></div>
+            <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>DIFERENCIA TOTAL</div><strong style={{ fontSize: '1.1rem', color: data.diferenciaCajaTotal === 0 ? '#0d8a4d' : '#dc2626' }}>{money(data.diferenciaCajaTotal)}</strong></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '18px' }}>
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '.76rem', margin: '0 0 8px' }}>Esperado vs. real por método</p>
+              {data.flujoCaja.porMetodo.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin turnos cerrados en el período.</div> : <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={data.flujoCaja.porMetodo} margin={{ left: 4, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                  <XAxis dataKey="nombreMetodoPago" {...axisProps} /><YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
+                  <Bar name="Esperado" dataKey="esperado" fill="#95d5b2" radius={[4, 4, 0, 0]} />
+                  <Bar name="Real" dataKey="real" fill="var(--primary-color)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>}
+            </div>
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '.76rem', margin: '0 0 8px' }}>Diferencia de caja por día</p>
+              {data.flujoCaja.diferenciaPorDia.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin diferencias registradas.</div> : <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={data.flujoCaja.diferenciaPorDia} margin={{ left: 4, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
+                  <XAxis dataKey="fecha" {...axisProps} tickFormatter={d => new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' })} />
+                  <YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={money} labelFormatter={d => new Date(d).toLocaleDateString('es-CL')} />
+                  <Line name="Diferencia" dataKey="diferencia" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>}
+            </div>
+          </div>
+        </ChartCard>
+      </div>
+
+      {/* Rankings */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
+        <ChartCard title="Productos más vendidos" subtitle="Por unidades" icon={ShoppingBag}>
+          {data.productosMasVendidos.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin ventas en el período.</div> : <ResponsiveContainer width="100%" height={Math.max(200, data.productosMasVendidos.length * 34)}>
+            <BarChart data={data.productosMasVendidos} layout="vertical" margin={{ left: 8, right: 12 }}>
+              <XAxis type="number" {...axisProps} allowDecimals={false} />
+              <YAxis type="category" dataKey="nombreProducto" width={130} {...axisProps} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => n === 'monto' ? money(v) : v} />
+              <Bar dataKey="cantidad" name="Unidades" fill="var(--primary-color)" radius={[0, 5, 5, 0]} />
+            </BarChart>
+          </ResponsiveContainer>}
+        </ChartCard>
+        <ChartCard title="Categorías más vendidas" subtitle="Participación por unidades" icon={Banknote}>
+          {data.categoriasMasVendidas.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin ventas en el período.</div> : <ResponsiveContainer width="100%" height={280}>
+            <PieChart margin={{ top: 8, bottom: 8 }}>
+              <Pie data={data.categoriasMasVendidas} dataKey="cantidad" nameKey="nombreCategoria" cx="50%" cy="45%" outerRadius={90}>
+                {data.categoriasMasVendidas.map((e, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${v} uds.`} /><Legend verticalAlign="bottom" />
+            </PieChart>
+          </ResponsiveContainer>}
+        </ChartCard>
       </div>
     </>}
   </div>;

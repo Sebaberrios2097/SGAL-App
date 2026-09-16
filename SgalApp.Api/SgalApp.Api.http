@@ -1,0 +1,6 @@
+@SgalApp.Api_HostAddress = http://localhost:5136
+
+GET {{SgalApp.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

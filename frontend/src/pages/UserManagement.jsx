@@ -2,8 +2,8 @@ import {
     AlertCircle,
     Calendar,
     Check,
-    Key,
     Mail,
+    PencilLine,
     Phone,
     Plus,
     Shield,
@@ -13,10 +13,13 @@ import {
     X
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import DataTable from '../components/DataTable';
 
-const UserManagement = () => {
-  const { user: currentUser } = useAuth();
+const EmployeeManagement = () => {
+  const { can } = useAuth();
+  const location = useLocation();
   const [employees, setEmployees] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,13 +28,15 @@ const UserManagement = () => {
   // Modals state
   const [showAddEmpModal, setShowAddEmpModal] = useState(false);
   const [showRolesModal, setShowRolesModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSuccessUserModal, setShowSuccessUserModal] = useState(false);
 
   // New Employee state
+  const [newEmpEsExterno, setNewEmpEsExterno] = useState(false);
+  const [newEmpTipoDoc, setNewEmpTipoDoc] = useState('RUN');
   const [newEmpRut, setNewEmpRut] = useState('');
   const [newEmpDv, setNewEmpDv] = useState('');
   const [newEmpNombres, setNewEmpNombres] = useState('');
+  const [newEmpAlias, setNewEmpAlias] = useState('');
   const [newEmpAp1, setNewEmpAp1] = useState('');
   const [newEmpAp2, setNewEmpAp2] = useState('');
   const [newEmpPhone, setNewEmpPhone] = useState('');
@@ -39,28 +44,19 @@ const UserManagement = () => {
   const [addEmpError, setAddEmpError] = useState('');
   const [addEmpLoading, setAddEmpLoading] = useState(false);
 
-  // Selected User for Role/Password management
+  // Selected employee for role management
   const [selectedEmp, setSelectedEmp] = useState(null);
 
   // Roles assign state
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(false);
 
-  // Admin password reset state
-  const [adminNewPass, setAdminNewPass] = useState('');
-  const [adminConfirmNewPass, setAdminConfirmNewPass] = useState('');
-  const [passResetError, setPassResetError] = useState('');
-  const [passResetLoading, setPassResetLoading] = useState(false);
-  const [passResetSuccess, setPassResetSuccess] = useState('');
-
   // Created User success display state
   const [createdUserInfo, setCreatedUserInfo] = useState(null);
 
-  // Pagination and Contact state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Contact state
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactEmp, setContactEmp] = useState(null);
-  const ITEMS_PER_PAGE = 5;
 
   // Wizard state for registration
   const [wizardStep, setWizardStep] = useState(1);
@@ -69,26 +65,17 @@ const UserManagement = () => {
 
   // Form validation errors state
   const [formErrors, setFormErrors] = useState({});
-  const [passErrors, setPassErrors] = useState({});
 
   const openContactModal = (emp) => {
     setContactEmp(emp);
     setShowContactModal(true);
   };
 
-  // Reset pagination if employees count changes
   useEffect(() => {
-    const totalPages = Math.ceil(employees.length / ITEMS_PER_PAGE);
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [employees.length, currentPage]);
-
-  useEffect(() => {
-    document.title = "Gestión de Usuarios - Siete Vidas";
+    document.title = `Usuarios - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
     fetchEmployees();
-    fetchRoles();
-  }, []);
+    if (can('roles.ver')) fetchRoles();
+  }, [can]);
 
   const fetchEmployees = async () => {
     try {
@@ -169,7 +156,10 @@ const UserManagement = () => {
         body: JSON.stringify({
           rut: parseInt(newEmpRut, 10),
           dv: newEmpDv.toUpperCase(),
+          esExterno: newEmpEsExterno,
+          tipoDocumento: newEmpTipoDoc,
           nombres: newEmpNombres,
+          alias: newEmpAlias.trim() || null,
           apellido1: newEmpAp1,
           apellido2: newEmpAp2 || null,
           numeroTelefono: newEmpPhone ? parseInt(newEmpPhone, 10) : null,
@@ -249,9 +239,12 @@ const UserManagement = () => {
     setWizardStep(1);
     setWizardEmployee(null);
     setWizardRoles([]);
+    setNewEmpEsExterno(false);
+    setNewEmpTipoDoc('RUN');
     setNewEmpRut('');
     setNewEmpDv('');
     setNewEmpNombres('');
+    setNewEmpAlias('');
     setNewEmpAp1('');
     setNewEmpAp2('');
     setNewEmpPhone('');
@@ -386,71 +379,6 @@ const UserManagement = () => {
     }
   };
 
-  const openPasswordModal = (emp) => {
-    setSelectedEmp(emp);
-    setAdminNewPass('');
-    setAdminConfirmNewPass('');
-    setPassResetError('');
-    setPassResetSuccess('');
-    setPassErrors({});
-    setShowPasswordModal(true);
-  };
-
-  const handleAdminResetPassword = async (e) => {
-    e.preventDefault();
-    const errors = {};
-    if (!adminNewPass) errors.newPass = 'La contraseña es obligatoria';
-    if (!adminConfirmNewPass) errors.confirmPass = 'Debe confirmar la contraseña';
-
-    if (adminNewPass && adminNewPass.length < 4) {
-      errors.newPass = 'La contraseña debe tener al menos 4 caracteres';
-    }
-
-    if (adminNewPass && adminConfirmNewPass && adminNewPass !== adminConfirmNewPass) {
-      errors.confirmPass = 'Las contraseñas no coinciden';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setPassErrors(errors);
-      setPassResetError('Por favor corrija los errores marcados.');
-      return;
-    }
-
-    setPassErrors({});
-    setPassResetError('');
-    setPassResetLoading(true);
-
-    try {
-      const response = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          idUsuario: selectedEmp.usuario.idUsuario,
-          passActual: '', // Not required as admin is true
-          passNueva: adminNewPass,
-          esAdmin: true
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.mensaje || 'Error al reestablecer contraseña');
-      }
-
-      setPassResetSuccess('Contraseña restablecida con éxito');
-      setTimeout(() => {
-        setShowPasswordModal(false);
-      }, 1500);
-    } catch (err) {
-      setPassResetError(err.message);
-    } finally {
-      setPassResetLoading(false);
-    }
-  };
-
   const formatRut = (rut, dv) => {
     if (!rut) return '';
     const rutStr = rut.toString();
@@ -482,16 +410,16 @@ const UserManagement = () => {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className={location.state?.fromEmployeeEdit ? 'role-management-return' : 'animate-fade-in'}>
       <header className="page-header">
         <div>
-          <h2 className="page-title text-gradient">Gestión de Usuarios</h2>
-          <p className="page-subtitle">Lista de empleados, creación de cuentas y control de accesos.</p>
+          <h2 className="page-title text-gradient">Usuarios</h2>
+          <p className="page-subtitle">Administra empleados y externos, sus cuentas y accesos.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddEmpModal(true)}>
+        {can('usuarios.empleado.crear') && <button className="btn btn-primary" onClick={() => setShowAddEmpModal(true)}>
           <Plus size={18} />
-          <span>Registrar Empleado</span>
-        </button>
+          <span>Registrar usuario</span>
+        </button>}
       </header>
 
       {error && (
@@ -514,170 +442,73 @@ const UserManagement = () => {
           <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
         </div>
       ) : (
-        <div className="table-container">
-          <div className="table-scroll-wrapper">
-            <table className="custom-table">
-              <thead>
-                <tr>
-                  <th>Empleado</th>
-                  <th>Ingreso</th>
-                  <th>Cuenta de Acceso</th>
-                  <th>Roles</th>
-                  <th>Estado</th>
-                  <th className="col-actions">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
-                      No hay empleados registrados.
-                    </td>
-                  </tr>
-                ) : (
-                  employees.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((emp) => (
-                    <tr key={emp.idEmpleado}>
-                      <td>
-                        <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>
-                          {emp.nombres} {emp.apellido1} {emp.apellido2}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px', fontWeight: '500' }}>
-                          RUT: {formatRut(emp.rut, emp.dv)}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                          <Calendar size={12} />
-                          <span>{formatDateString(emp.fechaIngreso)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        {emp.usuario ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontWeight: '600', color: 'var(--primary-color)' }}>
-                              {emp.usuario.nombreUsuario}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              Creado: {formatDateString(emp.usuario.fechaCreacion)}
-                            </span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleCreateUserAccount(emp)}
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }}
-                            disabled={!emp.activo}
-                          >
-                            <UserPlus size={14} />
-                            <span>Crear Usuario</span>
-                          </button>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '180px' }}>
-                          {emp.usuario && emp.usuario.roles.length > 0 ? (
-                            emp.usuario.roles.map((r, i) => (
-                              <span key={i} className="badge badge-warning" style={{ fontSize: '0.65rem' }}>
-                                {r.nombreRol}
-                              </span>
-                            ))
-                          ) : emp.usuario ? (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)', fontStyle: 'italic' }}>
-                              Sin roles
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)' }}>-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`badge ${emp.activo ? 'badge-success' : 'badge-danger'}`}>
-                          {emp.activo ? 'Activo' : 'Inactivo'}
-                        </span>
-                      </td>
-                      <td className="col-actions">
-                        <div className="actions-wrapper">
-                          <button
-                            onClick={() => openContactModal(emp)}
-                            className="btn btn-secondary"
-                            style={{ padding: '4px', borderRadius: '6px' }}
-                            data-tooltip="Ver Contacto"
-                          >
-                            <Phone size={14} />
-                          </button>
-                          {emp.usuario && (
-                            <>
-                              <button
-                                onClick={() => openRolesModal(emp)}
-                                className="btn btn-secondary"
-                                style={{ padding: '4px', borderRadius: '6px' }}
-                                data-tooltip="Roles"
-                                disabled={!emp.activo}
-                              >
-                                <Shield size={14} />
-                              </button>
-                              <button
-                                onClick={() => openPasswordModal(emp)}
-                                className="btn btn-secondary"
-                                style={{ padding: '4px', borderRadius: '6px' }}
-                                data-tooltip="Reestablecer Clave"
-                                disabled={!emp.activo}
-                              >
-                                <Key size={14} />
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => handleToggleStatus(emp)}
-                            className={`btn ${emp.activo ? 'btn-danger' : 'btn-primary'}`}
-                            style={{ padding: '4px', borderRadius: '6px' }}
-                            data-tooltip={emp.activo ? 'Desactivar' : 'Activar'}
-                          >
-                            {emp.activo ? <UserX size={14} /> : <UserCheck size={14} />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {/* Pagination Controls */}
-          {employees.length > ITEMS_PER_PAGE && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px',
-              borderTop: '1.5px solid var(--panel-border)',
-              backgroundColor: 'rgba(0, 0, 0, 0.01)',
-              borderRadius: '0 0 12px 12px'
-            }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '0.85rem', height: '36px' }}
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              >
-                Anterior
+        <DataTable
+          rows={employees}
+          rowKey={emp => emp.idEmpleado}
+          search={emp => `${emp.nombres} ${emp.apellido1} ${emp.apellido2 || ''} ${emp.rut} ${emp.usuario?.nombreUsuario || ''}`}
+          searchPlaceholder="Buscar por nombre, RUT o usuario…"
+          filter={{ label: 'Tipo', options: [
+            { value: 'all', label: 'Todos', test: () => true },
+            { value: 'emp', label: 'Empleados', test: e => !e.esExterno },
+            { value: 'ext', label: 'Externos', test: e => e.esExterno }
+          ] }}
+          emptyMessage="No hay usuarios registrados."
+          columns={[
+            { key: 'persona', header: 'Persona', sortValue: e => `${e.apellido1} ${e.nombres}`, cell: emp => (
+              <>
+                <div style={{ fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>{emp.nombres} {emp.apellido1} {emp.apellido2}</span>
+                  <span className="badge" style={{ fontSize: '0.62rem', padding: '2px 7px', textTransform: 'uppercase', backgroundColor: emp.esExterno ? '#fef3c7' : '#e0f2fe', color: emp.esExterno ? '#92400e' : '#075985', border: 'none' }}>
+                    {emp.esExterno ? 'Externo' : 'Empleado'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>
+                  {emp.tipoDocumento === 'RUT' ? 'RUT' : 'RUN'}: {formatRut(emp.rut, emp.dv)}
+                </div>
+              </>
+            ) },
+            { key: 'ingreso', header: 'Ingreso', sortValue: e => e.fechaIngreso, cell: emp => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                <Calendar size={12} /><span>{formatDateString(emp.fechaIngreso)}</span>
+              </div>
+            ) },
+            { key: 'cuenta', header: 'Cuenta de Acceso', cell: emp => emp.usuario ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 600, color: 'var(--primary-color)' }}>{emp.usuario.nombreUsuario}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Creado: {formatDateString(emp.usuario.fechaCreacion)}</span>
+              </div>
+            ) : can('usuarios.cuenta.crear') ? (
+              <button onClick={() => handleCreateUserAccount(emp)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }} disabled={!emp.activo}>
+                <UserPlus size={14} /><span>Crear Usuario</span>
               </button>
-              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                Página {currentPage} de {Math.ceil(employees.length / ITEMS_PER_PAGE)}
-              </span>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '0.85rem', height: '36px' }}
-                disabled={currentPage === Math.ceil(employees.length / ITEMS_PER_PAGE)}
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(employees.length / ITEMS_PER_PAGE)))}
-              >
-                Siguiente
-              </button>
-            </div>
-          )}
-        </div>
+            ) : <span style={{ color: 'var(--text-muted)' }}>Sin cuenta</span> },
+            { key: 'roles', header: 'Roles', cell: emp => (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '180px' }}>
+                {emp.usuario && emp.usuario.roles.length > 0 ? (
+                  <>
+                    <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>{emp.usuario.roles[0].nombreRol}</span>
+                    {emp.usuario.roles.length > 1 && (
+                      <span className="badge badge-warning" style={{ fontSize: '0.65rem', cursor: 'help' }} title={`Roles adicionales: ${emp.usuario.roles.slice(1).map(r => r.nombreRol).join(', ')}`}>
+                        +{emp.usuario.roles.length - 1}
+                      </span>
+                    )}
+                  </>
+                ) : emp.usuario ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)', fontStyle: 'italic' }}>Sin roles</span>
+                ) : <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)' }}>-</span>}
+              </div>
+            ) },
+            { key: 'estado', header: 'Estado', sortValue: e => (e.activo ? 1 : 0), cell: emp => <span className={`badge ${emp.activo ? 'badge-success' : 'badge-danger'}`}>{emp.activo ? 'Activo' : 'Inactivo'}</span> },
+            { key: 'acciones', header: 'Acciones', headerClassName: 'col-actions', cellClassName: 'col-actions', cell: emp => (
+              <div className="actions-wrapper">
+                <button onClick={() => openContactModal(emp)} className="btn btn-secondary employee-row-action" style={{ padding: '4px', borderRadius: '6px' }} title="Ver Contacto"><Phone size={14} /></button>
+                {(can('usuarios.empleado.editar') || (emp.usuario && (can('usuarios.cuenta.editar') || can('usuarios.password.restablecer')))) && <Link to={`/employees/${emp.idEmpleado}/edit`} className="btn btn-secondary employee-row-action" title="Editar empleado y usuario" aria-label={`Editar usuario de ${emp.nombres} ${emp.apellido1}`} state={{ fromEmployees: true }}><PencilLine size={14} /></Link>}
+                {emp.usuario && can('usuarios.roles.asignar') && <button onClick={() => openRolesModal(emp)} className="btn btn-secondary employee-row-action" style={{ padding: '4px', borderRadius: '6px' }} title="Roles" disabled={!emp.activo}><Shield size={14} /></button>}
+                {can('usuarios.estado.modificar') && <button onClick={() => handleToggleStatus(emp)} className={`btn employee-row-action ${emp.activo ? 'btn-danger' : 'btn-primary'}`} style={{ padding: '4px', borderRadius: '6px' }} title={emp.activo ? 'Desactivar' : 'Activar'}>{emp.activo ? <UserX size={14} /> : <UserCheck size={14} />}</button>}
+              </div>
+            ) }
+          ]}
+        />
       )}
 
       {/* Modal: Registrar Empleado (Step Wizard) */}
@@ -689,7 +520,7 @@ const UserManagement = () => {
             </button>
 
             <h3 style={{ fontSize: '1.5rem', marginBottom: '20px', fontWeight: '700' }} className="text-gradient">
-              {wizardStep === 1 ? 'Registrar Nuevo Empleado' : 'Asignación de Roles y Cuenta'}
+              {wizardStep === 1 ? 'Registrar Nuevo Usuario' : 'Asignación de Roles y Cuenta'}
             </h3>
 
             {/* Step Wizard indicator */}
@@ -759,9 +590,38 @@ const UserManagement = () => {
 
             {wizardStep === 1 ? (
               <form onSubmit={handleStep1Submit} noValidate>
+                <div className="grid-cols-2" style={{ marginBottom: '20px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Tipo de persona</label>
+                    <select
+                      className="input-field"
+                      value={newEmpEsExterno ? 'externo' : 'empleado'}
+                      onChange={(e) => {
+                        const externo = e.target.value === 'externo';
+                        setNewEmpEsExterno(externo);
+                        // Un externo suele ser empresa (RUT); un empleado, persona natural (RUN).
+                        setNewEmpTipoDoc(externo ? 'RUT' : 'RUN');
+                      }}
+                    >
+                      <option value="empleado">Empleado</option>
+                      <option value="externo">Externo</option>
+                    </select>
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Tipo de documento</label>
+                    <select
+                      className="input-field"
+                      value={newEmpTipoDoc}
+                      onChange={(e) => setNewEmpTipoDoc(e.target.value)}
+                    >
+                      <option value="RUN">RUN (persona natural)</option>
+                      <option value="RUT">RUT (empresa)</option>
+                    </select>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', gap: '16px', marginBottom: formErrors.rut || formErrors.dv ? '8px' : '20px' }}>
                    <div className="input-group" style={{ flex: '4', marginBottom: 0 }}>
-                    <label className="input-label">RUT (sin puntos)</label>
+                    <label className="input-label">{newEmpTipoDoc === 'RUT' ? 'RUT' : 'RUN'} (sin puntos)</label>
                     <input
                       type="number"
                       placeholder="ej. 12345678"
@@ -803,27 +663,30 @@ const UserManagement = () => {
                   </div>
                 )}
 
-                <div className="input-group" style={{ marginBottom: formErrors.nombres ? '8px' : '20px' }}>
-                  <label className="input-label">Nombres</label>
-                  <input
-                    type="text"
-                    placeholder="ej. Juan Andrés"
-                    className="input-field"
-                    value={newEmpNombres}
-                    onChange={(e) => {
-                      setNewEmpNombres(e.target.value);
-                      if (formErrors.nombres) setFormErrors({ ...formErrors, nombres: null });
-                    }}
-                    style={{
-                      borderColor: formErrors.nombres ? '#ef4444' : 'var(--panel-border)',
-                      boxShadow: formErrors.nombres ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : 'none'
-                    }}
-                  />
-                  {formErrors.nombres && (
-                    <div style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px', fontWeight: '600' }}>
-                      {formErrors.nombres}
-                    </div>
-                  )}
+                <div className="grid-cols-2" style={{ marginBottom: formErrors.nombres ? '8px' : '20px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Nombres</label>
+                    <input
+                      type="text"
+                      maxLength="100"
+                      placeholder="ej. Juan Andrés"
+                      className="input-field"
+                      value={newEmpNombres}
+                      onChange={(e) => {
+                        setNewEmpNombres(e.target.value);
+                        if (formErrors.nombres) setFormErrors({ ...formErrors, nombres: null });
+                      }}
+                      style={{
+                        borderColor: formErrors.nombres ? '#ef4444' : 'var(--panel-border)',
+                        boxShadow: formErrors.nombres ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : 'none'
+                      }}
+                    />
+                    {formErrors.nombres && <div style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px', fontWeight: '600' }}>{formErrors.nombres}</div>}
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Alias</label>
+                    <input type="text" maxLength="50" placeholder="ej. Juanito (opcional)" className="input-field" value={newEmpAlias} onChange={(e) => setNewEmpAlias(e.target.value)} />
+                  </div>
                 </div>
 
                 <div className="grid-cols-2" style={{ marginBottom: formErrors.apellido1 ? '8px' : '20px' }}>
@@ -1022,92 +885,6 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* Modal: Restablecer Contraseña (Admin) */}
-      {showPasswordModal && selectedEmp && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '440px' }}>
-            <button className="btn" style={{ position: 'absolute', right: '20px', top: '20px', padding: '6px', background: 'none' }} onClick={() => setShowPasswordModal(false)}>
-              <X size={20} color="var(--text-muted)" />
-            </button>
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">Restablecer Contraseña</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Usuario: <strong style={{ color: 'var(--primary-color)' }}>{selectedEmp.usuario.nombreUsuario}</strong>
-            </p>
-
-            {passResetError && (
-              <div className="badge badge-danger" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px', borderRadius: '8px', textTransform: 'none', marginBottom: '20px' }}>
-                <AlertCircle size={16} />
-                <span>{passResetError}</span>
-              </div>
-            )}
-
-            {passResetSuccess && (
-              <div className="badge badge-success" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px', borderRadius: '8px', textTransform: 'none', marginBottom: '20px' }}>
-                <Check size={16} />
-                <span>{passResetSuccess}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAdminResetPassword} noValidate>
-              <div className="input-group" style={{ marginBottom: passErrors.newPass ? '8px' : '20px' }}>
-                <label className="input-label">Nueva Contraseña</label>
-                <input
-                  type="password"
-                  placeholder="Mínimo 4 caracteres"
-                  className="input-field"
-                  value={adminNewPass}
-                  onChange={(e) => {
-                    setAdminNewPass(e.target.value);
-                    if (passErrors.newPass) setPassErrors({ ...passErrors, newPass: null });
-                  }}
-                  disabled={passResetLoading || !!passResetSuccess}
-                  style={{
-                    borderColor: passErrors.newPass ? '#ef4444' : 'var(--panel-border)',
-                    boxShadow: passErrors.newPass ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : 'none'
-                  }}
-                />
-                {passErrors.newPass && (
-                  <div style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px', fontWeight: '600' }}>
-                    {passErrors.newPass}
-                  </div>
-                )}
-              </div>
-
-              <div className="input-group" style={{ marginBottom: passErrors.confirmPass ? '12px' : '24px' }}>
-                <label className="input-label">Confirmar Contraseña</label>
-                <input
-                  type="password"
-                  placeholder="Repite la contraseña"
-                  className="input-field"
-                  value={adminConfirmNewPass}
-                  onChange={(e) => {
-                    setAdminConfirmNewPass(e.target.value);
-                    if (passErrors.confirmPass) setPassErrors({ ...passErrors, confirmPass: null });
-                  }}
-                  disabled={passResetLoading || !!passResetSuccess}
-                  style={{
-                    borderColor: passErrors.confirmPass ? '#ef4444' : 'var(--panel-border)',
-                    boxShadow: passErrors.confirmPass ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : 'none'
-                  }}
-                />
-                {passErrors.confirmPass && (
-                  <div style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px', fontWeight: '600' }}>
-                    {passErrors.confirmPass}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={passResetLoading || !!passResetSuccess}>
-                  {passResetLoading ? 'Restableciendo...' : 'Restablecer'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal: Éxito Creación de Usuario */}
       {showSuccessUserModal && createdUserInfo && (
         <div className="modal-overlay">
@@ -1133,8 +910,8 @@ const UserManagement = () => {
             </p>
 
             <div style={{
-              backgroundColor: 'rgba(0, 76, 37, 0.04)',
-              border: '1.5px solid rgba(0, 76, 37, 0.1)',
+              backgroundColor: 'rgba(var(--primary-rgb), 0.04)',
+              border: '1.5px solid rgba(var(--primary-rgb), 0.1)',
               borderRadius: '12px',
               padding: '20px',
               marginBottom: '28px',
@@ -1143,7 +920,7 @@ const UserManagement = () => {
               flexDirection: 'column',
               gap: '12px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(0, 76, 37, 0.08)', paddingBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(var(--primary-rgb), 0.08)', paddingBottom: '8px' }}>
                 <span style={{ color: '#475569', fontSize: '0.85rem', fontWeight: '600' }}>Usuario Creado:</span>
                 <span style={{ fontWeight: '700', color: 'var(--primary-color)' }}>{createdUserInfo.username}</span>
               </div>
@@ -1196,7 +973,7 @@ const UserManagement = () => {
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
-              backgroundColor: 'rgba(0, 76, 37, 0.02)',
+              backgroundColor: 'rgba(var(--primary-rgb), 0.02)',
               border: '1.5px solid var(--panel-border)',
               borderRadius: '12px',
               padding: '20px',
@@ -1207,7 +984,7 @@ const UserManagement = () => {
                   width: '36px',
                   height: '36px',
                   borderRadius: '8px',
-                  backgroundColor: 'rgba(0, 76, 37, 0.06)',
+                  backgroundColor: 'rgba(var(--primary-rgb), 0.06)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1228,7 +1005,7 @@ const UserManagement = () => {
                   width: '36px',
                   height: '36px',
                   borderRadius: '8px',
-                  backgroundColor: 'rgba(0, 76, 37, 0.06)',
+                  backgroundColor: 'rgba(var(--primary-rgb), 0.06)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1255,4 +1032,4 @@ const UserManagement = () => {
   );
 };
 
-export default UserManagement;
+export default EmployeeManagement;

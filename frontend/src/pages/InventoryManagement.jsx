@@ -4,9 +4,8 @@ import {
   Edit2, 
   Trash2, 
   Coffee, 
-  Tag, 
-  FolderPlus, 
-  Calendar, 
+  Tag,
+  Calendar,
   AlertCircle, 
   CheckCircle2, 
   X, 
@@ -17,11 +16,14 @@ import {
   ClipboardList
 } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
+import DataTable from '../components/DataTable';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const InventoryManagement = () => {
+  const { can } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('products'); // 'products' | 'offers'
+  const [activeTab, setActiveTab] = useState(() => can('inventario.productos.ver') ? 'products' : 'offers'); // 'products' | 'offers'
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [discounts, setDiscounts] = useState([]);
@@ -32,7 +34,6 @@ const InventoryManagement = () => {
 
   // Modals state
   const [showProductModal, setShowProductModal] = useState(false);
-  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   
   // Quick Category add state (inline inside product modal)
@@ -46,11 +47,13 @@ const InventoryManagement = () => {
   // Forms state
   const [productForm, setProductForm] = useState({
     idCategoriaProducto: '',
+    codigoProducto: '',
     nombreProducto: '',
     descripcionProducto: '',
     precio: '',
     stock: '',
-    requiereReceta: false
+    requiereReceta: false,
+    aceptaIngredientesExtra: false
   });
 
   const [imagePreview, setImagePreview] = useState(null);
@@ -62,13 +65,6 @@ const InventoryManagement = () => {
     fechaInicioDescuento: '',
     fechaTerminoDescuento: ''
   });
-
-  // Categories CRUD sub-state
-  const [editingCategory, setEditingCategory] = useState(null);
-  const [categoryForm, setCategoryForm] = useState({
-    nombreCategoriaProducto: ''
-  });
-  const [categoryError, setCategoryError] = useState('');
 
   // Styling helper for premium inputs to match the custom DDL style
   const inputStyle = {
@@ -86,7 +82,7 @@ const InventoryManagement = () => {
   };
 
   useEffect(() => {
-    document.title = "Gestión de Inventario - Siete Vidas";
+    document.title = `Gestión de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
     fetchData();
   }, []);
 
@@ -95,18 +91,18 @@ const InventoryManagement = () => {
     setError('');
     try {
       const [prodRes, catRes, discRes] = await Promise.all([
-        fetch('/api/product'),
-        fetch('/api/category'),
-        fetch('/api/discount')
+        can('inventario.productos.ver') ? fetch('/api/product') : null,
+        can('inventario.categorias.ver') ? fetch('/api/category') : null,
+        can('inventario.descuentos.ver') ? fetch('/api/discount') : null
       ]);
 
-      if (!prodRes.ok || !catRes.ok || !discRes.ok) {
+      if (prodRes && !prodRes.ok || catRes && !catRes.ok || discRes && !discRes.ok) {
         throw new Error('Error al cargar datos del servidor');
       }
 
-      const prodData = await prodRes.json();
-      const catData = await catRes.json();
-      const discData = await discRes.json();
+      const prodData = prodRes ? await prodRes.json() : [];
+      const catData = catRes ? await catRes.json() : [];
+      const discData = discRes ? await discRes.json() : [];
 
       setProducts(prodData);
       setCategories(catData);
@@ -162,11 +158,13 @@ const InventoryManagement = () => {
     setEditingProduct(null);
     setProductForm({
       idCategoriaProducto: '',
+      codigoProducto: '',
       nombreProducto: '',
       descripcionProducto: '',
       precio: '',
       stock: '',
-      requiereReceta: false
+      requiereReceta: false,
+      aceptaIngredientesExtra: false
     });
     setImagePreview(null);
     setImageBytes(null);
@@ -179,11 +177,13 @@ const InventoryManagement = () => {
     setEditingProduct(prod);
     setProductForm({
       idCategoriaProducto: prod.idCategoriaProducto,
+      codigoProducto: prod.codigoProducto || '',
       nombreProducto: prod.nombreProducto,
       descripcionProducto: prod.descripcionProducto || '',
       precio: prod.precio,
       stock: prod.stock !== null && prod.stock !== undefined ? prod.stock : '',
-      requiereReceta: Boolean(prod.requiereReceta)
+      requiereReceta: Boolean(prod.requiereReceta),
+      aceptaIngredientesExtra: Boolean(prod.aceptaIngredientesExtra)
     });
     setImagePreview(prod.imagenBase64 ? `data:image/png;base64,${prod.imagenBase64}` : null);
     setImageBytes(null); // Keep unchanged unless modified
@@ -211,11 +211,13 @@ const InventoryManagement = () => {
 
     const payload = {
       idCategoriaProducto: parseInt(productForm.idCategoriaProducto),
+      codigoProducto: productForm.codigoProducto.trim() || null,
       nombreProducto: productForm.nombreProducto,
       descripcionProducto: productForm.descripcionProducto || null,
       precio: parseInt(productForm.precio),
       stock: productForm.requiereReceta ? null : (productForm.stock !== '' ? parseInt(productForm.stock) : null),
       requiereReceta: productForm.requiereReceta,
+      aceptaIngredientesExtra: productForm.aceptaIngredientesExtra,
       imagenBase64: imageBytes
     };
 
@@ -307,69 +309,6 @@ const InventoryManagement = () => {
     }
   };
 
-  // Categories Full Manager Submit
-  const handleCategorySubmit = async (e) => {
-    e.preventDefault();
-    setCategoryError('');
-
-    if (!categoryForm.nombreCategoriaProducto.trim()) {
-      setCategoryError('El nombre es obligatorio');
-      return;
-    }
-
-    try {
-      let res;
-      if (editingCategory) {
-        res = await fetch(`/api/category/${editingCategory.idCategoriaProducto}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryForm)
-        });
-      } else {
-        res = await fetch('/api/category', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryForm)
-        });
-      }
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.mensaje || 'Error al guardar categoría');
-      }
-
-      setCategoryForm({ nombreCategoriaProducto: '' });
-      setEditingCategory(null);
-      reloadCategories();
-      reloadProducts(); // Reload products to update category names if edited
-    } catch (err) {
-      setCategoryError(err.message);
-    }
-  };
-
-  const handleEditCategoryClick = (cat) => {
-    setEditingCategory(cat);
-    setCategoryForm({
-      nombreCategoriaProducto: cat.nombreCategoriaProducto
-    });
-  };
-
-  const handleToggleCategoryStatus = async (cat) => {
-    try {
-      const res = await fetch(`/api/category/${cat.idCategoriaProducto}/status`, {
-        method: 'PUT'
-      });
-      if (res.ok) {
-        reloadCategories();
-        reloadProducts();
-      } else {
-        const data = await res.json();
-        setCategoryError(data.mensaje || 'Error al cambiar estado');
-      }
-    } catch (e) {
-      setCategoryError('Error al conectar con el servidor');
-    }
-  };
 
   // Offer/Discount CRUD
   const handleOpenCreateDiscount = () => {
@@ -485,28 +424,21 @@ const InventoryManagement = () => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '28px'
+        marginBottom: '28px',
+        flexWrap: 'wrap',
+        gap: '16px'
       }}>
         <div>
           <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }} className="text-gradient">
             Gestión de Inventario
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            Controla y configura el stock de productos, categorías y ofertas especiales.
+            Controla y configura el stock de productos y ofertas especiales.
           </p>
         </div>
-        
+
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
-            onClick={() => setShowCategoriesModal(true)}
-            className="btn btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <FolderPlus size={16} />
-            <span>Categorías</span>
-          </button>
-          
-          {activeTab === 'products' ? (
+          {activeTab === 'products' ? can('inventario.productos.crear') && (
             <button 
               onClick={handleOpenCreateProduct}
               className="btn btn-primary"
@@ -515,7 +447,7 @@ const InventoryManagement = () => {
               <Plus size={16} />
               <span>Nuevo Producto</span>
             </button>
-          ) : (
+          ) : can('inventario.descuentos.crear') && (
             <button 
               onClick={handleOpenCreateDiscount}
               className="btn btn-primary"
@@ -535,7 +467,7 @@ const InventoryManagement = () => {
         marginBottom: '24px',
         gap: '24px'
       }}>
-        <button
+        {can('inventario.productos.ver') && <button
           onClick={() => setActiveTab('products')}
           style={{
             padding: '12px 4px',
@@ -554,8 +486,8 @@ const InventoryManagement = () => {
         >
           <Coffee size={18} />
           <span>Productos</span>
-        </button>
-        <button
+        </button>}
+        {can('inventario.descuentos.ver') && <button
           onClick={() => setActiveTab('offers')}
           style={{
             padding: '12px 4px',
@@ -574,7 +506,7 @@ const InventoryManagement = () => {
         >
           <Tag size={18} />
           <span>Ofertas y Descuentos</span>
-        </button>
+        </button>}
       </div>
 
       {/* Feedback Alerts */}
@@ -606,211 +538,77 @@ const InventoryManagement = () => {
         </div>
       ) : activeTab === 'products' ? (
         /* PRODUCTS TAB */
-        <div className="table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th style={{ width: '60px' }}>Imagen</th>
-                <th style={{ width: '80px' }}>ID</th>
-                <th>Producto</th>
-                <th>Categoría</th>
-                <th>Precio Original</th>
-                <th>Receta</th>
-                <th>Stock</th>
-                <th>Estado</th>
-                <th style={{ textAlign: 'right', width: '120px' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.length === 0 ? (
-                <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
-                    No hay productos registrados en el inventario.
-                  </td>
-                </tr>
-              ) : (
-                products.map((prod) => (
-                  <tr key={prod.idProducto} style={{ opacity: prod.activo ? 1 : 0.65 }}>
-                    <td>
-                      <div style={{
-                        width: '44px',
-                        height: '44px',
-                        borderRadius: '8px',
-                        backgroundColor: '#f1f5f9',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '1px solid var(--panel-border)',
-                        overflow: 'hidden'
-                      }}>
-                        {prod.imagenBase64 ? (
-                          <img 
-                            src={`data:image/png;base64,${prod.imagenBase64}`} 
-                            alt={prod.nombreProducto} 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                          />
-                        ) : (
-                          <Coffee size={20} color="var(--text-muted)" />
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: '600', color: 'var(--text-muted)' }}>#{prod.idProducto}</td>
-                    <td>
-                      <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>
-                        {prod.nombreProducto}
-                      </div>
-                      {prod.descripcionProducto && (
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {prod.descripcionProducto}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <span className="badge" style={{ fontSize: '0.75rem', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
-                        {prod.nombreCategoriaProducto}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: '600' }}>
-                      ${prod.precio.toLocaleString('es-CL')}
-                    </td>
-                    <td>
-                      {prod.requiereReceta ? (
-                        <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>
-                          {prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}
-                        </span>
-                      ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span>}
-                    </td>
-                    <td>
-                      {prod.stock !== null ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}>
-                          <Package size={14} />
-                          <span>{prod.stock}</span>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          Usa Receta
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${prod.activo ? 'badge-success' : 'badge-danger'}`}>
-                        {prod.activo ? 'Activo' : 'Desactivado'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                        {prod.requiereReceta && (
-                          <button
-                            onClick={() => navigate(`/inventory/products/${prod.idProducto}/recipe`)}
-                            className="btn btn-primary"
-                            style={{ padding: '4px', borderRadius: '6px' }}
-                            data-tooltip={prod.tieneRecetaConfigurada ? 'Editar receta' : 'Crear receta'}
-                          >
-                            <ClipboardList size={14} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleOpenEditProduct(prod)}
-                          className="btn btn-secondary"
-                          style={{ padding: '4px', borderRadius: '6px' }}
-                          data-tooltip="Editar Producto"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleToggleProductStatus(prod)}
-                          className={`btn ${prod.activo ? 'btn-danger' : 'btn-primary'}`}
-                          style={{ padding: '4px', borderRadius: '6px' }}
-                          data-tooltip={prod.activo ? 'Desactivar' : 'Activar'}
-                        >
-                          {prod.activo ? <Trash2 size={14} /> : <CheckCircle2 size={14} />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={products}
+          rowKey={p => p.idProducto}
+          search={p => `${p.nombreProducto} ${p.codigoProducto || ''} ${p.nombreCategoriaProducto} ${p.descripcionProducto || ''}`}
+          searchPlaceholder="Buscar producto…"
+          filter={{ label: 'Categoría', options: [
+            { value: 'all', label: 'Todas', test: () => true },
+            ...categories.map(c => ({ value: String(c.idCategoriaProducto), label: c.nombreCategoriaProducto, test: p => p.idCategoriaProducto === c.idCategoriaProducto }))
+          ] }}
+          emptyMessage="No hay productos registrados en el inventario."
+          columns={[
+            { key: 'imagen', header: 'Imagen', width: '60px', cell: prod => (
+              <div style={{ width: '44px', height: '44px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--panel-border)', overflow: 'hidden' }}>
+                {prod.imagenBase64 ? <img src={`data:image/png;base64,${prod.imagenBase64}`} alt={prod.nombreProducto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Coffee size={20} color="var(--text-muted)" />}
+              </div>
+            ) },
+            { key: 'producto', header: 'Producto', sortValue: p => p.nombreProducto, cell: prod => (
+              <>
+                <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{prod.nombreProducto}</div>
+                {prod.descripcionProducto && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>{prod.descripcionProducto}</div>}
+              </>
+            ) },
+            { key: 'categoria', header: 'Categoría', sortValue: p => p.nombreCategoriaProducto, cell: prod => <span className="badge" style={{ fontSize: '0.75rem', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>{prod.nombreCategoriaProducto}</span> },
+            { key: 'precio', header: 'Precio Original', sortValue: p => p.precio, cell: prod => <span style={{ fontWeight: 600 }}>${prod.precio.toLocaleString('es-CL')}</span> },
+            { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
+            { key: 'stock', header: 'Stock', sortValue: p => (p.stock ?? -1), cell: prod => prod.stock !== null ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}><Package size={14} /><span>{prod.stock}</span></div>
+            ) : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Usa Receta</span> },
+            { key: 'estado', header: 'Estado', sortValue: p => (p.activo ? 1 : 0), cell: prod => <span className={`badge ${prod.activo ? 'badge-success' : 'badge-danger'}`}>{prod.activo ? 'Activo' : 'Desactivado'}</span> },
+            { key: 'acciones', header: 'Acciones', align: 'right', cell: prod => (
+              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                {prod.requiereReceta && can('recetas.editar') && <button onClick={() => navigate(`/inventory/products/${prod.idProducto}/recipe`)} className="btn btn-primary" style={{ padding: '4px', borderRadius: '6px' }} title={prod.tieneRecetaConfigurada ? 'Editar receta' : 'Crear receta'}><ClipboardList size={14} /></button>}
+                {can('inventario.productos.editar') && <button onClick={() => handleOpenEditProduct(prod)} className="btn btn-secondary" style={{ padding: '4px', borderRadius: '6px' }} title="Editar Producto"><Edit2 size={14} /></button>}
+                {can('inventario.productos.estado.modificar') && <button onClick={() => handleToggleProductStatus(prod)} className={`btn ${prod.activo ? 'btn-danger' : 'btn-primary'}`} style={{ padding: '4px', borderRadius: '6px' }} title={prod.activo ? 'Desactivar' : 'Activar'}>{prod.activo ? <Trash2 size={14} /> : <CheckCircle2 size={14} />}</button>}
+              </div>
+            ) }
+          ]}
+        />
       ) : (
         /* OFFERS TAB */
-        <div className="table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th style={{ width: '80px' }}>ID</th>
-                <th>Producto</th>
-                <th>Precio Original</th>
-                <th>Descuento</th>
-                <th>Precio Oferta</th>
-                <th>Vigencia</th>
-                <th>Estado</th>
-                <th style={{ textAlign: 'right', width: '120px' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {discounts.length === 0 ? (
-                <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
-                    No hay ofertas o descuentos vigentes registrados.
-                  </td>
-                </tr>
-              ) : (
-                discounts.map((disc) => {
-                  const valorDescuento = (disc.precioOriginal * disc.porcentajeDescuento) / 100;
-                  const precioOferta = disc.precioOriginal - valorDescuento;
-                  return (
-                    <tr key={disc.idDescuentoProducto} style={{ opacity: disc.activo ? 1 : 0.65 }}>
-                      <td style={{ fontWeight: '600', color: 'var(--text-muted)' }}>#{disc.idDescuentoProducto}</td>
-                      <td style={{ fontWeight: '600' }}>{disc.nombreProducto}</td>
-                      <td>${disc.precioOriginal.toLocaleString('es-CL')}</td>
-                      <td>
-                        <span className="badge" style={{ fontWeight: '700', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#b91c1c', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                          -{disc.porcentajeDescuento}%
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: '700', color: '#15803d' }}>
-                        ${precioOferta.toLocaleString('es-CL')}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          <span><strong>Inicio:</strong> {formatDateTime(disc.fechaInicioDescuento)}</span>
-                          <span><strong>Fin:</strong> {disc.fechaTerminoDescuento ? formatDateTime(disc.fechaTerminoDescuento) : 'Indefinido'}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`badge ${disc.activo ? 'badge-success' : 'badge-danger'}`}>
-                          {disc.activo ? 'Vigente' : 'Inactiva'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => handleToggleDiscountStatus(disc)}
-                            className={`btn ${disc.activo ? 'btn-secondary' : 'btn-primary'}`}
-                            style={{ padding: '4px', borderRadius: '6px' }}
-                            data-tooltip={disc.activo ? 'Pausar Oferta' : 'Activar Oferta'}
-                          >
-                            <Calendar size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDiscount(disc)}
-                            className="btn btn-danger"
-                            style={{ padding: '4px', borderRadius: '6px' }}
-                            data-tooltip="Eliminar"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={discounts}
+          rowKey={d => d.idDescuentoProducto}
+          search={d => d.nombreProducto}
+          searchPlaceholder="Buscar oferta…"
+          filter={{ label: 'Estado', options: [
+            { value: 'all', label: 'Todas', test: () => true },
+            { value: 'active', label: 'Vigentes', test: d => d.activo },
+            { value: 'inactive', label: 'Inactivas', test: d => !d.activo }
+          ] }}
+          emptyMessage="No hay ofertas o descuentos vigentes registrados."
+          columns={[
+            { key: 'producto', header: 'Producto', sortValue: d => d.nombreProducto, cell: d => <span style={{ fontWeight: 600 }}>{d.nombreProducto}</span> },
+            { key: 'precio', header: 'Precio Original', sortValue: d => d.precioOriginal, cell: d => `$${d.precioOriginal.toLocaleString('es-CL')}` },
+            { key: 'descuento', header: 'Descuento', sortValue: d => d.porcentajeDescuento, cell: d => <span className="badge" style={{ fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#b91c1c', border: '1px solid rgba(239, 68, 68, 0.2)' }}>-{d.porcentajeDescuento}%</span> },
+            { key: 'oferta', header: 'Precio Oferta', cell: d => <span style={{ fontWeight: 700, color: '#15803d' }}>${(d.precioOriginal - (d.precioOriginal * d.porcentajeDescuento) / 100).toLocaleString('es-CL')}</span> },
+            { key: 'vigencia', header: 'Vigencia', cell: d => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span><strong>Inicio:</strong> {formatDateTime(d.fechaInicioDescuento)}</span>
+                <span><strong>Fin:</strong> {d.fechaTerminoDescuento ? formatDateTime(d.fechaTerminoDescuento) : 'Indefinido'}</span>
+              </div>
+            ) },
+            { key: 'estado', header: 'Estado', sortValue: d => (d.activo ? 1 : 0), cell: d => <span className={`badge ${d.activo ? 'badge-success' : 'badge-danger'}`}>{d.activo ? 'Vigente' : 'Inactiva'}</span> },
+            { key: 'acciones', header: 'Acciones', align: 'right', cell: d => (
+              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                {can('inventario.descuentos.estado.modificar') && <button onClick={() => handleToggleDiscountStatus(d)} className={`btn ${d.activo ? 'btn-secondary' : 'btn-primary'}`} style={{ padding: '4px', borderRadius: '6px' }} title={d.activo ? 'Pausar Oferta' : 'Activar Oferta'}><Calendar size={14} /></button>}
+                {can('inventario.descuentos.eliminar') && <button onClick={() => handleDeleteDiscount(d)} className="btn btn-danger" style={{ padding: '4px', borderRadius: '6px' }} title="Eliminar"><Trash2 size={14} /></button>}
+              </div>
+            ) }
+          ]}
+        />
       )}
 
       {/* MODAL: Crear/Editar Producto */}
@@ -860,7 +658,7 @@ const InventoryManagement = () => {
                     onChange={(val) => setProductForm(prev => ({ ...prev, idCategoriaProducto: val }))}
                     placeholder="Buscar y seleccionar categoría..."
                     noOptionsMessage="No hay categorías con ese nombre"
-                    customActionButton={
+                    customActionButton={can('inventario.categorias.crear') ? (
                       <button
                         type="button"
                         className="btn btn-secondary"
@@ -870,16 +668,25 @@ const InventoryManagement = () => {
                       >
                         <Plus size={18} />
                       </button>
-                    }
+                    ) : null}
+                  />
+                </div>
+
+                {/* Código (opcional): no se muestra en la lista de productos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Código del Producto <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(opcional)</span></label>
+                  <input
+                    type="text"
+                    value={productForm.codigoProducto}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, codigoProducto: e.target.value.toUpperCase() }))}
+                    style={inputStyle}
+                    placeholder="Ej. BEB-ESP-DOBLE"
+                    maxLength={50}
                   />
                 </div>
 
                 {/* 3. Precio y Stock Inicial (TERCERO) */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px'
-                }}>
+                <div className="modal-grid-2">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Precio (CLP) *</label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -918,6 +725,16 @@ const InventoryManagement = () => {
                     style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)' }}
                   />
                   <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>Este producto requiere receta para su preparación</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
+                  <input
+                    type="checkbox"
+                    checked={productForm.aceptaIngredientesExtra}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, aceptaIngredientesExtra: e.target.checked }))}
+                    style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)' }}
+                  />
+                  <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>Este producto acepta ingredientes extra en la venta</span>
                 </label>
 
                 {/* 4. Imagen del Producto (CUARTO - NEW!) */}
@@ -1152,11 +969,7 @@ const InventoryManagement = () => {
                   </div>
                 </div>
 
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px'
-                }}>
+                <div className="modal-grid-2">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Fecha Inicio *</label>
                     <input
@@ -1203,146 +1016,6 @@ const InventoryManagement = () => {
         </div>
       )}
 
-      {/* MODAL: Gestionar Categorías (CRUD simple similar a roles) */}
-      {showCategoriesModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '660px', padding: '30px' }}>
-            <button 
-              type="button" 
-              className="btn" 
-              style={{ position: 'absolute', right: '20px', top: '20px', padding: '6px', background: 'none' }} 
-              onClick={() => {
-                setShowCategoriesModal(false);
-                setEditingCategory(null);
-                        setCategoryForm({ nombreCategoriaProducto: '' });
-                setCategoryError('');
-              }}
-            >
-              <X size={20} color="var(--text-muted)" />
-            </button>
-
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">
-              Mantenedor de Categorías
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Registra y modifica las categorías de productos de la cafetería.
-            </p>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '240px 1fr',
-              gap: '24px'
-            }}>
-              {/* Form Side */}
-              <div style={{ borderRight: '1px solid var(--panel-border)', paddingRight: '20px' }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '14px', color: 'var(--primary-color)' }}>
-                  {editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}
-                </h4>
-                
-                {categoryError && (
-                  <div className="badge badge-danger" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', borderRadius: '6px', textTransform: 'none', marginBottom: '14px', fontSize: '0.78rem' }}>
-                    <AlertCircle size={14} />
-                    <span>{categoryError}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleCategorySubmit}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-main)' }}>Nombre *</label>
-                      <input
-                        type="text"
-                        value={categoryForm.nombreCategoriaProducto}
-                        onChange={(e) => setCategoryForm(prev => ({ ...prev, nombreCategoriaProducto: e.target.value }))}
-                        style={inputStyle}
-                        placeholder="Ej. Bollería"
-                        maxLength={100}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      style={{ flex: 1, padding: '8px', fontSize: '0.85rem', borderRadius: '8px' }}
-                    >
-                      {editingCategory ? 'Actualizar' : 'Guardar'}
-                    </button>
-                    {editingCategory && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ padding: '8px', fontSize: '0.85rem', borderRadius: '8px' }}
-                        onClick={() => {
-                          setEditingCategory(null);
-                          setCategoryForm({ nombreCategoriaProducto: '' });
-                          setCategoryError('');
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </form>
-              </div>
-
-              {/* List Side */}
-              <div>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '14px', color: 'var(--text-muted)' }}>
-                  Categorías Registradas
-                </h4>
-
-                <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
-                  <table className="custom-table" style={{ fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr>
-                        <th>Nombre</th>
-                        <th style={{ textAlign: 'right', width: '90px' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categories.length === 0 ? (
-                        <tr>
-                          <td colSpan="2" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px' }}>
-                            Sin categorías.
-                          </td>
-                        </tr>
-                      ) : (
-                        categories.map((cat) => (
-                          <tr key={cat.idCategoriaProducto} style={{ opacity: cat.activo ? 1 : 0.5 }}>
-                            <td style={{ fontWeight: '600' }}>{cat.nombreCategoriaProducto}</td>
-                            <td>
-                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                                <button
-                                  onClick={() => handleEditCategoryClick(cat)}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '4px', borderRadius: '4px' }}
-                                  disabled={!cat.activo}
-                                >
-                                  <Edit2 size={12} />
-                                </button>
-                                <button
-                                  onClick={() => handleToggleCategoryStatus(cat)}
-                                  className={`btn ${cat.activo ? 'btn-danger' : 'btn-primary'}`}
-                                  style={{ padding: '4px', borderRadius: '4px' }}
-                                >
-                                  {cat.activo ? <Trash2 size={12} /> : <CheckCircle2 size={12} />}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

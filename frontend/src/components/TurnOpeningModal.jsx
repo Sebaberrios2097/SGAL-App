@@ -1,6 +1,7 @@
 import { AlertCircle, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { NumericKeypadProvider, NumericInput } from './NumericKeypad';
 
 const TurnOpeningModal = ({ open, onClose, onOpened }) => {
   const { user } = useAuth();
@@ -73,6 +74,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
   };
 
   return (
+    <NumericKeypadProvider>
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '440px', padding: '24px' }}>
         <button
@@ -107,11 +109,11 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
               {denominations.map(d => (
                 <label key={d.idDenominacion} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: '600' }}>{d.descripcion}</span>
-                  <input
-                    type="number"
-                    min="0"
+                  <NumericInput
+                    ariaLabel={d.descripcion}
+                    fieldId={`apertura-${d.idDenominacion}`}
                     value={quantities[d.idDenominacion] ?? ''}
-                    onChange={event => setQuantities(current => ({ ...current, [d.idDenominacion]: event.target.value }))}
+                    onValueChange={val => setQuantities(current => ({ ...current, [d.idDenominacion]: val }))}
                     style={{ width: '100px', padding: '6px 8px', border: '1px solid var(--panel-border)', borderRadius: '6px', textAlign: 'center' }}
                   />
                 </label>
@@ -133,6 +135,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
         )}
       </div>
     </div>
+    </NumericKeypadProvider>
   );
 };
 

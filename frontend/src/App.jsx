@@ -3,9 +3,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Welcome from './pages/Welcome';
-import UserManagement from './pages/UserManagement';
+import Setup from './pages/Setup';
+import AdminDashboard from './pages/AdminDashboard';
+import Turn from './pages/Turn';
+import EmployeeManagement from './pages/UserManagement';
+import EmployeeEdit from './pages/EmployeeEdit';
 import RoleManagement from './pages/RoleManagement';
+import RolePermissions from './pages/RolePermissions';
 import InventoryManagement from './pages/InventoryManagement';
 import SalesView from './pages/SalesView';
 import LogbookView from './pages/LogbookView';
@@ -13,11 +17,19 @@ import TurnHistory from './pages/TurnHistory';
 import InventorySettings from './pages/InventorySettings';
 import RecipeManagement from './pages/RecipeManagement';
 import RecipeList from './pages/RecipeList';
+import ExtraIngredients from './pages/ExtraIngredients';
+import ProductCategories from './pages/ProductCategories';
 import AdminTurnRecords from './pages/AdminTurnRecords';
+import TurnsDashboard from './pages/TurnsDashboard';
+import PurchaseOrders from './pages/PurchaseOrders';
+import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
+import ProviderManagement from './pages/ProviderManagement';
+import BrandingSettings from './pages/BrandingSettings';
+import ModuleSettings from './pages/ModuleSettings';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, needsSetup } = useAuth();
 
   if (loading) {
     return (
@@ -41,7 +53,7 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={needsSetup ? '/setup' : '/login'} replace />;
   }
 
   // If user is logged in but must change password, they shouldn't access pages
@@ -52,8 +64,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Admin-Only Route Wrapper
-const AdminRoute = ({ children }) => {
+const PermissionRoute = ({ permission, anyOf, children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -85,51 +96,8 @@ const AdminRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  const isAdmin = user.roles?.some(r => r.toUpperCase() === 'ADMINISTRADOR');
-  if (!isAdmin) {
-    return <Navigate to="/" replace />; // Redirect non-admins to Welcome
-  }
-
-  return children;
-};
-
-// Barista-Only Route Wrapper
-const BaristaRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#12100e'
-      }}>
-        <div style={{
-          border: '4px solid rgba(212, 163, 115, 0.1)',
-          width: '50px',
-          height: '50px',
-          borderRadius: '50%',
-          borderLeftColor: 'var(--primary-color)',
-          animation: 'spin 1s linear infinite'
-        }} />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.cambioClave) {
-    return <Navigate to="/login" replace />;
-  }
-
-  const isBarista = user.roles?.some(r => r.toUpperCase() === 'BARISTA/VENDEDOR' || r.toUpperCase() === 'VENDEDOR/BARISTA');
-  if (!isBarista) {
-    return <Navigate to="/" replace />; // Redirect non-baristas to Welcome
-  }
+  const accepted = anyOf || [permission];
+  if (!accepted.some(code => user.permissions?.includes(code))) return <Navigate to="/" replace />;
 
   return children;
 };
@@ -162,7 +130,7 @@ const ActiveTurnRoute = ({ children }) => {
 
 // Public Route Wrapper (prevents logged in users from seeing login)
 const PublicRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, needsSetup } = useAuth();
 
   if (loading) return null;
 
@@ -170,7 +138,43 @@ const PublicRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
 
+  // Sin sesión y sin usuario base: forzamos la configuración inicial.
+  if (!user && needsSetup) {
+    return <Navigate to="/setup" replace />;
+  }
+
   return children;
+};
+
+// Setup Route Wrapper: solo accesible cuando falta el usuario base.
+const SetupRoute = ({ children }) => {
+  const { user, loading, needsSetup } = useAuth();
+
+  if (loading) return null;
+
+  if (user && !user.cambioClave) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (!needsSetup) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+// Permisos que dan acceso operativo al turno. Coincide con la sección "Turno" del menú.
+const TURN_PERMISSIONS = ['turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver'];
+
+// Landing route: todos aterrizan en su turno; solo quien no tiene acceso al turno
+// pero sí al panel administrativo aterriza en el dashboard.
+const LandingRoute = () => {
+  const { user } = useAuth();
+  const canOperateTurns = TURN_PERMISSIONS.some(code => user?.permissions?.includes(code));
+  if (!canOperateTurns && user?.permissions?.includes('inicio.dashboard.ver')) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Navigate to="/turn" replace />;
 };
 
 function App() {
@@ -179,13 +183,23 @@ function App() {
       <BrowserRouter>
         <Routes>
           {/* Public Routes */}
-          <Route 
-            path="/login" 
+          <Route
+            path="/login"
             element={
               <PublicRoute>
                 <Login />
               </PublicRoute>
-            } 
+            }
+          />
+
+          {/* Configuración inicial: crear usuario base cuando no hay Desarrollador */}
+          <Route
+            path="/setup"
+            element={
+              <SetupRoute>
+                <Setup />
+              </SetupRoute>
+            }
           />
 
           {/* Protected Application Routes */}
@@ -197,17 +211,35 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* Render Welcome view on root index */}
-            <Route index element={<Welcome />} />
-            <Route path="users" element={<AdminRoute><UserManagement /></AdminRoute>} />
-            <Route path="roles" element={<AdminRoute><RoleManagement /></AdminRoute>} />
-            <Route path="inventory" element={<AdminRoute><InventoryManagement /></AdminRoute>} />
-            <Route path="inventory/products/:idProducto/recipe" element={<AdminRoute><RecipeManagement /></AdminRoute>} />
-            <Route path="recipes" element={<AdminRoute><RecipeList /></AdminRoute>} />
-            <Route path="admin/turn-records" element={<AdminRoute><AdminTurnRecords /></AdminRoute>} />
-            <Route path="settings/:section" element={<AdminRoute><InventorySettings /></AdminRoute>} />
-            <Route path="turn-history" element={<BaristaRoute><TurnHistory /></BaristaRoute>} />
-            <Route path="logbook/:idTurno" element={<BaristaRoute><LogbookView /></BaristaRoute>} />
+            {/* Root index: todos van a su turno; el panel queda como respaldo para quien no opera turnos */}
+            <Route index element={<LandingRoute />} />
+            <Route path="dashboard" element={<PermissionRoute permission="inicio.dashboard.ver"><AdminDashboard /></PermissionRoute>} />
+            <Route path="turn" element={<PermissionRoute anyOf={TURN_PERMISSIONS}><Turn /></PermissionRoute>} />
+            <Route path="employees" element={<PermissionRoute permission="usuarios.ver"><EmployeeManagement /></PermissionRoute>} />
+            <Route path="employees/:id/edit" element={<PermissionRoute anyOf={['usuarios.empleado.editar','usuarios.cuenta.editar','usuarios.password.restablecer']}><EmployeeEdit /></PermissionRoute>} />
+            <Route path="users" element={<Navigate to="/employees" replace />} />
+            <Route path="roles" element={<PermissionRoute permission="roles.ver"><RoleManagement /></PermissionRoute>} />
+            <Route path="roles/:id/permissions" element={<PermissionRoute permission="roles.permisos.asignar"><RolePermissions /></PermissionRoute>} />
+            <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver']}><InventoryManagement /></PermissionRoute>} />
+            <Route path="inventory/products/:idProducto/recipe" element={<PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute>} />
+            <Route path="recipes" element={<PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute>} />
+            <Route path="settings/extra-ingredients" element={<PermissionRoute permission="ingredientes_extra.ver"><ExtraIngredients /></PermissionRoute>} />
+            <Route path="settings/product-categories" element={<PermissionRoute permission="inventario.categorias.ver"><ProductCategories /></PermissionRoute>} />
+            <Route path="purchase-orders" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrders /></PermissionRoute>} />
+            <Route path="purchase-orders/new" element={<PermissionRoute permission="ordenes_compra.crear"><PurchaseOrderDetail /></PermissionRoute>} />
+            <Route path="purchase-orders/:id" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrderDetail /></PermissionRoute>} />
+            <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
+            <Route path="admin/turn-records" element={<PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute>} />
+            <Route path="admin/turns-dashboard" element={<PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute>} />
+            <Route path="settings/courtesy" element={<PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/raw-materials" element={<PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/units" element={<PermissionRoute permission="configuracion_inventario.unidades.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/material-categories" element={<PermissionRoute permission="configuracion_inventario.categorias_materia.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/brands" element={<PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
+            <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
+            <Route path="turn-history" element={<PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute>} />
+            <Route path="logbook/:idTurno" element={<PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute>} />
           </Route>
 
           {/* Standalone Sales View */}
@@ -215,9 +247,9 @@ function App() {
             path="/sales" 
             element={
               <ProtectedRoute>
-                <BaristaRoute>
+                <PermissionRoute permission="ventas.operar">
                   <ActiveTurnRoute><SalesView /></ActiveTurnRoute>
-                </BaristaRoute>
+                </PermissionRoute>
               </ProtectedRoute>
             }
           />

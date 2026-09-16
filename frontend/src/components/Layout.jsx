@@ -1,47 +1,80 @@
 import {
-    ChevronRight,
+    BarChart3,
     BookOpen,
+    Boxes,
     CalendarDays,
+    ChevronRight,
+    ClipboardCheck,
     ClipboardList,
-    ChevronDown,
+    Clock,
     Coffee,
-    FlaskConical,
     Gift,
-    Home,
+    Layers,
+    LayoutDashboard,
     Lock,
     LogOut,
+    Menu,
+    Palette,
+    Puzzle,
+    Ruler,
     ShieldAlert,
     ShoppingBag,
-    Ruler,
-    Settings,
+    Sparkles,
     Stamp,
     Tags,
-    Users
+    Truck,
+    Users,
+    X
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from './BrandLogo';
 
 const Layout = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, can, canAny } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [logoError, setLogoError] = useState(false);
-  const isSettingsRoute = location.pathname.startsWith('/settings/') || location.pathname === '/roles';
-  const [settingsOpen, setSettingsOpen] = useState(() => isSettingsRoute);
-  const isAdmin = user?.roles?.some(r => r.toUpperCase() === 'ADMINISTRADOR');
-  const isBarista = user?.roles?.some(r => r.toUpperCase() === 'BARISTA/VENDEDOR' || r.toUpperCase() === 'VENDEDOR/BARISTA');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const canOperateTurns = canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver');
 
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
 
   useEffect(() => {
-    if (isSettingsRoute) setSettingsOpen(true);
-  }, [isSettingsRoute]);
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia('(min-width: 769px)');
+    const closeOnDesktop = (event) => {
+      if (event.matches) setMobileMenuOpen(false);
+    };
+
+    desktopQuery.addEventListener('change', closeOnDesktop);
+    return () => desktopQuery.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     const refreshTurn = () => {
-      if (!user || !isBarista) return;
-      if (user && isBarista) {
+      if (!user || !canOperateTurns) return;
+      if (user && canOperateTurns) {
         fetch(`/api/turn/active?idUsuario=${user.idUsuario}`)
         .then(res => res.json())
         .then(setActiveTurnInfo)
@@ -51,23 +84,23 @@ const Layout = () => {
     refreshTurn();
     window.addEventListener('turn-status-changed', refreshTurn);
     return () => window.removeEventListener('turn-status-changed', refreshTurn);
-  }, [user, isBarista, location.pathname]);
+  }, [user, canOperateTurns, location.pathname]);
 
   const isLogoutBlocked = activeTurnInfo.hasActiveTurn && activeTurnInfo.belongsToCurrentUser;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (isLogoutBlocked) {
       alert('No puede cerrar sesión mientras tenga un turno abierto. Por favor, finalice su turno en la pantalla de ventas.');
       return;
     }
-    logout();
+    await logout();
     navigate('/login');
   };
 
   const navItemsModule1 = [
     {
       label: 'Usuarios',
-      path: '/users',
+      path: '/employees',
       icon: Users,
       module: 1
     }
@@ -75,7 +108,7 @@ const Layout = () => {
 
   const navItemsModule2 = [
     {
-      label: 'Inventario',
+      label: 'Productos',
       path: '/inventory',
       icon: Coffee,
       module: 2
@@ -87,6 +120,18 @@ const Layout = () => {
       module: 2
     },
     {
+      label: 'Órdenes de compra',
+      path: '/purchase-orders',
+      icon: ClipboardCheck,
+      module: 2
+    },
+    {
+      label: 'Proveedores',
+      path: '/providers',
+      icon: Truck,
+      module: 2
+    },
+    {
       label: 'Registros de turnos',
       path: '/admin/turn-records',
       icon: CalendarDays,
@@ -94,14 +139,36 @@ const Layout = () => {
     }
   ];
 
+  const renderSectionTitle = (label) => (
+    <div
+      key={`section-${label}`}
+      style={{
+        fontSize: '0.7rem',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.09em',
+        color: 'rgba(255, 255, 255, 0.55)',
+        padding: '0 8px 6px',
+        marginTop: '14px',
+        marginBottom: '6px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.18)'
+      }}
+    >
+      {label}
+    </div>
+  );
+
   const renderNavItem = (item) => {
-    const isActive = location.pathname === item.path;
+    const isActive = item.exact
+      ? location.pathname === item.path
+      : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     const Icon = item.icon;
 
     return (
       <Link
         key={item.path}
         to={item.path}
+        onClick={() => setMobileMenuOpen(false)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -117,23 +184,43 @@ const Layout = () => {
           boxShadow: isActive ? '0 4px 12px rgba(0, 0, 0, 0.1)' : 'none'
         }}
         onMouseEnter={(e) => {
-          if (!isActive) e.currentTarget.style.backgroundColor = '#00361a';
+          if (!isActive) e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
         }}
         onMouseLeave={(e) => {
           if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
-        <Icon size={18} />
-        <span style={{ flex: 1 }}>{item.label}</span>
-        <ChevronRight size={14} style={{ opacity: isActive ? 1 : 0.4 }} />
+        <Icon size={18} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{item.label}</span>
+        <ChevronRight size={14} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.4 }} />
       </Link>
     );
   };
 
   return (
     <div className="app-container">
+      <button
+        type="button"
+        className="mobile-menu-button"
+        aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="app-sidebar"
+        onClick={() => setMobileMenuOpen(open => !open)}
+      >
+        {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+      </button>
+
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          className="mobile-menu-overlay"
+          aria-label="Cerrar menú"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar - Green Background */}
-      <aside style={{
+      <aside id="app-sidebar" className={`app-sidebar${mobileMenuOpen ? ' is-open' : ''}`} style={{
         width: 'var(--sidebar-width)',
         height: '100vh',
         display: 'flex',
@@ -145,8 +232,8 @@ const Layout = () => {
         left: 0,
         top: 0,
         zIndex: 100,
-        backgroundColor: 'var(--primary-color)', /* Green #004c25 */
-        boxShadow: '4px 0 24px rgba(0, 76, 37, 0.15)',
+        backgroundColor: 'var(--primary-color)',
+        boxShadow: '4px 0 24px rgba(var(--primary-rgb), 0.18)',
         color: '#ffffff',
         boxSizing: 'border-box'
       }}>
@@ -154,146 +241,86 @@ const Layout = () => {
         {/* Brand */}
         <div style={{
           display: 'flex',
-          justifyContent: logoError ? 'flex-start' : 'center',
+          justifyContent: 'center',
           alignItems: 'center',
           gap: '12px',
           marginBottom: '32px',
-          paddingLeft: logoError ? '8px' : '0',
+          paddingLeft: 0,
           width: '100%',
           height: '60px'
         }}>
-          {!logoError ? (
-            <img
-              src="/logo_sidebar.png"
-              alt="Siete Vidas Logo"
-              onError={() => setLogoError(true)}
-              style={{ maxWidth: '90%', maxHeight: '60px', objectFit: 'contain' }}
-            />
-          ) : (
-            <>
-              <div style={{
-                background: '#ffffff', /* White background for logo */
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)'
-              }}>
-                <Coffee size={22} color="var(--primary-color)" /> /* Green cup */
-              </div>
-              <div>
-                <h1 style={{
-                  fontSize: '1.25rem',
-                  fontWeight: '800',
-                  letterSpacing: '0.02em',
-                  color: '#ffffff' /* White text */
-                }}>Siete Vidas</h1>
-                <span style={{
-                  fontSize: '0.75rem',
-                  color: 'rgba(255, 255, 255, 0.7)', /* Light white/opacity text */
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em'
-                }}>Logística</span>
-              </div>
-            </>
-          )}
+          <BrandLogo maxHeight={60} compact light />
         </div>
 
         {/* Navigation */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-          <Link
-            to="/"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '12px 16px',
-              borderRadius: '10px',
-              color: location.pathname === '/' ? 'var(--primary-color)' : '#ffffff',
-              backgroundColor: location.pathname === '/' ? '#ffffff' : 'transparent',
-              textDecoration: 'none',
-              fontWeight: '600',
-              fontSize: '0.95rem',
-              transition: 'all 0.2s ease',
-              boxShadow: location.pathname === '/' ? '0 4px 12px rgba(0, 0, 0, 0.1)' : 'none',
-              marginBottom: '8px'
-            }}
-            onMouseEnter={(e) => {
-              if (location.pathname !== '/') e.currentTarget.style.backgroundColor = '#00361a';
-            }}
-            onMouseLeave={(e) => {
-              if (location.pathname !== '/') e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <Home size={18} />
-            <span style={{ flex: 1 }}>Inicio</span>
-            <ChevronRight size={14} style={{ opacity: location.pathname === '/' ? 1 : 0.4 }} />
-          </Link>
-
-          {isBarista && (
-            activeTurnInfo.hasActiveTurn ? (
-              activeTurnInfo.belongsToCurrentUser ? (
-                <div style={{ display: 'grid', gap: '8px', marginBottom: '8px' }}>
-                  {renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
-                  {renderNavItem({ label: 'Bitácora', path: `/logbook/${activeTurnInfo.activeTurn?.idTurno}`, icon: BookOpen })}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '12px',
-                    borderRadius: '10px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    color: 'rgba(255, 255, 255, 0.4)',
-                    fontWeight: '700',
-                    marginTop: '4px',
-                    marginBottom: '12px',
-                    cursor: 'not-allowed',
-                    fontSize: '0.85rem',
-                    textAlign: 'center'
-                  }}
-                  title={`Caja ocupada por ${activeTurnInfo.activeTurn?.nombreUsuario}`}
-                >
-                  <Lock size={16} />
-                  <span>Turno ocupado</span>
-                </div>
-              )
-            ) : null
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+          {/* Turno */}
+          {canOperateTurns && (
+            <>
+              {renderSectionTitle('Turno')}
+              {renderNavItem({ label: 'Turno', path: '/turn', icon: Clock })}
+              {activeTurnInfo.hasActiveTurn && (
+                activeTurnInfo.belongsToCurrentUser ? (
+                  <>
+                    {can('ventas.operar') && renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
+                    {can('bitacora.propia.ver') && renderNavItem({ label: 'Bitácora', path: `/logbook/${activeTurnInfo.activeTurn?.idTurno}`, icon: BookOpen })}
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '12px',
+                      borderRadius: '10px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      color: 'rgba(255, 255, 255, 0.4)',
+                      fontWeight: '700',
+                      cursor: 'not-allowed',
+                      fontSize: '0.85rem',
+                      textAlign: 'center'
+                    }}
+                    title={`Caja ocupada por ${activeTurnInfo.activeTurn?.nombreUsuario}`}
+                  >
+                    <Lock size={16} />
+                    <span>Turno ocupado</span>
+                  </div>
+                )
+              )}
+              {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
+            </>
           )}
 
-          {isBarista && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
-
-          {isAdmin && (
+          {/* Gestión */}
+          {canAny('inicio.dashboard.ver','usuarios.ver','inventario.productos.ver','recetas.ver','ingredientes_extra.ver','configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver','configuracion_inventario.cortesia.ver','ordenes_compra.ver','proveedores.ver','registros_turnos.ver','registros_turnos.dashboard.ver') && (
             <>
-              {navItemsModule1.map((item) => renderNavItem(item))}
-              {navItemsModule2.map((item) => renderNavItem(item))}
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(open => !open)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px',
-                  borderRadius: '10px', border: 'none', color: isSettingsRoute ? 'var(--primary-color)' : '#ffffff', background: isSettingsRoute ? '#ffffff' : 'transparent',
-                  font: 'inherit', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer', width: '100%'
-                }}
-              >
-                <Settings size={18} /><span style={{ flex: 1, textAlign: 'left' }}>Configuraciones</span>
-                <ChevronDown size={15} style={{ transform: settingsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-              </button>
-              {settingsOpen && (
-                <div style={{ display: 'grid', gap: '4px', marginLeft: '12px', paddingLeft: '8px', borderLeft: '1px solid rgba(255,255,255,.25)' }}>
-                  {renderNavItem({ label: 'Roles', path: '/roles', icon: ShieldAlert })}
-                  {renderNavItem({ label: 'Productos de cortesía', path: '/settings/courtesy', icon: Gift })}
-                  {renderNavItem({ label: 'Materias primas', path: '/settings/raw-materials', icon: FlaskConical })}
-                  {renderNavItem({ label: 'Unidades de medida', path: '/settings/units', icon: Ruler })}
-                  {renderNavItem({ label: 'Categorías de materia', path: '/settings/material-categories', icon: Tags })}
-                  {renderNavItem({ label: 'Marcas', path: '/settings/brands', icon: Stamp })}
-                </div>
-              )}
+              {renderSectionTitle('Gestión')}
+              {can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
+              {can('usuarios.ver') && renderNavItem(navItemsModule1[0])}
+              {can('inventario.productos.ver') && renderNavItem(navItemsModule2[0])}
+              {can('recetas.ver') && renderNavItem(navItemsModule2[1])}
+              {canAny('configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver') && renderNavItem({ label: <>Materiales/<br />Ingredientes</>, path: '/settings/raw-materials', icon: Boxes })}
+              {can('ingredientes_extra.ver') && renderNavItem({ label: 'Ingredientes extra', path: '/settings/extra-ingredients', icon: Sparkles })}
+              {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Productos de cortesía', path: '/settings/courtesy', icon: Gift })}
+              {can('ordenes_compra.ver') && renderNavItem(navItemsModule2[2])}
+              {can('proveedores.ver') && renderNavItem(navItemsModule2[3])}
+              {can('registros_turnos.ver') && renderNavItem(navItemsModule2[4])}
+              {can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
+            </>
+          )}
+
+          {/* Configuración */}
+          {canAny('configuracion_sistema.marca.ver','configuracion_sistema.modulos.administrar','roles.ver','inventario.categorias.ver','configuracion_inventario.unidades.ver','configuracion_inventario.categorias_materia.ver','configuracion_inventario.marcas.ver') && (
+            <>
+              {renderSectionTitle('Configuración')}
+              {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
+              {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
+              {can('roles.ver') && renderNavItem({ label: 'Roles', path: '/roles', icon: ShieldAlert })}
+              {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
+              {can('configuracion_inventario.unidades.ver') && renderNavItem({ label: 'Unidades de medida', path: '/settings/units', icon: Ruler })}
+              {can('configuracion_inventario.categorias_materia.ver') && renderNavItem({ label: 'Categorías de materia', path: '/settings/material-categories', icon: Tags })}
+              {can('configuracion_inventario.marcas.ver') && renderNavItem({ label: 'Marcas', path: '/settings/brands', icon: Stamp })}
             </>
           )}
         </nav>
@@ -379,7 +406,7 @@ const Layout = () => {
       </aside>
 
       {/* Page Content wrapper */}
-      <main className="main-content" style={{ marginLeft: 'var(--sidebar-width)', width: 'calc(100% - var(--sidebar-width))' }}>
+      <main className="main-content">
         <Outlet />
       </main>
     </div>

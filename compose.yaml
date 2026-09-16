@@ -1,6 +1,9 @@
 services:
   api:
-    image: ghcr.io/sebaberrios2097/sietevidasapi-api:${API_TAG:-latest}
+    image: ghcr.io/OWNER/sgal-app-api:${API_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -9,10 +12,13 @@ services:
     expose:
       - "8080"
     networks:
-      - sietevidas
+      - sgal
 
   web:
-    image: ghcr.io/sebaberrios2097/sietevidas-frontend:${WEB_TAG:-latest}
+    image: ghcr.io/OWNER/sgal-app-web:${WEB_TAG:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - api
@@ -25,8 +31,8 @@ services:
       retries: 6
       start_period: 10s
     networks:
-      - sietevidas
+      - sgal
 
 networks:
-  sietevidas:
+  sgal:
     driver: bridge

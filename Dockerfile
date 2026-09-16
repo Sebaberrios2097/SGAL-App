@@ -1,13 +1,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY ["SieteVidasAPI/SieteVidasAPI.csproj", "SieteVidasAPI/"]
-COPY ["Infraestructura/Infraestructura.csproj", "Infraestructura/"]
-RUN dotnet restore "SieteVidasAPI/SieteVidasAPI.csproj"
+COPY ["SgalApp.Api/SgalApp.Api.csproj", "SgalApp.Api/"]
+COPY ["SgalApp.Infrastructure/SgalApp.Infrastructure.csproj", "SgalApp.Infrastructure/"]
+RUN dotnet restore "SgalApp.Api/SgalApp.Api.csproj"
 
-COPY SieteVidasAPI/ SieteVidasAPI/
-COPY Infraestructura/ Infraestructura/
-RUN dotnet publish "SieteVidasAPI/SieteVidasAPI.csproj" \
+COPY SgalApp.Api/ SgalApp.Api/
+COPY SgalApp.Infrastructure/ SgalApp.Infrastructure/
+RUN dotnet publish "SgalApp.Api/SgalApp.Api.csproj" \
     --configuration Release \
     --output /app/publish \
     --no-restore \
@@ -15,7 +15,7 @@ RUN dotnet publish "SieteVidasAPI/SieteVidasAPI.csproj" \
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-LABEL org.opencontainers.image.source="https://github.com/Sebaberrios2097/SieteVidasAPI"
+LABEL org.opencontainers.image.title="SGAL App API"
 
 # Fuentes necesarias para generar PDF (SystemPdfFontResolver busca DejaVu)
 RUN apt-get update \
@@ -27,4 +27,4 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
 EXPOSE 8080
 COPY --from=build /app/publish .
 USER $APP_UID
-ENTRYPOINT ["dotnet", "SieteVidasAPI.dll"]
+ENTRYPOINT ["dotnet", "SgalApp.Api.dll"]

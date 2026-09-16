@@ -160,7 +160,7 @@ const SearchableSelect = ({
                         borderRadius: '6px',
                         fontSize: '0.85rem',
                         cursor: 'pointer',
-                        background: isSelected ? 'rgba(0, 76, 37, 0.05)' : 'transparent',
+                        background: isSelected ? 'rgba(var(--primary-rgb), 0.05)' : 'transparent',
                         color: isSelected ? 'var(--primary-color)' : 'var(--text-main)',
                         fontWeight: isSelected ? '600' : '400',
                         transition: 'background-color 0.2s ease'

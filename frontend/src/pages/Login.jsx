@@ -1,15 +1,16 @@
-import { AlertCircle, Coffee, Eye, EyeOff, Lock, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, Eye, EyeOff, Lock, User } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const Login = () => {
   const { login, updatePasswordState } = useAuth();
+  const { branding } = useOrganization();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    document.title = "Iniciar Sesión - Siete Vidas";
-  }, []);
+  useDocumentTitle('Iniciar sesión');
 
   // Login state
   const [nombreUsuario, setNombreUsuario] = useState('');
@@ -17,7 +18,6 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [logoError, setLogoError] = useState(false);
 
   // Password change state (for forced password change)
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -45,7 +45,7 @@ const Login = () => {
         setTempUserId(data.idUsuario);
         setLoading(false);
       } else {
-        navigate('/users');
+        navigate('/');
       }
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión');
@@ -99,7 +99,7 @@ const Login = () => {
       updatePasswordState({ cambioClave: false });
 
       setTimeout(() => {
-        navigate('/users');
+        navigate('/');
       }, 1500);
     } catch (err) {
       setChangeError(err.message || 'Error al cambiar la contraseña');
@@ -114,7 +114,7 @@ const Login = () => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
-      background: 'radial-gradient(circle at center, #005a2b 0%, #00361a 100%)'
+      background: 'radial-gradient(circle at center, var(--primary-color) 0%, var(--primary-hover) 100%)'
     }} className="animate-fade-in">
       <div className="glass-panel" style={{
         width: '100%',
@@ -142,43 +142,8 @@ const Login = () => {
           gap: '12px',
           marginBottom: '36px'
         }}>
-          {!logoError ? (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-              height: '110px'
-            }}>
-              <img
-                src="/logo_login.png"
-                alt="Siete Vidas Logo"
-                onError={() => setLogoError(true)}
-                style={{ maxWidth: '100%', maxHeight: '110px', objectFit: 'contain' }}
-              />
-            </div>
-          ) : (
-            <>
-              <div style={{
-                background: 'linear-gradient(135deg, var(--primary-color) 0%, #002b15 100%)',
-                width: '60px',
-                height: '60px',
-                borderRadius: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 8px 24px var(--primary-glow)'
-              }}>
-                <Coffee size={30} color="#ffffff" />
-              </div>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: '800' }} className="text-gradient">Siete Vidas</h2>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                {mustChangePassword
-                  ? 'Actualiza tu contraseña para continuar'
-                  : 'Logística y Gestión para Cafetería'}
-              </p>
-            </>
-          )}
+          <BrandLogo maxHeight={110} />
+          {mustChangePassword && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center' }}>Actualiza tu contraseña para continuar en {branding.nombreComercial}.</p>}
         </div>
 
         {/* Regular Login Form */}

@@ -3,7 +3,7 @@ BEGIN TRANSACTION;
 
 -- ---------------------------------------------------------------------------
 -- La tabla de "Empleados" ahora también aloja a "Externos": personas o empresas
--- que no son empleados de la cafetería pero acceden al sistema con sus roles.
+-- que no son empleados de la organización pero acceden al sistema con sus roles.
 --   Es_Externo      : 0 = empleado, 1 = externo.
 --   Tipo_Documento  : 'RUN' persona natural, 'RUT' empresa.
 -- El RUT/RUN sigue siendo obligatorio y único (activo) para todos.
