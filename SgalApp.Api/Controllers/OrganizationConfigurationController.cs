@@ -179,7 +179,10 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.Descripcion,
                 x.EsNucleo,
                 Habilitado = x.EsNucleo || (x.ConfiguracionOrganizacion != null && x.ConfiguracionOrganizacion.Habilitado),
-                Dependencias = x.Dependencias.Select(d => d.ModuloRequerido.Codigo).OrderBy(c => c),
+                Dependencias = x.Dependencias
+                    .Select(d => d.ModuloRequerido.Codigo)
+                    .OrderBy(c => c)
+                    .ToList(),
                 CantidadPermisos = x.Permisos.Count(p => p.Activo)
             })
             .ToListAsync();
