@@ -38,6 +38,7 @@ Respalda la base y ejecuta en orden los scripts pendientes de `DatabaseChanges`.
 
 ```text
 DatabaseChanges/20260916_Configuracion_Organizacion_Modulos.sql
+DatabaseChanges/20260917_Logos_Multiples.sql
 ```
 
 SQL Server oficial se distribuye para Linux x86-64; un servidor ARM no puede ejecutar esa imagen de forma nativa. API y frontend sí pueden compilarse para ARM, conectándose a SQL Server en otra máquina compatible.

@@ -42,10 +42,12 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Funcionalidad | Permiso | Endpoint |
 |---|---|---|
 | Leer identidad pública y módulos habilitados | No asignable | `GET /api/organization-configuration/public` |
-| Obtener el logo público | No asignable | `GET /api/organization-configuration/logo` |
+| Obtener el logo público de una ubicación | No asignable | `GET /api/organization-configuration/logo/{ubicacion}` |
 | Ver la configuración de identidad | `configuracion_sistema.marca.ver` | `GET /api/organization-configuration/branding` |
 | Editar identidad y colores | `configuracion_sistema.marca.editar` | `PUT /api/organization-configuration/branding` |
-| Subir o eliminar logo | `configuracion_sistema.marca.editar` | `POST` / `DELETE /api/organization-configuration/branding/logo` |
+| Ver biblioteca y contenido de logos | `configuracion_sistema.marca.ver` | `GET /api/organization-configuration/branding/logos`, `GET .../logos/{id}/content` |
+| Subir o eliminar logos | `configuracion_sistema.marca.editar` | `POST /api/organization-configuration/branding/logos`, `DELETE .../logos/{id}` |
+| Asignar ubicaciones exclusivas | `configuracion_sistema.marca.editar` | `PUT /api/organization-configuration/branding/logos/{id}/locations` |
 | Ver y modificar módulos habilitados | `configuracion_sistema.modulos.administrar` | `GET` / `PUT /api/organization-configuration/modules` |
 
 ## Matriz completa de funcionalidades

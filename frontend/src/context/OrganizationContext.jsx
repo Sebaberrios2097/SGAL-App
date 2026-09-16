@@ -9,9 +9,7 @@ const defaultBranding = {
   colorPrimario: '#1F4E5F',
   colorSecundario: '#163A47',
   colorAcento: '#D97706',
-  colorFondo: '#F8FAFC',
-  tieneLogo: false,
-  logoVersion: 0
+  colorFondo: '#F8FAFC'
 };
 
 const OrganizationContext = createContext(null);
@@ -23,6 +21,7 @@ const hexToRgb = (hex) => {
 
 export const OrganizationProvider = ({ children }) => {
   const [branding, setBranding] = useState(defaultBranding);
+  const [logoVersions, setLogoVersions] = useState({});
   const [enabledModules, setEnabledModules] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,10 +31,12 @@ export const OrganizationProvider = ({ children }) => {
       if (!response.ok) throw new Error('No fue posible cargar la configuración de la organización.');
       const data = await response.json();
       setBranding({ ...defaultBranding, ...(data.branding || {}) });
+      setLogoVersions(data.logos || {});
       setEnabledModules(data.modulosHabilitados || []);
     } catch (error) {
       console.error(error);
       setBranding(defaultBranding);
+      setLogoVersions({});
       setEnabledModules([]);
     } finally {
       setLoading(false);
@@ -55,20 +56,25 @@ export const OrganizationProvider = ({ children }) => {
     document.title = branding.nombreComercial;
     const favicon = document.querySelector("link[rel='icon']");
     if (favicon) {
-      favicon.href = branding.tieneLogo
-        ? `/api/organization-configuration/logo?v=${branding.logoVersion}`
+      favicon.href = logoVersions.favicon
+        ? `/api/organization-configuration/logo/favicon?v=${encodeURIComponent(logoVersions.favicon)}`
         : '/favicon.svg';
     }
-    window.__SGAL_CONFIGURATION__ = { branding, enabledModules };
-  }, [branding, enabledModules]);
+    window.__SGAL_CONFIGURATION__ = { branding, logoVersions, enabledModules };
+  }, [branding, logoVersions, enabledModules]);
 
   const value = useMemo(() => ({
     branding,
+    logoVersions,
     enabledModules,
     loading,
+    hasLogo: (location) => Boolean(logoVersions[location]),
+    getLogoUrl: (location) => logoVersions[location]
+      ? `/api/organization-configuration/logo/${location}?v=${encodeURIComponent(logoVersions[location])}`
+      : null,
     isModuleEnabled: (code) => enabledModules.includes(code),
     refreshConfiguration: loadConfiguration
-  }), [branding, enabledModules, loading, loadConfiguration]);
+  }), [branding, logoVersions, enabledModules, loading, loadConfiguration]);
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 };

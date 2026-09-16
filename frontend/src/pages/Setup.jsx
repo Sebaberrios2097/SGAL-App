@@ -112,7 +112,7 @@ const Setup = () => {
           gap: '12px',
           marginBottom: '28px'
         }}>
-          <BrandLogo maxHeight={90} />
+          <BrandLogo location="login" maxHeight={90} />
           <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }} className="text-gradient">Configuración inicial</h2>
         </div>
 

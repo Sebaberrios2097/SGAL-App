@@ -18,6 +18,17 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
     private static readonly Regex HexColor = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
     private static readonly HashSet<string> AllowedLogoTypes =
         ["image/png", "image/jpeg"];
+    private static readonly LogoLocationDefinition[] LogoLocations =
+    [
+        new("login", "Inicio de sesión", "Pantallas de acceso y configuración inicial."),
+        new("sidebar", "Menú lateral", "Identidad principal del menú de navegación."),
+        new("punto_venta", "Punto de venta", "Cabecera de la pantalla de ventas."),
+        new("boletas", "Boletas y comprobantes", "Comprobantes impresos desde el punto de venta."),
+        new("documentos", "Documentos", "Órdenes de compra y otras exportaciones PDF."),
+        new("favicon", "Favicon", "Icono mostrado en la pestaña del navegador.")
+    ];
+    private static readonly HashSet<string> LogoLocationCodes =
+        LogoLocations.Select(x => x.Codigo).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     [AllowAnonymous]
     [HttpGet("public")]
@@ -35,32 +46,38 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.ColorPrimario,
                 x.ColorSecundario,
                 x.ColorAcento,
-                x.ColorFondo,
-                TieneLogo = x.LogoContenido != null,
-                LogoVersion = x.FechaActualizacion.Ticks
+                x.ColorFondo
             })
             .FirstOrDefaultAsync();
 
         var modules = await EnabledModuleCodes().ToListAsync();
+        var logoAssignments = await context.OrgLogosUbicaciones.AsNoTracking()
+            .Select(x => new { x.CodigoUbicacion, x.Logo.FechaActualizacion })
+            .ToListAsync();
+        var logos = logoAssignments.ToDictionary(x => x.CodigoUbicacion, x => x.FechaActualizacion);
         return Ok(new
         {
             Branding = branding ?? DefaultBranding(),
+            Logos = logos,
             ModulosHabilitados = modules
         });
     }
 
     [AllowAnonymous]
-    [HttpGet("logo")]
+    [HttpGet("logo/{ubicacion}")]
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]
-    public async Task<IActionResult> GetLogo()
+    public async Task<IActionResult> GetLogo(string ubicacion)
     {
-        var logo = await context.OrgConfiguracion.AsNoTracking()
-            .Where(x => x.IdConfiguracion == SingletonId && x.LogoContenido != null)
-            .Select(x => new { x.LogoContenido, x.LogoTipoContenido, x.LogoNombreArchivo })
+        var code = ubicacion.Trim().ToLowerInvariant();
+        if (!LogoLocationCodes.Contains(code)) return NotFound();
+
+        var logo = await context.OrgLogosUbicaciones.AsNoTracking()
+            .Where(x => x.CodigoUbicacion == code)
+            .Select(x => new { x.Logo.Contenido, x.Logo.TipoContenido })
             .FirstOrDefaultAsync();
 
-        if (logo?.LogoContenido == null) return NotFound();
-        return File(logo.LogoContenido, logo.LogoTipoContenido ?? "application/octet-stream", logo.LogoNombreArchivo);
+        if (logo == null) return NotFound();
+        return File(logo.Contenido, logo.TipoContenido);
     }
 
     [HttpGet("branding")]
@@ -80,8 +97,6 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.ColorSecundario,
                 x.ColorAcento,
                 x.ColorFondo,
-                TieneLogo = x.LogoContenido != null,
-                x.LogoNombreArchivo,
                 x.FechaActualizacion
             })
             .FirstOrDefaultAsync();
@@ -119,10 +134,48 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         return NoContent();
     }
 
-    [HttpPost("branding/logo")]
+    [HttpGet("branding/logos")]
+    [Permission(Permissions.SystemBrandingView)]
+    public async Task<IActionResult> GetLogos()
+    {
+        var logos = await context.OrgLogos.AsNoTracking()
+            .OrderBy(x => x.Nombre)
+            .ThenBy(x => x.IdLogo)
+            .Select(x => new
+            {
+                x.IdLogo,
+                x.Nombre,
+                x.NombreArchivo,
+                x.TipoContenido,
+                x.FechaCreacion,
+                x.FechaActualizacion,
+                Ubicaciones = x.Ubicaciones
+                    .OrderBy(location => location.CodigoUbicacion)
+                    .Select(location => location.CodigoUbicacion)
+                    .ToList()
+            })
+            .ToListAsync();
+
+        return Ok(new { Ubicaciones = LogoLocations, Logos = logos });
+    }
+
+    [HttpGet("branding/logos/{id:int}/content")]
+    [Permission(Permissions.SystemBrandingView)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GetLogoContent(int id)
+    {
+        var logo = await context.OrgLogos.AsNoTracking()
+            .Where(x => x.IdLogo == id)
+            .Select(x => new { x.Contenido, x.TipoContenido })
+            .FirstOrDefaultAsync();
+        if (logo == null) return NotFound();
+        return File(logo.Contenido, logo.TipoContenido);
+    }
+
+    [HttpPost("branding/logos")]
     [Permission(Permissions.SystemBrandingEdit)]
     [RequestSizeLimit(MaxLogoBytes + 65536)]
-    public async Task<IActionResult> UploadLogo(IFormFile file)
+    public async Task<IActionResult> UploadLogo([FromForm] IFormFile file, [FromForm] string? nombre)
     {
         if (file.Length == 0) return BadRequest(new { Mensaje = "El archivo está vacío." });
         if (file.Length > MaxLogoBytes) return BadRequest(new { Mensaje = "El logo no puede superar 2 MB." });
@@ -136,31 +189,105 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         if (!HasValidImageSignature(logoBytes, file.ContentType))
             return BadRequest(new { Mensaje = "El contenido del archivo no corresponde a una imagen PNG o JPEG válida." });
 
-        var branding = await context.OrgConfiguracion.FindAsync(SingletonId);
-        if (branding == null)
+        var fileName = Path.GetFileName(file.FileName);
+        if (fileName.Length > 180)
+            return BadRequest(new { Mensaje = "El nombre del archivo no puede superar 180 caracteres." });
+
+        var displayName = Clean(nombre) ?? Clean(Path.GetFileNameWithoutExtension(fileName)) ?? "Logo";
+        if (displayName.Length > 120)
+            return BadRequest(new { Mensaje = "El nombre del logo no puede superar 120 caracteres." });
+
+        var now = DateTime.UtcNow;
+        var logo = new OrgLogo
         {
-            branding = NewDefaultBranding();
-            context.OrgConfiguracion.Add(branding);
+            Nombre = displayName,
+            Contenido = logoBytes,
+            TipoContenido = file.ContentType,
+            NombreArchivo = fileName,
+            FechaCreacion = now,
+            FechaActualizacion = now
+        };
+        context.OrgLogos.Add(logo);
+        await context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetLogoContent), new { id = logo.IdLogo }, new { logo.IdLogo });
+    }
+
+    [HttpPut("branding/logos/{id:int}/locations")]
+    [Permission(Permissions.SystemBrandingEdit)]
+    public async Task<IActionResult> UpdateLogoLocations(int id, UpdateLogoLocationsDto dto)
+    {
+        if (!await context.OrgLogos.AnyAsync(x => x.IdLogo == id)) return NotFound();
+
+        var requested = dto.Ubicaciones
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToHashSet();
+        var unknown = requested.Where(x => !LogoLocationCodes.Contains(x)).ToList();
+        if (unknown.Count != 0)
+            return BadRequest(new { Mensaje = $"Ubicaciones desconocidas: {string.Join(", ", unknown)}" });
+
+        var assignments = await context.OrgLogosUbicaciones
+            .Include(x => x.Logo)
+            .Where(x => requested.Contains(x.CodigoUbicacion) || x.IdLogo == id)
+            .ToListAsync();
+        var conflicts = assignments
+            .Where(x => requested.Contains(x.CodigoUbicacion) && x.IdLogo != id)
+            .Select(x => new
+            {
+                CodigoUbicacion = x.CodigoUbicacion,
+                NombreUbicacion = LogoLocations.First(location => location.Codigo == x.CodigoUbicacion).Nombre,
+                x.IdLogo,
+                NombreLogo = x.Logo.Nombre
+            })
+            .ToList();
+
+        if (conflicts.Count != 0 && !dto.ConfirmarReemplazo)
+            return Conflict(new
+            {
+                Mensaje = "Una o más ubicaciones ya utilizan otro logo. Confirme el reemplazo para continuar.",
+                Conflictos = conflicts
+            });
+
+        context.OrgLogosUbicaciones.RemoveRange(assignments
+            .Where(x => x.IdLogo == id && !requested.Contains(x.CodigoUbicacion)));
+
+        var now = DateTime.UtcNow;
+        foreach (var code in requested)
+        {
+            var assignment = assignments.FirstOrDefault(x => x.CodigoUbicacion == code);
+            if (assignment == null)
+                context.OrgLogosUbicaciones.Add(new OrgLogoUbicacion
+                {
+                    CodigoUbicacion = code,
+                    IdLogo = id,
+                    FechaActualizacion = now
+                });
+            else if (assignment.IdLogo != id)
+            {
+                assignment.IdLogo = id;
+                assignment.FechaActualizacion = now;
+            }
         }
 
-        branding.LogoContenido = logoBytes;
-        branding.LogoTipoContenido = file.ContentType;
-        branding.LogoNombreArchivo = Path.GetFileName(file.FileName);
-        branding.FechaActualizacion = DateTime.UtcNow;
-        await context.SaveChangesAsync();
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new { Mensaje = "La asignación cambió mientras se guardaba. Recargue los logos e intente nuevamente." });
+        }
+
         return NoContent();
     }
 
-    [HttpDelete("branding/logo")]
+    [HttpDelete("branding/logos/{id:int}")]
     [Permission(Permissions.SystemBrandingEdit)]
-    public async Task<IActionResult> DeleteLogo()
+    public async Task<IActionResult> DeleteLogo(int id)
     {
-        var branding = await context.OrgConfiguracion.FindAsync(SingletonId);
-        if (branding == null) return NoContent();
-        branding.LogoContenido = null;
-        branding.LogoTipoContenido = null;
-        branding.LogoNombreArchivo = null;
-        branding.FechaActualizacion = DateTime.UtcNow;
+        var logo = await context.OrgLogos.FindAsync(id);
+        if (logo == null) return NoContent();
+        context.OrgLogos.Remove(logo);
         await context.SaveChangesAsync();
         return NoContent();
     }
@@ -266,17 +393,8 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         ColorPrimario = "#1F4E5F",
         ColorSecundario = "#163A47",
         ColorAcento = "#D97706",
-        ColorFondo = "#F8FAFC",
-        TieneLogo = false,
-        LogoVersion = 0L
+        ColorFondo = "#F8FAFC"
     };
 
-    private static OrgConfiguracion NewDefaultBranding() => new()
-    {
-        IdConfiguracion = SingletonId,
-        NombreComercial = "SGAL App",
-        Descripcion = "Sistema de Gestión, Administración y Logística",
-        TextoPieDocumentos = "Gracias por su preferencia.",
-        FechaActualizacion = DateTime.UtcNow
-    };
+    private sealed record LogoLocationDefinition(string Codigo, string Nombre, string Descripcion);
 }

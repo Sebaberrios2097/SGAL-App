@@ -116,7 +116,7 @@ const describirRechazoPoint = (estadoOrden) => {
 
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
-  const { branding } = useOrganization();
+  const { branding, getLogoUrl, hasLogo } = useOrganization();
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
   const [loading, setLoading] = useState(true);
@@ -734,8 +734,8 @@ const SalesView = () => {
       <body>
         <!-- PAGE 1: BOLETA -->
         <div class="logo-container">
-          ${branding.tieneLogo
-            ? `<img src="${window.location.origin}/api/organization-configuration/logo?v=${branding.logoVersion}" class="logo" alt="Logo" />`
+          ${hasLogo('boletas')
+            ? `<img src="${window.location.origin}${getLogoUrl('boletas')}" class="logo" alt="Logo" />`
             : `<strong>${escapeHtml(branding.nombreComercial)}</strong>`}
         </div>
         <div class="divider"></div>
@@ -1002,8 +1002,8 @@ const SalesView = () => {
       <body>
         <!-- PAGE 1: BOLETA -->
         <div class="logo-container">
-          ${branding.tieneLogo
-            ? `<img src="${window.location.origin}/api/organization-configuration/logo?v=${branding.logoVersion}" class="logo" alt="Logo" />`
+          ${hasLogo('boletas')
+            ? `<img src="${window.location.origin}${getLogoUrl('boletas')}" class="logo" alt="Logo" />`
             : `<strong>${escapeHtml(branding.nombreComercial)}</strong>`}
         </div>
         <div class="divider"></div>
@@ -1880,7 +1880,7 @@ const SalesView = () => {
           justifyContent: 'center',
           gap: showViewSwitch ? '6px' : '0'
         }}>
-          <BrandLogo maxHeight={showViewSwitch ? 58 : 90} compact light />
+          <BrandLogo location="punto_venta" maxHeight={showViewSwitch ? 58 : 90} compact light />
           {showViewSwitch && renderViewSwitch()}
         </div>
 

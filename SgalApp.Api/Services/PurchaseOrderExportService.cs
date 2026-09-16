@@ -69,20 +69,25 @@ public class PurchaseOrderExportService : IPurchaseOrderExportService, IDisposab
     {
         var branding = context.OrgConfiguracion.AsNoTracking()
             .Where(x => x.IdConfiguracion == 1)
-            .Select(x => new { x.NombreComercial, x.ColorPrimario, x.LogoContenido, x.LogoTipoContenido })
+            .Select(x => new { x.NombreComercial, x.ColorPrimario })
+            .FirstOrDefault();
+
+        var documentLogo = context.OrgLogosUbicaciones.AsNoTracking()
+            .Where(x => x.CodigoUbicacion == "documentos")
+            .Select(x => new { x.Logo.Contenido, x.Logo.TipoContenido })
             .FirstOrDefault();
 
         _brandName = branding?.NombreComercial ?? "SGAL App";
         _primaryColor = branding?.ColorPrimario ?? "#1F4E5F";
-        if (branding?.LogoContenido != null)
+        if (documentLogo?.Contenido != null)
         {
-            var extension = branding.LogoTipoContenido switch
+            var extension = documentLogo.TipoContenido switch
             {
                 "image/jpeg" => ".jpg",
                 _ => ".png"
             };
             _logoPath = Path.Combine(Path.GetTempPath(), $"sgal-logo-{Guid.NewGuid():N}{extension}");
-            File.WriteAllBytes(_logoPath, branding.LogoContenido);
+            File.WriteAllBytes(_logoPath, documentLogo.Contenido);
         }
     }
 

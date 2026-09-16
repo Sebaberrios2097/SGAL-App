@@ -16,10 +16,11 @@ La aplicación permanece como un monolito modular: los módulos comparten API y 
 
 - Se sustituyó el nombre técnico y visual de Siete Vidas por SGAL App.
 - Se eliminaron logos y fondos propios del cliente original.
-- Se agregó configuración persistente para nombre comercial, razón social, descripción, pie de documentos, contacto, logo y cuatro colores.
-- La configuración pública se carga al iniciar el frontend y actualiza tema, logo, favicon, títulos, comprobantes y exportaciones.
+- Se agregó configuración persistente para nombre comercial, razón social, descripción, pie de documentos, contacto, una biblioteca sin límite funcional de logos y cuatro colores.
+- Cada ubicación admite un solo logo y cada logo puede asignarse a varias ubicaciones: login, sidebar, punto de venta, boletas, documentos y favicon.
+- La configuración pública se carga al iniciar el frontend y actualiza tema, logos, favicon, títulos, comprobantes y exportaciones.
 - Se incorporó una pantalla administrativa para editar la identidad sin recompilar el frontend.
-- El logo acepta PNG o JPEG hasta 2 MB y se conserva en la base de datos de esa instalación.
+- Cada logo acepta PNG o JPEG hasta 2 MB y se conserva en la base de datos de esa instalación.
 
 ### Modularidad y autorización
 
@@ -47,7 +48,9 @@ El script `DatabaseChanges/20260916_Configuracion_Organizacion_Modulos.sql` real
 - habilita inicialmente los módulos existentes para no interrumpir instalaciones actuales;
 - entrega al rol administrador permisos de lectura y edición de marca; la administración comercial de módulos permanece reservada al superusuario desarrollador.
 
-No se migran logos ni nombres de Siete Vidas: cada instalación debe cargar su identidad desde Configuración.
+La migración de configuración no introduce nombres ni archivos propios de Siete Vidas; cada instalación conserva o carga su identidad desde Configuración.
+
+El script `DatabaseChanges/20260917_Logos_Multiples.sql` crea `Org_Logos` y `Org_Logos_Ubicaciones`. Si existe el logo único del modelo anterior, lo incorpora a la biblioteca y lo asigna inicialmente a todas las ubicaciones para conservar el comportamiento previo.
 
 ## Trabajo pendiente recomendado
 

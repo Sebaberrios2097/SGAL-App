@@ -32,6 +32,10 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<OrgModulo> OrgModulos { get; set; }
 
+    public virtual DbSet<OrgLogo> OrgLogos { get; set; }
+
+    public virtual DbSet<OrgLogoUbicacion> OrgLogosUbicaciones { get; set; }
+
     public virtual DbSet<SegModuloDependencia> SegModulosDependencias { get; set; }
 
     public virtual DbSet<InvCategoriaProductos> InvCategoriaProductos { get; set; }
@@ -165,6 +169,23 @@ public partial class SgalContext : DbContext
                 .HasForeignKey<OrgModulo>(x => x.IdModulo)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_Org_Modulos_Seg_Modulos");
+        });
+
+        modelBuilder.Entity<OrgLogo>(entity =>
+        {
+            entity.Property(x => x.FechaCreacion).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.Property(x => x.FechaActualizacion).HasDefaultValueSql("SYSUTCDATETIME()");
+        });
+
+        modelBuilder.Entity<OrgLogoUbicacion>(entity =>
+        {
+            entity.HasKey(x => x.CodigoUbicacion);
+            entity.Property(x => x.FechaActualizacion).HasDefaultValueSql("SYSUTCDATETIME()");
+            entity.HasIndex(x => x.IdLogo);
+            entity.HasOne(x => x.Logo).WithMany(x => x.Ubicaciones)
+                .HasForeignKey(x => x.IdLogo)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Org_Logos_Ubicaciones_Org_Logos");
         });
 
         modelBuilder.Entity<SegModuloDependencia>(entity =>

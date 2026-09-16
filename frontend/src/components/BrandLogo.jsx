@@ -2,15 +2,16 @@ import { Boxes } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOrganization } from '../context/OrganizationContext';
 
-const BrandLogo = ({ maxHeight = 64, compact = false, light = false }) => {
-  const { branding } = useOrganization();
+const BrandLogo = ({ location = 'sidebar', maxHeight = 64, compact = false, light = false }) => {
+  const { branding, getLogoUrl, logoVersions } = useOrganization();
   const [failed, setFailed] = useState(false);
+  const logoUrl = getLogoUrl(location);
 
-  useEffect(() => setFailed(false), [branding.logoVersion]);
+  useEffect(() => setFailed(false), [location, logoVersions]);
 
-  if (branding.tieneLogo && !failed) {
+  if (logoUrl && !failed) {
     return <img
-      src={`/api/organization-configuration/logo?v=${branding.logoVersion}`}
+      src={logoUrl}
       alt={`Logo de ${branding.nombreComercial}`}
       onError={() => setFailed(true)}
       style={{ maxWidth: '100%', maxHeight, objectFit: 'contain' }}

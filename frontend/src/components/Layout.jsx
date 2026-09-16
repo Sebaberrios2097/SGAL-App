@@ -249,7 +249,7 @@ const Layout = () => {
           width: '100%',
           height: '60px'
         }}>
-          <BrandLogo maxHeight={60} compact light />
+          <BrandLogo location="sidebar" maxHeight={60} compact light />
         </div>
 
         {/* Navigation */}

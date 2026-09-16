@@ -36,3 +36,9 @@ public sealed class UpdateOrganizationModulesDto
 {
     public List<string> CodigosHabilitados { get; set; } = [];
 }
+
+public sealed class UpdateLogoLocationsDto
+{
+    public List<string> Ubicaciones { get; set; } = [];
+    public bool ConfirmarReemplazo { get; set; }
+}

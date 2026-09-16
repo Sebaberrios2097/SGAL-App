@@ -12,7 +12,7 @@ SGAL App es una base de producto modular y configurable. El mismo código se pue
 - `DatabaseChanges`: migraciones SQL explícitas del producto.
 - `compose.yaml`: despliegue conjunto de API y frontend; SQL Server puede ejecutarse fuera del Compose.
 
-La identidad de la organización se administra en tiempo de ejecución: nombre, razón social, descripción, textos públicos, logo y hasta cuatro colores. La activación de módulos se almacena en la base de datos de cada instalación y los permisos de los roles se filtran por los módulos habilitados.
+La identidad de la organización se administra en tiempo de ejecución: nombre, razón social, descripción, textos públicos, biblioteca de logos y hasta cuatro colores. Cada logo puede asignarse a login, sidebar, punto de venta, boletas, documentos y favicon; cada ubicación admite exactamente un logo. La activación de módulos se almacena en la base de datos de cada instalación y los permisos de los roles se filtran por los módulos habilitados.
 
 ## Documentación funcional
 
@@ -30,7 +30,7 @@ npm ci
 npm run dev
 ```
 
-Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`; la configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`.
+Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`.
 
 En desarrollo, configura la conexión sin guardarla en Git:
 

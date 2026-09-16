@@ -142,7 +142,7 @@ const Login = () => {
           gap: '12px',
           marginBottom: '36px'
         }}>
-          <BrandLogo maxHeight={110} />
+          <BrandLogo location="login" maxHeight={110} />
           {mustChangePassword && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center' }}>Actualiza tu contraseña para continuar en {branding.nombreComercial}.</p>}
         </div>
 
