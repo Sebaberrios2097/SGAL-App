@@ -42,3 +42,8 @@ public sealed class UpdateLogoLocationsDto
     public List<string> Ubicaciones { get; set; } = [];
     public bool ConfirmarReemplazo { get; set; }
 }
+
+public sealed class SetBackgroundEnabledDto
+{
+    public bool Habilitado { get; set; }
+}

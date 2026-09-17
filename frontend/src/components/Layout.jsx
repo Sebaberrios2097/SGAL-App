@@ -29,10 +29,13 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import BrandLogo from './BrandLogo';
 
 const Layout = () => {
   const { user, logout, can, canAny } = useAuth();
+  const { getBackgroundStyle } = useOrganization();
+  const sidebarBackground = getBackgroundStyle('sidebar');
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -235,7 +238,8 @@ const Layout = () => {
         backgroundColor: 'var(--primary-color)',
         boxShadow: '4px 0 24px rgba(var(--primary-rgb), 0.18)',
         color: '#ffffff',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        ...(sidebarBackground || {})
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
         {/* Brand */}

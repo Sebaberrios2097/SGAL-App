@@ -36,6 +36,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<OrgLogoUbicacion> OrgLogosUbicaciones { get; set; }
 
+    public virtual DbSet<OrgFondo> OrgFondos { get; set; }
+
     public virtual DbSet<SegModuloDependencia> SegModulosDependencias { get; set; }
 
     public virtual DbSet<InvCategoriaProductos> InvCategoriaProductos { get; set; }
@@ -186,6 +188,12 @@ public partial class SgalContext : DbContext
                 .HasForeignKey(x => x.IdLogo)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_Org_Logos_Ubicaciones_Org_Logos");
+        });
+
+        modelBuilder.Entity<OrgFondo>(entity =>
+        {
+            entity.HasKey(x => x.Zona);
+            entity.Property(x => x.FechaActualizacion).HasDefaultValueSql("SYSUTCDATETIME()");
         });
 
         modelBuilder.Entity<SegModuloDependencia>(entity =>

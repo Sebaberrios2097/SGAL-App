@@ -21,6 +21,7 @@ La aplicación permanece como un monolito modular: los módulos comparten API y 
 - La configuración pública se carga al iniciar el frontend y actualiza tema, logos, favicon, títulos, comprobantes y exportaciones.
 - Se incorporó una pantalla administrativa para editar la identidad sin recompilar el frontend.
 - Cada logo acepta PNG o JPEG hasta 2 MB y se conserva en la base de datos de esa instalación.
+- Se agregaron fondos personalizados por zona (inicio de sesión, menú lateral, ventas y comandas): cada zona admite subir una imagen con dimensiones exactas obligatorias (menú lateral 600×2024 px; inicio de sesión, ventas y comandas 1920×1080 px). La imagen se valida en el servidor (tipo, tamaño y dimensiones), se puede previsualizar a tamaño completo y solo se aplica cuando la zona está habilitada.
 
 ### Modularidad y autorización
 

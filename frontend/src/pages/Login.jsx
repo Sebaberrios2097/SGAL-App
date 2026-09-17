@@ -8,7 +8,8 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const Login = () => {
   const { login, updatePasswordState } = useAuth();
-  const { branding } = useOrganization();
+  const { branding, getBackgroundStyle } = useOrganization();
+  const loginBackground = getBackgroundStyle('login');
   const navigate = useNavigate();
   useDocumentTitle('Iniciar sesión');
 
@@ -114,7 +115,7 @@ const Login = () => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
-      background: 'radial-gradient(circle at center, var(--primary-color) 0%, var(--primary-hover) 100%)'
+      ...(loginBackground || { background: 'radial-gradient(circle at center, var(--primary-color) 0%, var(--primary-hover) 100%)' })
     }} className="animate-fade-in">
       <div className="glass-panel" style={{
         width: '100%',

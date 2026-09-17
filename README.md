@@ -30,7 +30,7 @@ npm ci
 npm run dev
 ```
 
-Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`.
+Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`; los fondos personalizados por zona (imagen de fondo para menú lateral, ventas y comandas) mediante `20260918_Fondos_Personalizados.sql`, y el fondo de inicio de sesión mediante `20260919_Fondo_Login.sql`.
 
 En desarrollo, configura la conexión sin guardarla en Git:
 

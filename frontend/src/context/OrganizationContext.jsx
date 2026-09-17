@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { backgroundStyleFor, hexToRgb } from '../utils/backgroundStyle';
 
 const defaultBranding = {
   nombreComercial: 'SGAL App',
@@ -14,15 +15,11 @@ const defaultBranding = {
 
 const OrganizationContext = createContext(null);
 
-const hexToRgb = (hex) => {
-  const value = hex.replace('#', '');
-  return `${parseInt(value.slice(0, 2), 16)}, ${parseInt(value.slice(2, 4), 16)}, ${parseInt(value.slice(4, 6), 16)}`;
-};
-
 export const OrganizationProvider = ({ children }) => {
   const [branding, setBranding] = useState(defaultBranding);
   const [logoVersions, setLogoVersions] = useState({});
   const [enabledModules, setEnabledModules] = useState([]);
+  const [backgrounds, setBackgrounds] = useState({});
   const [loading, setLoading] = useState(true);
 
   const loadConfiguration = useCallback(async () => {
@@ -33,11 +30,13 @@ export const OrganizationProvider = ({ children }) => {
       setBranding({ ...defaultBranding, ...(data.branding || {}) });
       setLogoVersions(data.logos || {});
       setEnabledModules(data.modulosHabilitados || []);
+      setBackgrounds(Object.fromEntries((data.fondos || []).map(f => [f.zona, f])));
     } catch (error) {
       console.error(error);
       setBranding(defaultBranding);
       setLogoVersions({});
       setEnabledModules([]);
+      setBackgrounds({});
     } finally {
       setLoading(false);
     }
@@ -60,21 +59,27 @@ export const OrganizationProvider = ({ children }) => {
         ? `/api/organization-configuration/logo/favicon?v=${encodeURIComponent(logoVersions.favicon)}`
         : '/favicon.svg';
     }
-    window.__SGAL_CONFIGURATION__ = { branding, logoVersions, enabledModules };
-  }, [branding, logoVersions, enabledModules]);
+    window.__SGAL_CONFIGURATION__ = { branding, logoVersions, enabledModules, backgrounds };
+  }, [branding, logoVersions, enabledModules, backgrounds]);
+
+  const getBackgroundStyle = useCallback(
+    (zona) => backgroundStyleFor(backgrounds[zona]),
+    [backgrounds]);
 
   const value = useMemo(() => ({
     branding,
     logoVersions,
     enabledModules,
+    backgrounds,
     loading,
     hasLogo: (location) => Boolean(logoVersions[location]),
     getLogoUrl: (location) => logoVersions[location]
       ? `/api/organization-configuration/logo/${location}?v=${encodeURIComponent(logoVersions[location])}`
       : null,
     isModuleEnabled: (code) => enabledModules.includes(code),
+    getBackgroundStyle,
     refreshConfiguration: loadConfiguration
-  }), [branding, logoVersions, enabledModules, loading, loadConfiguration]);
+  }), [branding, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 };
