@@ -116,7 +116,7 @@ const describirRechazoPoint = (estadoOrden) => {
 
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
-  const { branding, getLogoUrl, hasLogo } = useOrganization();
+  const { branding, getLogoUrl, hasLogo, getBackgroundStyle } = useOrganization();
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
   const [loading, setLoading] = useState(true);
@@ -1656,12 +1656,14 @@ const SalesView = () => {
       <div style={{
         height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
         overflowY: 'auto',
-        // Fondo de la sección de comandas: imagen rosada (rosa sólido como respaldo).
-        backgroundColor: COMANDA_PINK,
-        backgroundImage: 'linear-gradient(145deg, var(--accent-color), var(--primary-color))',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
+        // Fondo personalizado de comandas si está habilitado; si no, el degradado rosa por defecto.
+        ...(comandasBackground || {
+          backgroundColor: COMANDA_PINK,
+          backgroundImage: 'linear-gradient(145deg, var(--accent-color), var(--primary-color))',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }),
         backgroundAttachment: 'fixed',
         padding: '24px',
         opacity: activeTurn ? 1 : 0.5,
@@ -1771,6 +1773,9 @@ const SalesView = () => {
   // El switch Venta/Comandas se ofrece a quien puede gestionar comandas y tiene turno activo.
   const showViewSwitch = Boolean(activeTurn) && can('ventas.comandas.gestionar');
   const enComandas = viewMode === 'comandas';
+  // Fondos personalizados por sección (si están habilitados en Identidad).
+  const ventasBackground = getBackgroundStyle('ventas');
+  const comandasBackground = getBackgroundStyle('comandas');
 
   // Segmento del switch. La costura entre ambos es diagonal (clip-path), no recta.
   const renderViewSwitch = () => (
@@ -1929,12 +1934,14 @@ const SalesView = () => {
           <div className="pos-layout" style={{
             height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
             overflow: 'hidden',
-            // Fondo de la sección de venta: imagen fija (solo scrollea el contenido).
-            backgroundColor: '#f8fafc',
-            backgroundImage: 'linear-gradient(180deg, var(--bg-color), #ffffff)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
+            // Fondo personalizado de venta si está habilitado; si no, el degradado por defecto.
+            ...(ventasBackground || {
+              backgroundColor: '#f8fafc',
+              backgroundImage: 'linear-gradient(180deg, var(--bg-color), #ffffff)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            }),
             backgroundAttachment: 'fixed',
             opacity: activeTurn ? 1 : 0.5,
             pointerEvents: activeTurn ? 'auto' : 'none',

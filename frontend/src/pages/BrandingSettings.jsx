@@ -1,8 +1,9 @@
-import { Image, Palette, Save, Trash2, Upload } from 'lucide-react';
+import { Image, Layout as LayoutIcon, Palette, Save, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { backgroundImageUrl } from '../utils/backgroundStyle';
 
 const colorFields = [
   ['colorPrimario', 'Color primario'],
@@ -11,9 +12,17 @@ const colorFields = [
   ['colorFondo', 'Color de fondo']
 ];
 
+// Zona → etiqueta y dimensiones exactas requeridas (ancho x alto).
+const backgroundZones = [
+  ['login', 'Inicio de sesión', 1920, 1080],
+  ['sidebar', 'Menú lateral', 600, 2024],
+  ['ventas', 'Ventas', 1920, 1080],
+  ['comandas', 'Comandas', 1920, 1080]
+];
+
 const BrandingSettings = () => {
   const { can } = useAuth();
-  const { branding, refreshConfiguration } = useOrganization();
+  const { branding, backgrounds, refreshConfiguration } = useOrganization();
   const [form, setForm] = useState(branding);
   const [logos, setLogos] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -21,6 +30,8 @@ const BrandingSettings = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bgErrors, setBgErrors] = useState({});
+  const [previewZone, setPreviewZone] = useState(null);
   const canEdit = can('configuracion_sistema.marca.editar');
   useDocumentTitle('Identidad de la organización');
 
@@ -142,6 +153,57 @@ const BrandingSettings = () => {
     finally { setSaving(false); }
   };
 
+  const setZoneError = (zona, mensaje) => setBgErrors(prev => ({ ...prev, [zona]: mensaje }));
+
+  const uploadBackground = async (zona, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setSaving(true); setMessage(''); setZoneError(zona, '');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch(`/api/organization-configuration/backgrounds/${zona}`, { method: 'POST', body });
+      if (response.status === 413) throw new Error('La imagen supera el tamaño permitido (máximo 6 MB).');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.mensaje || `No fue posible subir la imagen (error ${response.status}).`);
+      }
+      await refreshConfiguration();
+      setMessage('Imagen de fondo actualizada.');
+    } catch (exception) { setZoneError(zona, exception.message); }
+    finally { setSaving(false); }
+  };
+
+  const toggleBackground = async (zona, habilitado) => {
+    setSaving(true); setMessage(''); setZoneError(zona, '');
+    try {
+      const response = await fetch(`/api/organization-configuration/backgrounds/${zona}/enabled`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ habilitado })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.mensaje || 'No fue posible actualizar el fondo.');
+      }
+      await refreshConfiguration();
+    } catch (exception) { setZoneError(zona, exception.message); }
+    finally { setSaving(false); }
+  };
+
+  const removeBackground = async (zona, label) => {
+    if (!window.confirm(`¿Quitar la imagen de fondo de “${label}”?`)) return;
+    setSaving(true); setMessage(''); setZoneError(zona, '');
+    try {
+      const response = await fetch(`/api/organization-configuration/backgrounds/${zona}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('No fue posible quitar la imagen de fondo.');
+      await refreshConfiguration();
+      setMessage('Imagen de fondo eliminada.');
+    } catch (exception) { setZoneError(zona, exception.message); }
+    finally { setSaving(false); }
+  };
+
   return <div className="animate-fade-in">
     <div className="page-header"><div><h2 className="page-title">Identidad de la organización</h2><p className="page-subtitle">Configura los datos, colores y logos utilizados en cada área de la instalación.</p></div><Palette color="var(--primary-color)" /></div>
     {message && <div className="badge badge-success" style={{ marginBottom: 16, padding: 12 }}>{message}</div>}
@@ -190,6 +252,77 @@ const BrandingSettings = () => {
           </article>)}
         </div>}
     </section>
+
+    <section className="card" style={{ marginTop: 20 }}>
+      <div style={{ marginBottom: 18 }}>
+        <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LayoutIcon size={19} /> Fondos personalizados</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '.84rem', marginTop: 5 }}>Sube una imagen de fondo para el menú lateral, ventas y comandas. La imagen debe tener exactamente las dimensiones indicadas en cada zona.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+        {backgroundZones.map(([zona, label, ancho, alto]) => {
+          const config = backgrounds[zona] || {};
+          const tieneImagen = Boolean(config.tieneImagen);
+          return (
+            <article key={zona} style={{ border: '1px solid var(--panel-border)', borderRadius: 14, padding: 16, background: 'var(--bg-color)' }}>
+              <div
+                onClick={() => tieneImagen && setPreviewZone(zona)}
+                title={tieneImagen ? 'Ver imagen completa' : undefined}
+                style={{
+                  height: 130, borderRadius: 10, marginBottom: 12, display: 'grid', placeItems: 'center', overflow: 'hidden',
+                  background: '#eef2f7', border: '1px solid var(--panel-border)', cursor: tieneImagen ? 'zoom-in' : 'default'
+                }}>
+                {tieneImagen
+                  ? <img src={backgroundImageUrl(zona, config.version)} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Sin imagen</span>}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <strong>{label}</strong>
+                <small style={{ color: 'var(--text-muted)' }}>{ancho} × {alto} px</small>
+              </div>
+              {bgErrors[zona] && <div className="badge badge-danger" style={{ marginTop: 10, padding: 10, fontSize: '.78rem', whiteSpace: 'normal' }}>{bgErrors[zona]}</div>}
+              {tieneImagen && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.84rem', margin: '10px 0', cursor: canEdit ? 'pointer' : 'default' }}>
+                  <input type="checkbox" disabled={!canEdit || saving} checked={Boolean(config.habilitado)} onChange={e => toggleBackground(zona, e.target.checked)} />
+                  Mostrar este fondo
+                </label>
+              )}
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: tieneImagen ? 0 : 12 }}>
+                  <label className="btn btn-primary" style={{ cursor: saving ? 'wait' : 'pointer', fontSize: '.8rem' }}>
+                    <Upload size={15} /> {tieneImagen ? 'Reemplazar' : 'Subir imagen'}
+                    <input type="file" accept="image/png,image/jpeg" hidden disabled={saving} onChange={e => uploadBackground(zona, e)} />
+                  </label>
+                  {tieneImagen && <button type="button" className="btn btn-danger" disabled={saving} onClick={() => removeBackground(zona, label)} style={{ fontSize: '.8rem' }}><Trash2 size={15} /> Quitar</button>}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+
+    {previewZone && (() => {
+      const [, plabel, pancho, palto] = backgroundZones.find(([z]) => z === previewZone) || [];
+      const pconfig = backgrounds[previewZone] || {};
+      return (
+        <div onClick={() => setPreviewZone(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.75)', zIndex: 1000,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24
+        }}>
+          <div style={{ color: '#fff', fontWeight: 700, display: 'flex', gap: 10, alignItems: 'baseline' }}>
+            <span>{plabel}</span>
+            <span style={{ fontSize: '.8rem', opacity: 0.8 }}>{pancho} × {palto} px</span>
+          </div>
+          <img
+            src={backgroundImageUrl(previewZone, pconfig.version)}
+            alt={plabel}
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '92vw', maxHeight: '80vh', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.4)' }}
+          />
+          <button type="button" className="btn" onClick={() => setPreviewZone(null)} style={{ display: 'flex', gap: 6 }}><X size={16} /> Cerrar</button>
+        </div>
+      );
+    })()}
   </div>;
 };
 

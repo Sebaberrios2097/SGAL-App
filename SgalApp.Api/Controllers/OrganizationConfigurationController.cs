@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Text.RegularExpressions;
 using SgalApp.Infrastructure.Context;
 using SgalApp.Infrastructure.Entities;
@@ -29,6 +30,15 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
     ];
     private static readonly HashSet<string> LogoLocationCodes =
         LogoLocations.Select(x => x.Codigo).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private const long MaxBackgroundBytes = 6 * 1024 * 1024;
+    // Zonas con fondo personalizable y sus dimensiones exactas obligatorias (ancho x alto).
+    private static readonly Dictionary<string, (int Ancho, int Alto)> BackgroundZones = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["login"] = (1920, 1080),
+        ["sidebar"] = (600, 2024),
+        ["ventas"] = (1920, 1080),
+        ["comandas"] = (1920, 1080)
+    };
 
     [AllowAnonymous]
     [HttpGet("public")]
@@ -55,11 +65,19 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             .Select(x => new { x.CodigoUbicacion, x.Logo.FechaActualizacion })
             .ToListAsync();
         var logos = logoAssignments.ToDictionary(x => x.CodigoUbicacion, x => x.FechaActualizacion);
+
+        // Si la migración de fondos aún no se aplicó, no debe romperse la identidad
+        // completa: se devuelven sin fondos y la aplicación conserva su apariencia base.
+        List<object> fondos;
+        try { fondos = await BuildBackgroundsAsync(); }
+        catch (DbException) { fondos = []; }
+
         return Ok(new
         {
             Branding = branding ?? DefaultBranding(),
             Logos = logos,
-            ModulosHabilitados = modules
+            ModulosHabilitados = modules,
+            Fondos = fondos
         });
     }
 
@@ -290,6 +308,188 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         context.OrgLogos.Remove(logo);
         await context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("background/{zona}")]
+    [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]
+    public async Task<IActionResult> GetBackground(string zona)
+    {
+        var code = zona.Trim().ToLowerInvariant();
+        if (!BackgroundZones.ContainsKey(code)) return NotFound();
+
+        // Sirve la imagen si existe; la aplicación decide en el cliente si mostrarla
+        // según Habilitado, lo que además permite previsualizarla en administración.
+        var fondo = await context.OrgFondos.AsNoTracking()
+            .Where(x => x.Zona == code && x.Contenido != null)
+            .Select(x => new { x.Contenido, x.TipoContenido })
+            .FirstOrDefaultAsync();
+        if (fondo?.Contenido == null) return NotFound();
+        return File(fondo.Contenido, fondo.TipoContenido ?? "image/png");
+    }
+
+    [HttpGet("backgrounds")]
+    [Permission(Permissions.SystemBrandingView)]
+    public async Task<IActionResult> GetBackgrounds() => Ok(await BuildBackgroundsAsync());
+
+    [HttpPost("backgrounds/{zona}")]
+    [Permission(Permissions.SystemBrandingEdit)]
+    [RequestSizeLimit(MaxBackgroundBytes + 65536)]
+    public async Task<IActionResult> UploadBackground(string zona, [FromForm] IFormFile file)
+    {
+        var code = zona.Trim().ToLowerInvariant();
+        if (!BackgroundZones.TryGetValue(code, out var required))
+            return NotFound(new { Mensaje = $"Zona de fondo desconocida: {zona}." });
+
+        if (file.Length == 0) return BadRequest(new { Mensaje = "El archivo está vacío." });
+        if (file.Length > MaxBackgroundBytes) return BadRequest(new { Mensaje = "La imagen no puede superar 6 MB." });
+        if (!AllowedLogoTypes.Contains(file.ContentType))
+            return BadRequest(new { Mensaje = "El fondo debe ser PNG o JPEG." });
+
+        await using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await input.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+        if (!HasValidImageSignature(bytes, file.ContentType))
+            return BadRequest(new { Mensaje = "El contenido del archivo no corresponde a una imagen PNG o JPEG válida." });
+
+        var dimensions = TryGetImageDimensions(bytes, file.ContentType);
+        if (dimensions == null)
+            return BadRequest(new { Mensaje = "No fue posible leer las dimensiones de la imagen." });
+        if (dimensions.Value.Ancho != required.Ancho || dimensions.Value.Alto != required.Alto)
+            return BadRequest(new
+            {
+                Mensaje = $"La imagen debe medir exactamente {required.Ancho} x {required.Alto} px. " +
+                          $"La imagen cargada mide {dimensions.Value.Ancho} x {dimensions.Value.Alto} px."
+            });
+
+        var fondo = await context.OrgFondos.FindAsync(code);
+        if (fondo == null)
+        {
+            fondo = new OrgFondo { Zona = code };
+            context.OrgFondos.Add(fondo);
+        }
+
+        fondo.Contenido = bytes;
+        fondo.TipoContenido = file.ContentType;
+        fondo.NombreArchivo = Path.GetFileName(file.FileName);
+        fondo.Ancho = dimensions.Value.Ancho;
+        fondo.Alto = dimensions.Value.Alto;
+        fondo.Habilitado = true; // Subir una imagen la deja activa por defecto.
+        fondo.FechaActualizacion = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpPut("backgrounds/{zona}/enabled")]
+    [Permission(Permissions.SystemBrandingEdit)]
+    public async Task<IActionResult> SetBackgroundEnabled(string zona, SetBackgroundEnabledDto dto)
+    {
+        var code = zona.Trim().ToLowerInvariant();
+        if (!BackgroundZones.ContainsKey(code))
+            return NotFound(new { Mensaje = $"Zona de fondo desconocida: {zona}." });
+
+        var fondo = await context.OrgFondos.FindAsync(code);
+        if (fondo == null || fondo.Contenido == null)
+            return BadRequest(new { Mensaje = "Primero debe subir una imagen para esta zona." });
+
+        fondo.Habilitado = dto.Habilitado;
+        fondo.FechaActualizacion = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpDelete("backgrounds/{zona}")]
+    [Permission(Permissions.SystemBrandingEdit)]
+    public async Task<IActionResult> DeleteBackground(string zona)
+    {
+        var code = zona.Trim().ToLowerInvariant();
+        if (!BackgroundZones.ContainsKey(code))
+            return NotFound(new { Mensaje = $"Zona de fondo desconocida: {zona}." });
+
+        var fondo = await context.OrgFondos.FindAsync(code);
+        if (fondo == null) return NoContent();
+        fondo.Contenido = null;
+        fondo.TipoContenido = null;
+        fondo.NombreArchivo = null;
+        fondo.Ancho = null;
+        fondo.Alto = null;
+        fondo.Habilitado = false;
+        fondo.FechaActualizacion = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private async Task<List<object>> BuildBackgroundsAsync()
+    {
+        var fondos = await context.OrgFondos.AsNoTracking()
+            .Select(x => new
+            {
+                x.Zona,
+                x.Habilitado,
+                x.Ancho,
+                x.Alto,
+                x.NombreArchivo,
+                x.FechaActualizacion,
+                TieneImagen = x.Contenido != null
+            })
+            .ToListAsync();
+
+        return BackgroundZones.Select(zone =>
+        {
+            var fondo = fondos.FirstOrDefault(x => x.Zona == zone.Key);
+            return (object)new
+            {
+                Zona = zone.Key,
+                AnchoRequerido = zone.Value.Ancho,
+                AltoRequerido = zone.Value.Alto,
+                Habilitado = fondo?.Habilitado ?? false,
+                TieneImagen = fondo?.TieneImagen ?? false,
+                fondo?.Ancho,
+                fondo?.Alto,
+                NombreArchivo = fondo?.NombreArchivo,
+                Version = fondo?.FechaActualizacion
+            };
+        }).ToList();
+    }
+
+    // Lee el ancho y alto de una imagen PNG o JPEG a partir de su cabecera.
+    private static (int Ancho, int Alto)? TryGetImageDimensions(byte[] bytes, string contentType)
+    {
+        try
+        {
+            if (contentType == "image/png")
+            {
+                if (bytes.Length < 24) return null;
+                int width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+                int height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+                return (width, height);
+            }
+
+            if (contentType == "image/jpeg")
+            {
+                int offset = 2; // Salta el marcador de inicio de imagen (0xFFD8).
+                while (offset + 9 < bytes.Length)
+                {
+                    if (bytes[offset] != 0xFF) { offset++; continue; }
+                    byte marker = bytes[offset + 1];
+                    // Marcadores SOF que contienen las dimensiones (excluye DHT/JPG/DAC).
+                    bool isSof = marker is >= 0xC0 and <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
+                    if (isSof)
+                    {
+                        int height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+                        int width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+                        return (width, height);
+                    }
+                    int segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+                    if (segmentLength < 2) return null;
+                    offset += 2 + segmentLength;
+                }
+            }
+        }
+        catch (IndexOutOfRangeException) { return null; }
+        return null;
     }
 
     [HttpGet("modules")]
