@@ -191,9 +191,7 @@ const RolePermissions = () => {
           </Link>
           <div className="permissions-title-icon"><ShieldCheck size={26} /></div>
           <div>
-            <p className="permissions-eyebrow">Configuración de acceso</p>
-            <h2 className="page-title text-gradient">Permisos de {role?.nombreRol || 'rol'}</h2>
-            <p className="page-subtitle">Define exactamente qué puede consultar y modificar este rol.</p>
+            <h2 className="page-title text-solid">Permisos de {role?.nombreRol || 'rol'}</h2>
           </div>
         </div>
         <div className="permissions-header-count" aria-label={`${selectedPermissions.length} permisos seleccionados`}>

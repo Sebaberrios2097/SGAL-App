@@ -413,8 +413,7 @@ const EmployeeManagement = () => {
     <div className={location.state?.fromEmployeeEdit ? 'role-management-return' : 'animate-fade-in'}>
       <header className="page-header">
         <div>
-          <h2 className="page-title text-gradient">Usuarios</h2>
-          <p className="page-subtitle">Administra empleados y externos, sus cuentas y accesos.</p>
+          <h2 className="page-title text-solid">Usuarios</h2>
         </div>
         {can('usuarios.empleado.crear') && <button className="btn btn-primary" onClick={() => setShowAddEmpModal(true)}>
           <Plus size={18} />
@@ -519,7 +518,7 @@ const EmployeeManagement = () => {
               <X size={20} color="var(--text-muted)" />
             </button>
 
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '20px', fontWeight: '700' }} className="text-gradient">
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '20px', fontWeight: '700' }} className="text-solid">
               {wizardStep === 1 ? 'Registrar Nuevo Usuario' : 'Asignación de Roles y Cuenta'}
             </h3>
 
@@ -756,9 +755,7 @@ const EmployeeManagement = () => {
               </form>
             ) : (
               <form onSubmit={handleStep2Submit}>
-                <p style={{ fontSize: '0.95rem', color: 'var(--text-main)', marginBottom: '16px', fontWeight: '600' }}>
-                  Seleccione los roles que tendrá la cuenta de acceso para <strong style={{ color: 'var(--primary-color)' }}>{wizardEmployee.nombres} {wizardEmployee.apellido1}</strong>:
-                </p>
+                <div style={{ fontSize: '0.95rem', color: 'var(--text-main)', marginBottom: '16px', fontWeight: '600' }}>Seleccione roles · {wizardEmployee.nombres} {wizardEmployee.apellido1}</div>
 
                 <div style={{
                   display: 'flex',
@@ -830,10 +827,8 @@ const EmployeeManagement = () => {
             <button className="btn" style={{ position: 'absolute', right: '20px', top: '20px', padding: '6px', background: 'none' }} onClick={() => setShowRolesModal(false)}>
               <X size={20} color="var(--text-muted)" />
             </button>
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">Gestionar Roles</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Usuario: <strong style={{ color: 'var(--primary-color)' }}>{selectedEmp.usuario.nombreUsuario}</strong> ({selectedEmp.nombres} {selectedEmp.apellido1})
-            </p>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-solid">Gestionar Roles</h3>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>{selectedEmp.usuario.nombreUsuario} · {selectedEmp.nombres} {selectedEmp.apellido1}</div>
 
             <form onSubmit={handleSaveRolesSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
@@ -904,10 +899,8 @@ const EmployeeManagement = () => {
               <Check size={32} color="var(--success-color)" />
             </div>
 
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">¡Cuenta Creada con Éxito!</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px' }}>
-              Se ha creado el usuario para el empleado <strong style={{ color: 'var(--text-main)' }}>{createdUserInfo.empleado.nombres} {createdUserInfo.empleado.apellido1}</strong>.
-            </p>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-solid">Cuenta creada</h3>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px' }}>{createdUserInfo.empleado.nombres} {createdUserInfo.empleado.apellido1}</div>
 
             <div style={{
               backgroundColor: 'rgba(var(--primary-rgb), 0.04)',
@@ -943,7 +936,7 @@ const EmployeeManagement = () => {
               textAlign: 'left'
             }}>
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <span>El empleado deberá usar su RUT como contraseña para su primer inicio de sesión. El sistema le solicitará cambiarla inmediatamente.</span>
+              <span>Clave inicial: RUT.</span>
             </div>
 
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowSuccessUserModal(false)}>
@@ -964,10 +957,8 @@ const EmployeeManagement = () => {
             >
               <X size={20} color="var(--text-muted)" />
             </button>
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">Datos de Contacto</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Empleado: <strong style={{ color: 'var(--text-main)' }}>{contactEmp.nombres} {contactEmp.apellido1}</strong>
-            </p>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-solid">Datos de contacto</h3>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>{contactEmp.nombres} {contactEmp.apellido1}</div>
 
             <div style={{
               display: 'flex',

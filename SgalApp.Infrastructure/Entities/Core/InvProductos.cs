@@ -61,6 +61,8 @@ public partial class InvProductos
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
 
+    public virtual ICollection<InvFormatosCompra> InvFormatosCompra { get; set; } = new List<InvFormatosCompra>();
+
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<InvProductosCortesia> InvProductosCortesia { get; set; } = new List<InvProductosCortesia>();
 

@@ -426,6 +426,15 @@ namespace SgalApp.Api.Controllers
         {
             var validation = await ValidatePresentation(dto);
             if (validation != null) return BadRequest(new { mensaje = validation });
+            var inventoryContent = await ConvertPresentationContent(dto);
+            var purchaseFormat = new InvFormatosCompra
+            {
+                IdMateriaPrima = dto.IdMateriaPrima,
+                NombreFormato = dto.NombrePresentacion.Trim(),
+                CantidadContenido = inventoryContent,
+                Activo = dto.Activo,
+                FechaCreacion = DateTime.Now
+            };
             var entity = new InvPresentacionesMateriaPrima
             {
                 IdMateriaPrima = dto.IdMateriaPrima,
@@ -433,7 +442,8 @@ namespace SgalApp.Api.Controllers
                 NombrePresentacion = dto.NombrePresentacion.Trim(),
                 CantidadContenido = dto.CantidadContenido,
                 Activo = dto.Activo,
-                FechaCreacion = DateTime.Now
+                FechaCreacion = DateTime.Now,
+                IdFormatoCompraNavigation = purchaseFormat
             };
             _context.InvPresentacionesMateriaPrima.Add(entity);
             await _context.SaveChangesAsync();
@@ -448,6 +458,21 @@ namespace SgalApp.Api.Controllers
             if (entity == null) return NotFound(new { mensaje = "Presentación no encontrada." });
             var validation = await ValidatePresentation(dto, id);
             if (validation != null) return BadRequest(new { mensaje = validation });
+            var inventoryContent = await ConvertPresentationContent(dto);
+            var purchaseFormat = entity.IdFormatoCompra.HasValue
+                ? await _context.InvFormatosCompra.FindAsync(entity.IdFormatoCompra.Value)
+                : null;
+            if (purchaseFormat == null)
+            {
+                purchaseFormat = new InvFormatosCompra { FechaCreacion = DateTime.Now };
+                _context.InvFormatosCompra.Add(purchaseFormat);
+                entity.IdFormatoCompraNavigation = purchaseFormat;
+            }
+            purchaseFormat.IdProducto = null;
+            purchaseFormat.IdMateriaPrima = dto.IdMateriaPrima;
+            purchaseFormat.NombreFormato = dto.NombrePresentacion.Trim();
+            purchaseFormat.CantidadContenido = inventoryContent;
+            purchaseFormat.Activo = dto.Activo;
             entity.IdMateriaPrima = dto.IdMateriaPrima;
             entity.IdUnidadMedida = dto.IdUnidadMedida;
             entity.NombrePresentacion = dto.NombrePresentacion.Trim();
@@ -457,10 +482,31 @@ namespace SgalApp.Api.Controllers
             return Ok(new { entity.IdPresentacionMateriaPrima });
         }
 
+        private async Task<decimal> ConvertPresentationContent(RawMaterialPresentationDto dto)
+        {
+            var from = await _context.InvUnidadesMedida.AsNoTracking().FirstAsync(x => x.IdUnidadMedida == dto.IdUnidadMedida);
+            var to = await _context.InvMateriaPrima.AsNoTracking()
+                .Where(x => x.IdMateriaPrima == dto.IdMateriaPrima)
+                .Select(x => x.IdUnidadMedidaNavigation)
+                .FirstAsync();
+            return ConvertQuantity(dto.CantidadContenido, from, to);
+        }
+
         [HttpDelete("raw-material-presentations/{id:int}")]
         [Permission(Permissions.PresentationsDelete)]
-        public async Task<IActionResult> DeleteRawMaterialPresentation(int id) => await DeleteCatalog(
-            await _context.InvPresentacionesMateriaPrima.FindAsync(id), "Presentación");
+        public async Task<IActionResult> DeleteRawMaterialPresentation(int id)
+        {
+            var presentation = await _context.InvPresentacionesMateriaPrima.FindAsync(id);
+            if (presentation == null) return NotFound(new { mensaje = "Formato no encontrado." });
+            if (presentation.IdFormatoCompra.HasValue)
+            {
+                var format = await _context.InvFormatosCompra.FindAsync(presentation.IdFormatoCompra.Value);
+                if (format != null) format.Activo = false;
+            }
+            _context.InvPresentacionesMateriaPrima.Remove(presentation);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
 
         [HttpPost("raw-material-presentations/{id:int}/stock-entry")]
         [Permission(Permissions.StockEntry)]

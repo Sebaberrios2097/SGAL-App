@@ -49,6 +49,7 @@ BEGIN TRY
         -- Inventario / maestro
         ('Inv_Orden_Detalle'),
         ('Inv_Orden_Compra'),
+        ('Inv_Formatos_Compra'),
         ('Inv_Materiales_Receta'),
         ('Inv_Recetas'),
         ('Inv_Presentaciones_Materia_Prima'),

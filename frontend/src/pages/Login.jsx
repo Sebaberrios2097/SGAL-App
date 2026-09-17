@@ -8,7 +8,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const Login = () => {
   const { login, updatePasswordState } = useAuth();
-  const { branding, getBackgroundStyle } = useOrganization();
+  const { getBackgroundStyle } = useOrganization();
   const loginBackground = getBackgroundStyle('login');
   const navigate = useNavigate();
   useDocumentTitle('Iniciar sesión');
@@ -115,7 +115,7 @@ const Login = () => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
-      ...(loginBackground || { background: 'radial-gradient(circle at center, var(--primary-color) 0%, var(--primary-hover) 100%)' })
+      ...(loginBackground || { background: 'var(--primary-color)' })
     }} className="animate-fade-in">
       <div className="glass-panel" style={{
         width: '100%',
@@ -125,16 +125,6 @@ const Login = () => {
         overflow: 'hidden'
       }}>
         {/* Glow Effects */}
-        <div style={{
-          position: 'absolute',
-          top: '-10%',
-          right: '-10%',
-          width: '200px',
-          height: '200px',
-          background: 'radial-gradient(circle, var(--primary-glow) 0%, transparent 70%)',
-          pointerEvents: 'none'
-        }} />
-
         {/* Brand/Logo */}
         <div style={{
           display: 'flex',
@@ -144,7 +134,7 @@ const Login = () => {
           marginBottom: '36px'
         }}>
           <BrandLogo location="login" maxHeight={110} />
-          {mustChangePassword && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center' }}>Actualiza tu contraseña para continuar en {branding.nombreComercial}.</p>}
+          {mustChangePassword && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center' }}>Cambie su contraseña.</p>}
         </div>
 
         {/* Regular Login Form */}

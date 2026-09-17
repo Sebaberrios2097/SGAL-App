@@ -4,15 +4,16 @@ import { useLocation } from 'react-router-dom';
 import SearchableSelect from '../components/SearchableSelect';
 import DataTable from '../components/DataTable';
 import { useAuth } from '../context/AuthContext';
+import PageHeader from '../components/PageHeader';
 
 const API = '/api/inventory-configuration';
 
 const sectionInfo = {
-  courtesy: { title: 'Productos de cortesía', subtitle: 'Consumos diarios gratuitos disponibles para los empleados.' },
-  'raw-materials': { title: 'Materiales/Ingredientes', subtitle: 'Ingredientes e insumos disponibles para configurar recetas.' },
-  units: { title: 'Unidades de medida', subtitle: 'Unidades utilizadas para controlar las existencias de materias primas.' },
-  'material-categories': { title: 'Categorías de materia prima', subtitle: 'Clasificación de ingredientes e insumos.' },
-  brands: { title: 'Marcas', subtitle: 'Marcas asociadas a las materias primas.' }
+  courtesy: { title: 'Productos de cortesía' },
+  'raw-materials': { title: 'Materiales/Ingredientes' },
+  units: { title: 'Unidades de medida' },
+  'material-categories': { title: 'Categorías de materia prima' },
+  brands: { title: 'Marcas' }
 };
 
 const readResponse = async response => {
@@ -109,7 +110,7 @@ const UnitsManager = ({ items, onReload, canCreate, canEdit, canDelete }) => {
     catch (err) { setError(err.message); }
   };
   return <div className="responsive-split" style={{ '--split-cols': 'minmax(300px, 380px) minmax(0, 1fr)' }}>
-    {(canCreate || editing) && <form className="card" onSubmit={submit} style={{ alignSelf: 'start' }}><h3 style={{ marginBottom: '8px' }}>{editing ? 'Editar unidad' : 'Nueva unidad'}</h3><p style={{ color: 'var(--text-muted)', fontSize: '.8rem', marginBottom: '16px' }}>El factor indica cuántas unidades de referencia contiene. Ej.: g = 1, kg = 1000; mL = 1, L = 1000.</p>
+    {(canCreate || editing) && <form className="card" onSubmit={submit} style={{ alignSelf: 'start' }}><h3 style={{ marginBottom: '16px' }}>{editing ? 'Editar unidad' : 'Nueva unidad'}</h3>
       {error && <div style={{ color: '#b91c1c', marginBottom: '12px' }}>{error}</div>}
       <label className="input-group"><span className="input-label">Nombre</span><input className="input-field" maxLength="50" required value={form.nombre} onChange={e => setForm(current => ({ ...current, nombre: e.target.value }))} placeholder="Kilogramo" /></label>
       <label className="input-group"><span className="input-label">Abreviación</span><input className="input-field" maxLength="15" required value={form.abreviacion} onChange={e => setForm(current => ({ ...current, abreviacion: e.target.value }))} placeholder="kg" /></label>
@@ -180,7 +181,7 @@ const CourtesyManager = ({ products, entries, policy, onReload, canEditPolicy, c
 
   return <div className="responsive-split" style={{ '--split-cols': 'minmax(300px, 380px) minmax(0, 1fr)' }}>
     <div style={{ display: 'grid', gap: '16px', alignSelf: 'start' }}>
-    {canEditPolicy && <form className="card" onSubmit={savePolicy}><h3 style={{ marginBottom: '8px' }}>Cupo compartido</h3><p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '14px' }}>Máximo total que cada empleado puede consumir gratis durante un día, combinando cualquiera de los productos habilitados.</p>
+    {canEditPolicy && <form className="card" onSubmit={savePolicy}><h3 style={{ marginBottom: '14px' }}>Cupo diario</h3>
       <label className="input-group"><span className="input-label">Límite diario global</span><input className="input-field" type="number" min="1" required value={globalLimit} onChange={e => setGlobalLimit(e.target.value)} /></label>
       <button className="btn btn-primary"><Save size={16} /> Guardar límite</button>
     </form>}
@@ -286,7 +287,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
     } catch (err) { alert(err.message); }
   };
   const removePresentation = async item => {
-    if (!window.confirm(`¿Eliminar la presentación ${item.nombrePresentacion}?`)) return;
+    if (!window.confirm(`¿Eliminar el formato ${item.nombrePresentacion}?`)) return;
     try { await readResponse(await fetch(`${API}/raw-material-presentations/${item.idPresentacionMateriaPrima}`, { method: 'DELETE' })); onReload(); }
     catch (err) { alert(err.message); }
   };
@@ -295,7 +296,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
 
   const materialActions = (
     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-      {canCreatePresentation && <button type="button" className="btn btn-secondary" style={btnPrimary} onClick={openNewPresentation} disabled={materials.length === 0}><PackagePlus size={16} /> Nueva presentación</button>}
+      {canCreatePresentation && <button type="button" className="btn btn-secondary" style={btnPrimary} onClick={openNewPresentation} disabled={materials.length === 0}><PackagePlus size={16} /> Nuevo formato</button>}
       {canCreateMaterial && <button type="button" className="btn btn-primary" style={btnPrimary} onClick={openNewMaterial}><Plus size={16} /> Nueva materia prima</button>}
     </div>
   );
@@ -308,7 +309,6 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
           <Boxes size={40} color="var(--text-muted)" style={{ opacity: 0.5 }} />
           <div>
             <h3 style={{ margin: 0 }}>Aún no hay materias primas</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '4px' }}>Comienza registrando los ingredientes e insumos del café.</p>
           </div>
           {canCreateMaterial && <button type="button" className="btn btn-primary" style={btnPrimary} onClick={openNewMaterial}><Plus size={16} /> Agregar primera materia prima</button>}
         </div>
@@ -342,22 +342,21 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
       {canViewPresentations && materials.length > 0 && (
         <div style={{ marginTop: '22px' }}>
           <div style={{ padding: '0 4px 10px' }}>
-            <h3 style={{ margin: 0 }}>Presentaciones e ingreso de existencias</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>Registra cómo compras cada insumo (ej. Caja 1 L) e ingresa las cantidades recibidas para sumar stock.</p>
+            <h3 style={{ margin: 0 }}>Formatos de compra e ingreso de existencias</h3>
           </div>
           <DataTable
             rows={presentations}
             rowKey={p => p.idPresentacionMateriaPrima}
             search={p => `${p.nombreMaterial} ${p.nombrePresentacion}`}
-            searchPlaceholder="Buscar presentación…"
-            emptyMessage="No hay presentaciones configuradas. Usa “Nueva presentación”."
+            searchPlaceholder="Buscar formato…"
+            emptyMessage="No hay formatos configurados."
             columns={[
               { key: 'materia', header: 'Materia prima', sortValue: p => p.nombreMaterial, cell: p => p.nombreMaterial },
-              { key: 'presentacion', header: 'Presentación', sortValue: p => p.nombrePresentacion, cell: p => p.nombrePresentacion },
+              { key: 'presentacion', header: 'Formato', sortValue: p => p.nombrePresentacion, cell: p => p.nombrePresentacion },
               { key: 'contenido', header: 'Contenido', cell: p => `${p.cantidadContenido} ${p.abreviacionUnidad}` },
               { key: 'recibida', header: 'Cantidad recibida', cell: item => canEnterStock ? <input className="input-field" style={{ width: '110px' }} type="number" min="1" step="1" placeholder="Cajas" value={stockEntries[item.idPresentacionMateriaPrima] || ''} onChange={e => setStockEntries(current => ({ ...current, [item.idPresentacionMateriaPrima]: e.target.value }))} /> : '—' },
               { key: 'acciones', header: 'Acciones', headerClassName: 'col-actions', cellClassName: 'col-actions', cell: item => (
-                <div className="actions-wrapper">{canEnterStock && <button className="btn btn-primary" type="button" disabled={!stockEntries[item.idPresentacionMateriaPrima]} onClick={() => addStock(item)}><Plus size={15} /> Ingresar</button>}{canEditPresentation && <button className="btn btn-secondary" title="Editar presentación" style={{ padding: '7px' }} type="button" onClick={() => openEditPresentation(item)}><Edit2 size={15} /></button>}{canDeletePresentation && <button className="btn btn-danger" title="Eliminar presentación" style={{ padding: '7px' }} type="button" onClick={() => removePresentation(item)}><Trash2 size={15} /></button>}</div>
+                <div className="actions-wrapper">{canEnterStock && <button className="btn btn-primary" type="button" disabled={!stockEntries[item.idPresentacionMateriaPrima]} onClick={() => addStock(item)}><Plus size={15} /> Ingresar</button>}{canEditPresentation && <button className="btn btn-secondary" title="Editar formato" style={{ padding: '7px' }} type="button" onClick={() => openEditPresentation(item)}><Edit2 size={15} /></button>}{canDeletePresentation && <button className="btn btn-danger" title="Eliminar formato" style={{ padding: '7px' }} type="button" onClick={() => removePresentation(item)}><Trash2 size={15} /></button>}</div>
               ) }
             ]}
           />
@@ -369,7 +368,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
         <div className="modal-overlay" onClick={closeMaterialModal}>
           <div className="modal-content" style={{ maxWidth: '640px' }} onClick={e => e.stopPropagation()}>
             <button type="button" className="btn" aria-label="Cerrar" onClick={closeMaterialModal} style={{ position: 'absolute', right: '18px', top: '18px', padding: '6px', background: 'none' }}><X size={20} color="var(--text-muted)" /></button>
-            <h3 style={{ marginBottom: '16px' }} className="text-gradient">{editing ? 'Editar materia prima' : 'Nueva materia prima'}</h3>
+            <h3 style={{ marginBottom: '16px' }} className="text-solid">{editing ? 'Editar materia prima' : 'Nueva materia prima'}</h3>
             {error && <div style={{ color: '#b91c1c', marginBottom: '12px', fontSize: '0.85rem' }}>{error}</div>}
             <form onSubmit={submitMaterial}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
@@ -395,7 +394,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '14px', fontSize: '.85rem' }}>
                 <input type="checkbox" style={{ marginTop: '3px' }} checked={form.noDescuentaInventario} disabled={form.esCafeCalibrable} onChange={e => setForm(current => ({ ...current, noDescuentaInventario: e.target.checked, cantidad: e.target.checked ? '' : current.cantidad }))} />
                 <span>No descontar del inventario (ej. agua)
-                  <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.78rem' }}>No lleva existencia ni presentaciones. Las recetas pueden usarla, pero la venta no descuenta stock de ella. Útil cuando controlar la cantidad (mL de agua, por ejemplo) es engorroso.</span>
+                  <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.78rem' }}>Sin control de existencia</span>
                 </span>
               </label>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '14px', fontSize: '.85rem' }}>
@@ -410,7 +409,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '.85rem', paddingTop: '22px' }}>
                     <input type="checkbox" style={{ marginTop: '3px' }} checked={form.recargoModificable} onChange={e => setForm(current => ({ ...current, recargoModificable: e.target.checked }))} />
                     <span>Modificable por receta
-                      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.78rem' }}>Permite ajustar el recargo al añadir la opción; si no, queda fijo al valor base.</span>
+                      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '.78rem' }}>Recargo editable</span>
                     </span>
                   </label>
                 </div>
@@ -430,19 +429,18 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
         <div className="modal-overlay" onClick={closePresentationModal}>
           <div className="modal-content" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <button type="button" className="btn" aria-label="Cerrar" onClick={closePresentationModal} style={{ position: 'absolute', right: '18px', top: '18px', padding: '6px', background: 'none' }}><X size={20} color="var(--text-muted)" /></button>
-            <h3 style={{ marginBottom: '6px' }} className="text-gradient">{editingPresentation ? 'Editar presentación de compra' : 'Nueva presentación de compra'}</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '.8rem', marginBottom: '16px' }}>Ejemplo: una caja de leche contiene 1 L. Al ingresar cajas, la existencia se convierte automáticamente a la unidad del inventario.</p>
+            <h3 style={{ marginBottom: '6px' }} className="text-solid">{editingPresentation ? 'Editar formato de compra' : 'Nuevo formato de compra'}</h3>
             {error && <div style={{ color: '#b91c1c', marginBottom: '12px', fontSize: '0.85rem' }}>{error}</div>}
             <form onSubmit={createPresentation}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
                 <div className="input-group"><span className="input-label">Materia prima</span><SearchableSelect options={materials.filter(x => !x.noDescuentaInventario).map(x => ({ value: x.idMateriaPrima, label: x.nombreMaterial }))} value={presentation.idMateriaPrima} onChange={value => setPresentation(current => ({ ...current, idMateriaPrima: value, idUnidadMedida: '' }))} placeholder="Seleccione materia" /></div>
-                <label className="input-group"><span className="input-label">Nombre de presentación</span><input className="input-field" required maxLength="100" value={presentation.nombrePresentacion} onChange={e => setPresentation(current => ({ ...current, nombrePresentacion: e.target.value }))} placeholder="Caja 1 L" /></label>
+                <label className="input-group"><span className="input-label">Nombre del formato</span><input className="input-field" required maxLength="100" value={presentation.nombrePresentacion} onChange={e => setPresentation(current => ({ ...current, nombrePresentacion: e.target.value }))} placeholder="Caja 1 L" /></label>
                 <label className="input-group"><span className="input-label">Contenido</span><input className="input-field" type="number" min={selectedPresentationMaterial?.tipoMagnitud === 'Unidad' ? '1' : '0.001'} step={selectedPresentationMaterial?.tipoMagnitud === 'Unidad' ? '1' : '0.001'} required value={presentation.cantidadContenido} onChange={e => setPresentation(current => ({ ...current, cantidadContenido: e.target.value }))} /></label>
                 <div className="input-group"><span className="input-label">Unidad del contenido</span><SearchableSelect options={compatibleUnits.map(x => ({ value: x.idUnidadMedida, label: `${x.nombreUnidadMedida} (${x.abreviacion})` }))} value={presentation.idUnidadMedida} onChange={value => setPresentation(current => ({ ...current, idUnidadMedida: value }))} placeholder={selectedPresentationMaterial ? 'Seleccione unidad' : 'Elija primero la materia prima'} />{selectedPresentationMaterial && compatibleUnits.length === 0 && <small style={{ color: '#b91c1c', fontSize: '0.75rem' }}>No hay unidades para esta magnitud. Créalas en “Unidades de medida”.</small>}</div>
               </div>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button type="button" className="btn btn-secondary" onClick={closePresentationModal}>Cancelar</button>
-                <button className="btn btn-primary" style={btnPrimary} disabled={!presentation.idMateriaPrima || !presentation.idUnidadMedida}>{editingPresentation ? <Save size={16} /> : <Plus size={16} />} {editingPresentation ? 'Guardar cambios' : 'Agregar presentación'}</button>
+                <button className="btn btn-primary" style={btnPrimary} disabled={!presentation.idMateriaPrima || !presentation.idUnidadMedida}>{editingPresentation ? <Save size={16} /> : <Plus size={16} />} {editingPresentation ? 'Guardar cambios' : 'Agregar formato'}</button>
               </div>
             </form>
           </div>
@@ -453,7 +451,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, can
 };
 
 const InventorySettings = () => {
-  // Las rutas de configuración son literales (settings/courtesy, settings/raw-materials, …),
+  // Las rutas son literales (turn/courtesy, settings/raw-materials, …),
   // por lo que la sección se deriva del último segmento de la URL, no de un parámetro de ruta.
   const { pathname } = useLocation();
   const section = pathname.split('/').filter(Boolean).pop();
@@ -499,7 +497,7 @@ const InventorySettings = () => {
   else if (section === 'material-categories') content = <SimpleCatalogManager items={data.catalogs.categorias} idKey="idCategoriaMateria" nameKey="nombreCategoriaMateria" endpoint="material-categories" singular="categoría" onReload={load} canCreate={can('configuracion_inventario.categorias_materia.crear')} canEdit={can('configuracion_inventario.categorias_materia.editar')} canDelete={can('configuracion_inventario.categorias_materia.eliminar')} />;
   else content = <SimpleCatalogManager items={data.catalogs.marcas} idKey="idMarca" nameKey="nombreMarca" endpoint="brands" singular="marca" onReload={load} canCreate={can('configuracion_inventario.marcas.crear')} canEdit={can('configuracion_inventario.marcas.editar')} canDelete={can('configuracion_inventario.marcas.eliminar')} />;
 
-  return <div className="animate-fade-in"><div className="page-header"><div><h2 className="page-title">{info.title}</h2><p className="page-subtitle">{info.subtitle}</p></div><CheckCircle2 color="var(--primary-color)" /></div>{error && <div className="card" style={{ color: '#b91c1c', marginBottom: '18px' }}>{error}</div>}{loading ? <div className="card" style={{ textAlign: 'center' }}>Cargando configuración…</div> : content}</div>;
+  return <div className="animate-fade-in"><PageHeader title={info.title} icon={section === 'courtesy' ? Package : CheckCircle2} />{error && <div className="card" style={{ color: '#b91c1c', marginBottom: '18px' }}>{error}</div>}{loading ? <div className="card" style={{ textAlign: 'center' }}>Cargando configuración…</div> : content}</div>;
 };
 
 export default InventorySettings;

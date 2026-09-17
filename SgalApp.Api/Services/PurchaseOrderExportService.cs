@@ -253,7 +253,7 @@ public class PurchaseOrderExportService : IPurchaseOrderExportService, IDisposab
         var table = section.AddTable();
         table.Borders.Color = Color.Parse(BorderColor);
         table.Borders.Width = 0.4;
-        var widths = new[] { 0.7, 2.4, 2.1, 4.7, 1.5, 1.1, 2.7, 3.4 };
+        var widths = new[] { 0.7, 2.2, 1.0, 5.1, 1.2, 2.5, 2.5, 3.4 };
         foreach (var width in widths) table.AddColumn(Unit.FromCentimeter(width));
 
         var itemHeader = table.AddRow();

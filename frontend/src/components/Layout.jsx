@@ -15,6 +15,7 @@ import {
     LogOut,
     Menu,
     Palette,
+    PackageCheck,
     Puzzle,
     Ruler,
     ShieldAlert,
@@ -114,6 +115,7 @@ const Layout = () => {
       label: 'Productos',
       path: '/inventory',
       icon: Coffee,
+      exact: true,
       module: 2
     },
     {
@@ -126,7 +128,15 @@ const Layout = () => {
       label: 'Órdenes de compra',
       path: '/purchase-orders',
       icon: ClipboardCheck,
-      module: 2
+      module: 2,
+      excludePaths: ['/purchase-orders/receptions']
+    },
+    {
+      label: 'Recepciones',
+      path: '/purchase-orders/receptions',
+      icon: PackageCheck,
+      module: 2,
+      permission: 'ordenes_compra.recibir'
     },
     {
       label: 'Proveedores',
@@ -162,9 +172,14 @@ const Layout = () => {
   );
 
   const renderNavItem = (item) => {
-    const isActive = item.exact
-      ? location.pathname === item.path
-      : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+    const matchesExclusion = (item.excludePaths || []).some(
+      (excluded) => location.pathname === excluded || location.pathname.startsWith(`${excluded}/`)
+    );
+    const isActive = matchesExclusion
+      ? false
+      : item.exact
+        ? location.pathname === item.path
+        : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     const Icon = item.icon;
 
     return (
@@ -259,10 +274,10 @@ const Layout = () => {
         {/* Navigation */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
           {/* Turno */}
-          {canOperateTurns && (
+          {(canOperateTurns || can('configuracion_inventario.cortesia.ver')) && (
             <>
               {renderSectionTitle('Turno')}
-              {renderNavItem({ label: 'Turno', path: '/turn', icon: Clock })}
+              {canOperateTurns && renderNavItem({ label: 'Turno', path: '/turn', icon: Clock, exact: true })}
               {activeTurnInfo.hasActiveTurn && (
                 activeTurnInfo.belongsToCurrentUser ? (
                   <>
@@ -293,23 +308,26 @@ const Layout = () => {
                 )
               )}
               {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
+              {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Gift })}
+              {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Productos de cortesía', path: '/turn/courtesy', icon: Gift })}
             </>
           )}
 
           {/* Gestión */}
-          {canAny('inicio.dashboard.ver','usuarios.ver','inventario.productos.ver','recetas.ver','ingredientes_extra.ver','configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver','configuracion_inventario.cortesia.ver','ordenes_compra.ver','proveedores.ver','registros_turnos.ver','registros_turnos.dashboard.ver') && (
+          {canAny('inicio.dashboard.ver','usuarios.ver','inventario.productos.ver','recetas.ver','ingredientes_extra.ver','configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver','configuracion_inventario.cortesia.ver','ordenes_compra.ver','ordenes_compra.recibir','proveedores.ver','registros_turnos.ver','registros_turnos.dashboard.ver') && (
             <>
               {renderSectionTitle('Gestión')}
               {can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
               {can('usuarios.ver') && renderNavItem(navItemsModule1[0])}
               {can('inventario.productos.ver') && renderNavItem(navItemsModule2[0])}
+              {canAny('inventario.productos.ver','configuracion_inventario.materias_primas.ver') && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
               {can('recetas.ver') && renderNavItem(navItemsModule2[1])}
               {canAny('configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver') && renderNavItem({ label: <>Materiales/<br />Ingredientes</>, path: '/settings/raw-materials', icon: Boxes })}
               {can('ingredientes_extra.ver') && renderNavItem({ label: 'Ingredientes extra', path: '/settings/extra-ingredients', icon: Sparkles })}
-              {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Productos de cortesía', path: '/settings/courtesy', icon: Gift })}
               {can('ordenes_compra.ver') && renderNavItem(navItemsModule2[2])}
-              {can('proveedores.ver') && renderNavItem(navItemsModule2[3])}
-              {can('registros_turnos.ver') && renderNavItem(navItemsModule2[4])}
+              {can('ordenes_compra.recibir') && renderNavItem(navItemsModule2[3])}
+              {can('proveedores.ver') && renderNavItem(navItemsModule2[4])}
+              {can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
               {can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
             </>
           )}

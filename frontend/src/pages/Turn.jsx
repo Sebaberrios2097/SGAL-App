@@ -10,7 +10,8 @@ import {
   StopCircle,
   AlertCircle,
   CheckCircle2,
-  HelpCircle
+  HelpCircle,
+  Wallet
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import TurnOpeningModal from '../components/TurnOpeningModal';
@@ -123,9 +124,6 @@ const Turn = () => {
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
               Hola, {employeeName}
             </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '4px' }}>
-              Gestión de tu turno de caja.
-            </p>
           </div>
           <span style={{
             padding: '6px 14px',
@@ -154,6 +152,10 @@ const Turn = () => {
             {can('bitacora.propia.ver') && (
               <TurnAction icon={BookOpen} label="Bitácora" tone="secondary"
                 enabled={belongsToUser} to={`/logbook/${activeTurnInfo.activeTurn?.idTurno}`} reason={openReason} />
+            )}
+            {can('turnos.propios.ver') && (
+              <TurnAction icon={Wallet} label="Mis consumos" tone="secondary"
+                enabled to="/turn/consumptions" />
             )}
             {can('turnos.cerrar') && (
               <TurnAction icon={StopCircle} label="Cerrar turno" tone="danger"

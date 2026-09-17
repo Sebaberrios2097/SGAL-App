@@ -112,6 +112,8 @@ public partial class InvMateriaPrima
     [InverseProperty("IdMateriaPrimaNavigation")]
     public virtual ICollection<InvOrdenDetalle> InvOrdenDetalle { get; set; } = new List<InvOrdenDetalle>();
 
+    public virtual ICollection<InvFormatosCompra> InvFormatosCompra { get; set; } = new List<InvFormatosCompra>();
+
     [InverseProperty("IdMateriaPrimaReemplazadaNavigation")]
     public virtual ICollection<InvMaterialesReceta> InvMaterialesRecetaComoMateriaBase { get; set; } = new List<InvMaterialesReceta>();
 

@@ -13,13 +13,12 @@ const shortMoney = value => Math.abs(value) >= 1000 ? `${Math.round(value / 1000
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const COLORS = ['var(--primary-color)', '#0d8a4d', '#52b788', '#95d5b2', '#2563eb', '#d97706'];
 
-const MetricCard = ({ icon: Icon, label, value, detail, color = 'var(--primary-color)' }) => (
+const MetricCard = ({ icon: Icon, label, value, color = 'var(--primary-color)' }) => (
   <div className="card" style={{ padding: '18px', display: 'flex', gap: '14px', alignItems: 'center' }}>
     <div style={{ width: '44px', height: '44px', flex: '0 0 auto', borderRadius: '13px', background: `${color}14`, display: 'grid', placeItems: 'center' }}><Icon size={22} color={color} /></div>
     <div style={{ minWidth: 0 }}>
       <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
       <div style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.2 }}>{value}</div>
-      {detail && <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', marginTop: '2px' }}>{detail}</div>}
     </div>
   </div>
 );
@@ -35,12 +34,12 @@ const Toggle = ({ options, value, onChange }) => (
   </div>
 );
 
-const ChartCard = ({ title, subtitle, icon: Icon, controls, children }) => (
+const ChartCard = ({ title, icon: Icon, controls, children }) => (
   <div className="card">
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
         {Icon && <Icon size={18} color="var(--primary-color)" />}
-        <div><h3 style={{ margin: 0 }}>{title}</h3>{subtitle && <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', margin: '2px 0 0' }}>{subtitle}</p>}</div>
+        <h3 style={{ margin: 0 }}>{title}</h3>
       </div>
       {controls}
     </div>
@@ -100,7 +99,7 @@ const AdminDashboard = () => {
   return <div className="animate-fade-in">
     <div style={{ marginBottom: '18px' }}>
       <h2 className="page-title">Panel administrativo</h2>
-      <p className="page-subtitle" style={{ marginBottom: '14px' }}>Indicadores del negocio · {rangeLabel}</p>
+      <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', margin: '4px 0 14px' }}>{rangeLabel}</div>
       <div className="card" style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <span className="input-label">Período</span>
@@ -136,7 +135,7 @@ const AdminDashboard = () => {
 
       {/* Ingresos vs Egresos */}
       <div style={{ marginBottom: '18px' }}>
-        <ChartCard title="Ingresos vs Egresos" subtitle="Flujo del negocio en el período" icon={TrendingUp}
+        <ChartCard title="Ingresos vs Egresos" icon={TrendingUp}
           controls={<Toggle options={[{ value: 'area', label: 'Área' }, { value: 'line', label: 'Línea' }, { value: 'bar', label: 'Barras' }]} value={flowType} onChange={setFlowType} />}>
           <ResponsiveContainer width="100%" height={300}>
             {flowType === 'bar' ? (
@@ -158,15 +157,11 @@ const AdminDashboard = () => {
               </LineChart>
             ) : (
               <AreaChart data={data.series} margin={{ left: 4, right: 8 }}>
-                <defs>
-                  <linearGradient id="gIng" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--primary-color)" stopOpacity={0.3} /><stop offset="100%" stopColor="var(--primary-color)" stopOpacity={0} /></linearGradient>
-                  <linearGradient id="gEgr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#dc2626" stopOpacity={0.25} /><stop offset="100%" stopColor="#dc2626" stopOpacity={0} /></linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" vertical={false} />
                 <XAxis dataKey="etiqueta" {...axisProps} /><YAxis {...axisProps} tickFormatter={shortMoney} width={44} />
                 <Tooltip contentStyle={tooltipStyle} formatter={money} /><Legend />
-                <Area name="Ingresos" dataKey="ingresos" stroke="var(--primary-color)" strokeWidth={2.5} fill="url(#gIng)" />
-                <Area name="Egresos" dataKey="egresos" stroke="#dc2626" strokeWidth={2.5} fill="url(#gEgr)" />
+                <Area name="Ingresos" dataKey="ingresos" stroke="var(--primary-color)" strokeWidth={2.5} fill="var(--primary-color)" fillOpacity={0.14} />
+                <Area name="Egresos" dataKey="egresos" stroke="#dc2626" strokeWidth={2.5} fill="#dc2626" fillOpacity={0.12} />
               </AreaChart>
             )}
           </ResponsiveContainer>
@@ -175,7 +170,7 @@ const AdminDashboard = () => {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(280px, 1fr)', gap: '18px', marginBottom: '18px' }}>
         {/* Ventas por período */}
-        <ChartCard title="Ventas por período" subtitle="Cantidad de operaciones" icon={ShoppingBag}
+        <ChartCard title="Ventas por período" icon={ShoppingBag}
           controls={<Toggle options={[{ value: 'bar', label: 'Barras' }, { value: 'line', label: 'Línea' }]} value={salesType} onChange={setSalesType} />}>
           <ResponsiveContainer width="100%" height={260}>
             {salesType === 'line' ? (
@@ -197,7 +192,7 @@ const AdminDashboard = () => {
         </ChartCard>
 
         {/* Medios de pago */}
-        <ChartCard title="Medios de pago" subtitle="Distribución del flujo" icon={CreditCard}>
+        <ChartCard title="Medios de pago" icon={CreditCard}>
           {data.metodosPago.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '60px 0' }}>Sin pagos en el período.</div> : <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={data.metodosPago} dataKey="monto" nameKey="nombreMetodoPago" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -211,7 +206,7 @@ const AdminDashboard = () => {
 
       {/* Flujo de caja */}
       <div style={{ marginBottom: '18px' }}>
-        <ChartCard title="Flujo de caja" subtitle="Cuadratura de turnos: esperado vs. real" icon={Wallet}>
+        <ChartCard title="Flujo de caja" icon={Wallet}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
             <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>EFECTIVO APERTURA</div><strong style={{ fontSize: '1.1rem' }}>{money(data.flujoCaja.efectivoApertura)}</strong></div>
             <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>EFECTIVO CIERRE</div><strong style={{ fontSize: '1.1rem' }}>{money(data.flujoCaja.efectivoCierre)}</strong></div>
@@ -248,7 +243,7 @@ const AdminDashboard = () => {
 
       {/* Rankings */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
-        <ChartCard title="Productos más vendidos" subtitle="Por unidades" icon={ShoppingBag}>
+        <ChartCard title="Productos más vendidos" icon={ShoppingBag}>
           {data.productosMasVendidos.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin ventas en el período.</div> : <ResponsiveContainer width="100%" height={Math.max(200, data.productosMasVendidos.length * 34)}>
             <BarChart data={data.productosMasVendidos} layout="vertical" margin={{ left: 8, right: 12 }}>
               <XAxis type="number" {...axisProps} allowDecimals={false} />
@@ -258,7 +253,7 @@ const AdminDashboard = () => {
             </BarChart>
           </ResponsiveContainer>}
         </ChartCard>
-        <ChartCard title="Categorías más vendidas" subtitle="Participación por unidades" icon={Banknote}>
+        <ChartCard title="Categorías más vendidas" icon={Banknote}>
           {data.categoriasMasVendidas.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin ventas en el período.</div> : <ResponsiveContainer width="100%" height={280}>
             <PieChart margin={{ top: 8, bottom: 8 }}>
               <Pie data={data.categoriasMasVendidas} dataKey="cantidad" nameKey="nombreCategoria" cx="50%" cy="45%" outerRadius={90}>

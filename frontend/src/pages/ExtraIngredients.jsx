@@ -158,7 +158,6 @@ const ExtraIngredients = () => {
       <div className="page-header">
         <div>
           <h2 className="page-title"><Sparkles size={25} /> Ingredientes extra</h2>
-          <p className="page-subtitle">Materias primas marcadas para ofrecerse como adicional en la venta. Cada una descuenta su materia y suma su precio como recargo.</p>
         </div>
         {can('ingredientes_extra.crear') && <button type="button" className="btn btn-primary" onClick={openCreate}><Plus size={16} /> Marcar materia prima</button>}
       </div>
@@ -198,7 +197,7 @@ const ExtraIngredients = () => {
         <div className="modal-overlay">
           <div className="modal-content provider-modal">
             <div className="purchase-modal-heading">
-              <div><h3>{editing ? 'Editar ingrediente extra' : 'Marcar materia prima como extra'}</h3><p>Se descuenta la materia prima y su precio se suma al producto.</p></div>
+              <h3>{editing ? 'Editar ingrediente extra' : 'Marcar materia prima como extra'}</h3>
               <button type="button" className="purchase-modal-close" onClick={() => setShowModal(false)} aria-label="Cerrar"><X size={21} /></button>
             </div>
             <form onSubmit={save}>

@@ -26,6 +26,10 @@ import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import ProviderManagement from './pages/ProviderManagement';
 import BrandingSettings from './pages/BrandingSettings';
 import ModuleSettings from './pages/ModuleSettings';
+import MyConsumptions from './pages/MyConsumptions';
+import InventoryDashboard from './pages/InventoryDashboard';
+import PurchaseOrderReceptions from './pages/PurchaseOrderReceptions';
+import Menu from './pages/Menu';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -182,6 +186,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Carta pública de productos: accesible sin sesión ni permisos (enlace de QR). */}
+          <Route path="/carta" element={<Menu />} />
+
           {/* Public Routes */}
           <Route
             path="/login"
@@ -221,17 +228,21 @@ function App() {
             <Route path="roles" element={<PermissionRoute permission="roles.ver"><RoleManagement /></PermissionRoute>} />
             <Route path="roles/:id/permissions" element={<PermissionRoute permission="roles.permisos.asignar"><RolePermissions /></PermissionRoute>} />
             <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver']}><InventoryManagement /></PermissionRoute>} />
+            <Route path="inventory/control" element={<PermissionRoute anyOf={['inventario.productos.ver','configuracion_inventario.materias_primas.ver']}><InventoryDashboard /></PermissionRoute>} />
             <Route path="inventory/products/:idProducto/recipe" element={<PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute>} />
             <Route path="recipes" element={<PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute>} />
             <Route path="settings/extra-ingredients" element={<PermissionRoute permission="ingredientes_extra.ver"><ExtraIngredients /></PermissionRoute>} />
             <Route path="settings/product-categories" element={<PermissionRoute permission="inventario.categorias.ver"><ProductCategories /></PermissionRoute>} />
             <Route path="purchase-orders" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrders /></PermissionRoute>} />
             <Route path="purchase-orders/new" element={<PermissionRoute permission="ordenes_compra.crear"><PurchaseOrderDetail /></PermissionRoute>} />
+            <Route path="purchase-orders/receptions" element={<PermissionRoute permission="ordenes_compra.recibir"><PurchaseOrderReceptions /></PermissionRoute>} />
+            <Route path="purchase-orders/receptions/:id" element={<PermissionRoute permission="ordenes_compra.recibir"><PurchaseOrderReceptions /></PermissionRoute>} />
             <Route path="purchase-orders/:id" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrderDetail /></PermissionRoute>} />
             <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
             <Route path="admin/turn-records" element={<PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute>} />
             <Route path="admin/turns-dashboard" element={<PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute>} />
-            <Route path="settings/courtesy" element={<PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="turn/courtesy" element={<PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/courtesy" element={<Navigate to="/turn/courtesy" replace />} />
             <Route path="settings/raw-materials" element={<PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute>} />
             <Route path="settings/units" element={<PermissionRoute permission="configuracion_inventario.unidades.ver"><InventorySettings /></PermissionRoute>} />
             <Route path="settings/material-categories" element={<PermissionRoute permission="configuracion_inventario.categorias_materia.ver"><InventorySettings /></PermissionRoute>} />
@@ -239,6 +250,7 @@ function App() {
             <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
             <Route path="turn-history" element={<PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute>} />
+            <Route path="turn/consumptions" element={<PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute>} />
             <Route path="logbook/:idTurno" element={<PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute>} />
           </Route>
 

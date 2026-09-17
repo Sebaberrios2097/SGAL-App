@@ -13,9 +13,18 @@ public class PurchaseOrderItemDto
 {
     public string TipoItem { get; set; } = string.Empty;
     public int IdItem { get; set; }
+    public int IdFormatoCompra { get; set; }
     public decimal Cantidad { get; set; }
     public int PrecioUnitario { get; set; }
     public int? NuevoPrecioVenta { get; set; }
+}
+
+public class PurchaseFormatCreateDto
+{
+    public string TipoItem { get; set; } = string.Empty;
+    public int IdItem { get; set; }
+    public string NombreFormato { get; set; } = string.Empty;
+    public decimal CantidadContenido { get; set; }
 }
 
 public class PurchaseOrderUserActionDto

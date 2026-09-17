@@ -17,7 +17,8 @@ const backgroundZones = [
   ['login', 'Inicio de sesión', 1920, 1080],
   ['sidebar', 'Menú lateral', 600, 2024],
   ['ventas', 'Ventas', 1920, 1080],
-  ['comandas', 'Comandas', 1920, 1080]
+  ['comandas', 'Comandas', 1920, 1080],
+  ['carta', 'Carta de productos', 1920, 1080]
 ];
 
 const BrandingSettings = () => {
@@ -205,7 +206,7 @@ const BrandingSettings = () => {
   };
 
   return <div className="animate-fade-in">
-    <div className="page-header"><div><h2 className="page-title">Identidad de la organización</h2><p className="page-subtitle">Configura los datos, colores y logos utilizados en cada área de la instalación.</p></div><Palette color="var(--primary-color)" /></div>
+    <div className="page-header"><h2 className="page-title">Identidad de la organización</h2><Palette color="var(--primary-color)" /></div>
     {message && <div className="badge badge-success" style={{ marginBottom: 16, padding: 12 }}>{message}</div>}
     {error && <div className="badge badge-danger" style={{ marginBottom: 16, padding: 12 }}>{error}</div>}
 
@@ -226,7 +227,7 @@ const BrandingSettings = () => {
 
     <section className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
-        <div><h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Image size={19} /> Biblioteca de logos</h3><p style={{ color: 'var(--text-muted)', fontSize: '.84rem', marginTop: 5 }}>Puedes cargar cualquier cantidad. Cada ubicación admite un solo logo, pero un mismo logo puede utilizarse en varias.</p></div>
+        <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Image size={19} /> Biblioteca de logos</h3>
         {canEdit && <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <label className="input-group" style={{ margin: 0 }}><span className="input-label">Nombre opcional</span><input className="input-field" maxLength={120} placeholder="Se usa el nombre del archivo" value={newLogoName} disabled={saving} onChange={event => setNewLogoName(event.target.value)} /></label>
           <label className="btn btn-primary" style={{ cursor: saving ? 'wait' : 'pointer' }}><Upload size={16} /> Subir logos<input type="file" accept="image/png,image/jpeg" multiple hidden disabled={saving} onChange={uploadLogos} /></label>
@@ -256,7 +257,6 @@ const BrandingSettings = () => {
     <section className="card" style={{ marginTop: 20 }}>
       <div style={{ marginBottom: 18 }}>
         <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LayoutIcon size={19} /> Fondos personalizados</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '.84rem', marginTop: 5 }}>Sube una imagen de fondo para el menú lateral, ventas y comandas. La imagen debe tener exactamente las dimensiones indicadas en cada zona.</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
         {backgroundZones.map(([zona, label, ancho, alto]) => {

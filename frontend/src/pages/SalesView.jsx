@@ -1656,10 +1656,9 @@ const SalesView = () => {
       <div style={{
         height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
         overflowY: 'auto',
-        // Fondo personalizado de comandas si está habilitado; si no, el degradado rosa por defecto.
+        // Fondo personalizado de comandas si está habilitado.
         ...(comandasBackground || {
           backgroundColor: COMANDA_PINK,
-          backgroundImage: 'linear-gradient(145deg, var(--accent-color), var(--primary-color))',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat'
@@ -1676,9 +1675,6 @@ const SalesView = () => {
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '9px', margin: 0, fontSize: '1.3rem', fontWeight: 800, color: COMANDA_TEXT }}>
               <ClipboardList size={22} /> Comandas del turno
             </h2>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: COMANDA_TEXT, opacity: 0.75 }}>
-              Revisa que cada pedido esté completo y márcalo como terminado.
-            </p>
           </div>
           <button
             type="button"
@@ -1934,10 +1930,9 @@ const SalesView = () => {
           <div className="pos-layout" style={{
             height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
             overflow: 'hidden',
-            // Fondo personalizado de venta si está habilitado; si no, el degradado por defecto.
+            // Fondo personalizado de venta si está habilitado.
             ...(ventasBackground || {
               backgroundColor: '#f8fafc',
-              backgroundImage: 'linear-gradient(180deg, var(--bg-color), #ffffff)',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat'
@@ -2421,11 +2416,9 @@ const SalesView = () => {
             </button>
 
             <h3 style={{ fontSize: '1.3rem', marginBottom: '6px', fontWeight: '700', paddingRight: '30px' }}>
-              Personalizar {productToCustomize.nombreProducto}
+              Seleccione tipo
             </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-              Escoge una opción en cada grupo. Solo se descontará del inventario la materia prima seleccionada.
-            </p>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>{productToCustomize.nombreProducto}</div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               {buildAlternativeGroups(productToCustomize).map(group => (
@@ -2498,11 +2491,9 @@ const SalesView = () => {
                 <X size={20} color="currentColor" />
               </button>
               <h3 style={{ fontSize: '1.3rem', marginBottom: '6px', fontWeight: '700', paddingRight: '30px' }}>
-                Ingredientes extra
+                Seleccione extras
               </h3>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                {editorLine.product.nombreProducto} · cada extra descuenta materia prima y suma su precio por unidad.
-              </p>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>{editorLine.product.nombreProducto}</div>
 
               <div style={{ display: 'grid', gap: '8px' }}>
                 {admitidos.map(extra => {
@@ -2584,9 +2575,7 @@ const SalesView = () => {
               Anular venta #{ventaAAnular.idVenta}
             </h3>
 
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-              Se anulará por un total de <strong style={{ color: 'var(--text-main)' }}>${ventaAAnular.montoTotal.toLocaleString('es-CL')}</strong>. Esta acción no se puede deshacer.
-            </p>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '14px' }}>Total: <strong>${ventaAAnular.montoTotal.toLocaleString('es-CL')}</strong></div>
 
             {montoPorMetodos(ventaAAnular, [2, 3]) > 0 && (
               <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', marginBottom: '10px' }}>
@@ -2654,7 +2643,7 @@ const SalesView = () => {
               <>
                 <CreditCard size={42} color="var(--primary-color)" style={{ marginBottom: '14px' }} />
 
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '6px', fontWeight: '700' }} className="text-gradient">
+                <h3 style={{ fontSize: '1.25rem', marginBottom: '6px', fontWeight: '700' }} className="text-solid">
                   Esperando pago en la terminal
                 </h3>
 
@@ -2666,15 +2655,12 @@ const SalesView = () => {
                   ${pointPayment.montoTarjeta.toLocaleString('es-CL')}
                 </div>
 
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  Pide al cliente que complete el pago en la máquina.
-                  La boleta se emite solo cuando el pago quede confirmado.
-                </p>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>Complete el pago en la terminal.</div>
 
                 {pointDemorado && (
                   <div className="badge badge-warning" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', textTransform: 'none', marginBottom: '12px', fontSize: '0.8rem' }}>
                     <AlertCircle size={14} />
-                    <span>El cobro está tardando más de lo habitual. Puedes cancelarlo y volver a intentar.</span>
+                  <span>Cobro demorado.</span>
                   </div>
                 )}
 
@@ -2707,10 +2693,6 @@ const SalesView = () => {
                   {pointPayment.mensaje}
                 </p>
 
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  La venta quedó cancelada y el stock fue devuelto. No se emitió boleta.
-                  Los productos siguen en el carrito por si quieres reintentar.
-                </p>
 
                 <button
                   type="button"
@@ -2734,9 +2716,7 @@ const SalesView = () => {
               <BookOpen size={26} color="var(--primary-color)" />
             </div>
             <h3 style={{ marginBottom: '8px' }}>Registrar consumo de empleado</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
-              El carrito se registrará como consumo del empleado y quedará <strong>por cobrar</strong>. La cortesía se aplica automáticamente según los cupos del día.
-            </p>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>Confirme el consumo.</div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn btn-secondary" style={{ flex: 1 }} disabled={submittingSale} onClick={() => setShowConsumoConfirm(false)}>Cancelar</button>
               <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={submittingSale} onClick={handleCreateConsumption}>{submittingSale ? 'Registrando…' : 'Confirmar consumo'}</button>
@@ -2753,7 +2733,6 @@ const SalesView = () => {
               <CheckCircle2 size={30} color="#16a34a" />
             </div>
             <h3 style={{ marginBottom: '6px' }}>Consumo registrado</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '18px' }}>Queda por cobrar al empleado.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '10px', background: '#fef3c7', color: '#92400e', fontWeight: 700 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Gift size={16} /> Cortesía</span>
@@ -2786,7 +2765,7 @@ const SalesView = () => {
               <X size={20} color="var(--text-muted)" />
             </button>
 
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '20px', fontWeight: '700' }} className="text-gradient">
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '20px', fontWeight: '700' }} className="text-solid">
               Registrar Pago
             </h3>
 
@@ -3311,7 +3290,7 @@ const SalesView = () => {
               <X size={20} color="var(--text-muted)" />
             </button>
 
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '20px', fontWeight: '700' }} className="text-gradient">
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '20px', fontWeight: '700' }} className="text-solid">
               Historial de Ventas del Turno
             </h3>
 

@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowLeft, BookOpen, Coffee, Gift, History, Lock, MessageSquareText, Plus, Save, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, BookOpen, Coffee, History, Lock, MessageSquareText, Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -180,9 +180,6 @@ const LogbookView = () => {
               <MessageSquareText size={20} color="var(--primary-color)" />
               <h3>Observación de la bitácora</h3>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginBottom: '14px' }}>
-              Registre aquí una observación general correspondiente a todo el turno.
-            </p>
             {observationError && <div style={{ color: '#b91c1c', marginBottom: '10px' }}><AlertCircle size={15} /> {observationError}</div>}
             {observationSuccess && <div style={{ color: '#15803d', marginBottom: '10px' }}>{observationSuccess}</div>}
             <textarea
@@ -208,7 +205,7 @@ const LogbookView = () => {
           {/* Consumos del turno: ventas de consumo del empleado (solo lectura). Se crean en el POS. */}
           <section className="card" style={{ padding: '22px', marginBottom: '22px', order: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-              <div><h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}><Coffee size={20} /> Consumos del turno</h3><p style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>Ventas de consumo del empleado (con sus extras). Se registran desde el punto de venta con "Consumo de empleado".</p></div>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}><Coffee size={20} /> Consumos del turno</h3>
               <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#f0fdf4', color: '#166534', textAlign: 'center', minWidth: '150px' }}><div style={{ fontSize: '0.72rem', fontWeight: 700 }}>CORTESÍAS DISPONIBLES HOY</div><strong style={{ fontSize: '1.35rem' }}>{logbook.cortesia.restanteHoy} / {logbook.cortesia.limiteDiarioGlobal}</strong></div>
             </div>
 
@@ -260,9 +257,6 @@ const LogbookView = () => {
                   </button>
                 )}
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginBottom: '16px' }}>
-                Puede ingresar una o varias extracciones antes de guardar. Al guardar se descuenta el gramaje del café indicado.
-              </p>
               {error && <div style={{ color: '#b91c1c', marginBottom: '12px' }}><AlertCircle size={15} /> {error}</div>}
               {success && <div style={{ color: '#15803d', marginBottom: '12px' }}>{success}</div>}
               {logbook.calibracion?.materias?.length > 0 && (

@@ -85,7 +85,7 @@ const Setup = () => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
-      background: 'radial-gradient(circle at center, var(--primary-color) 0%, var(--primary-hover) 100%)'
+      background: 'var(--primary-color)'
     }} className="animate-fade-in">
       <div className="glass-panel" style={{
         width: '100%',
@@ -94,16 +94,6 @@ const Setup = () => {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        <div style={{
-          position: 'absolute',
-          top: '-10%',
-          right: '-10%',
-          width: '200px',
-          height: '200px',
-          background: 'radial-gradient(circle, var(--primary-glow) 0%, transparent 70%)',
-          pointerEvents: 'none'
-        }} />
-
         {/* Brand/Logo */}
         <div style={{
           display: 'flex',
@@ -113,7 +103,7 @@ const Setup = () => {
           marginBottom: '28px'
         }}>
           <BrandLogo location="login" maxHeight={90} />
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }} className="text-gradient">Configuración inicial</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }} className="text-solid">Configuración inicial</h2>
         </div>
 
         <div className="badge badge-warning" style={{
@@ -129,7 +119,7 @@ const Setup = () => {
           lineHeight: '1.35'
         }}>
           <ShieldCheck size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
-          <span>No existe ningún usuario <strong>Desarrollador</strong>. Crea el usuario base para administrar el sistema; iniciarás sesión automáticamente al terminar.</span>
+          <span>Cree el usuario <strong>Desarrollador</strong>.</span>
         </div>
 
         <form onSubmit={handleSubmit}>

@@ -16,6 +16,9 @@ public partial class InvPresentacionesMateriaPrima
     [Column("Id_Unidad_Medida")]
     public int IdUnidadMedida { get; set; }
 
+    [Column("Id_Formato_Compra")]
+    public int? IdFormatoCompra { get; set; }
+
     [Column("Nombre_Presentacion")]
     [StringLength(100)]
     public string NombrePresentacion { get; set; } = null!;
@@ -35,4 +38,7 @@ public partial class InvPresentacionesMateriaPrima
     [ForeignKey("IdUnidadMedida")]
     [InverseProperty("InvPresentacionesMateriaPrima")]
     public virtual InvUnidadesMedida IdUnidadMedidaNavigation { get; set; } = null!;
+
+    [ForeignKey("IdFormatoCompra")]
+    public virtual InvFormatosCompra? IdFormatoCompraNavigation { get; set; }
 }

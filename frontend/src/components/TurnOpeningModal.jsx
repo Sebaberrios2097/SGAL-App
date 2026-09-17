@@ -88,12 +88,10 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
           <X size={20} color="var(--text-muted)" />
         </button>
 
-        <h3 className="text-gradient" style={{ fontSize: '1.3rem', marginBottom: '8px', fontWeight: '700' }}>
+        <h3 className="text-solid" style={{ fontSize: '1.3rem', marginBottom: '8px', fontWeight: '700' }}>
           Iniciar turno
         </h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '16px' }}>
-          Registre la cuadratura inicial de caja. Al confirmar se habilitarán Ventas y Bitácora.
-        </p>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '16px' }}>Ingrese el efectivo inicial.</div>
 
         {error && (
           <div className="badge badge-danger" style={{ display: 'flex', gap: '6px', padding: '8px 12px', marginBottom: '12px', textTransform: 'none' }}>
