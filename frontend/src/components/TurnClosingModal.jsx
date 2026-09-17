@@ -112,12 +112,10 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
           <X size={20} color="var(--text-muted)" />
         </button>
 
-        <h3 style={{ fontSize: '1.4rem', marginBottom: '4px', fontWeight: '700' }} className="text-gradient">
-          Arqueo y Cuadratura de Cierre
+        <h3 style={{ fontSize: '1.4rem', marginBottom: '4px', fontWeight: '700' }} className="text-solid">
+          Cerrar turno #{turn.idTurno}
         </h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '20px' }}>
-          Cierre del Turno #{turn.idTurno}. Registre el recuento físico y los montos reales por método de pago.
-        </p>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '20px' }}>Ingrese los montos reales.</div>
 
         {error && (
           <div className="badge badge-danger" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', textTransform: 'none', marginBottom: '16px', fontSize: '0.8rem' }}>
@@ -135,7 +133,7 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
               {/* Left Column: Cash breakdown */}
               <div>
                 <h4 style={{ fontSize: '0.9rem', fontWeight: '800', marginBottom: '10px', color: 'var(--text-main)' }}>
-                  💵 Recuento de Efectivo Físico
+                  Efectivo
                 </h4>
                 <div style={{
                   maxHeight: '280px',

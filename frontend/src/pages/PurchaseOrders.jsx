@@ -1,4 +1,4 @@
-import { ClipboardCheck, Download, Eye, FileSpreadsheet, LoaderCircle, Plus } from 'lucide-react';
+import { ClipboardCheck, Download, Eye, FileSpreadsheet, LoaderCircle, PackageCheck, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { downloadFile } from '../utils/downloadFile';
@@ -56,9 +56,8 @@ const PurchaseOrders = () => {
       <div className="page-header">
         <div>
           <h2 className="page-title"><ClipboardCheck size={25} /> Órdenes de compra</h2>
-          <p className="page-subtitle">Solicitudes, recepciones y gastos de abastecimiento por proveedor.</p>
         </div>
-        {can('ordenes_compra.crear') && <Link className="btn btn-primary" to="/purchase-orders/new"><Plus size={16} /> Nueva orden</Link>}
+        <div className="page-actions">{can('ordenes_compra.recibir') && <Link className="btn btn-secondary" to="/purchase-orders/receptions"><PackageCheck size={16} /> Recepciones</Link>}{can('ordenes_compra.crear') && <Link className="btn btn-primary" to="/purchase-orders/new"><Plus size={16} /> Nueva orden</Link>}</div>
       </div>
 
       {error && <div className="card" style={{ color: '#b91c1c', marginBottom: '18px' }}>{error}</div>}

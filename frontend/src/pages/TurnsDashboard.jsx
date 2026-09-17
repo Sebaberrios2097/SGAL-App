@@ -1,14 +1,14 @@
 import {
-  ArrowLeft, CalendarDays, Coins, Gift, Package, ReceiptText, ScrollText,
+  CalendarDays, ChevronDown, ChevronUp, Coins, Gift, Package, ReceiptText, ScrollText,
   ShoppingBag, TrendingUp, Users, Wallet
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
-  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
 import { useAuth } from '../context/AuthContext';
+import PageHeader from '../components/PageHeader';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const shortMoney = value => Math.abs(value) >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
@@ -23,13 +23,12 @@ const ESTADO_STYLE = {
   3: { label: 'Descuadre', bg: '#fee2e2', color: '#b91c1c' }
 };
 
-const MetricCard = ({ icon: Icon, label, value, detail, color = 'var(--primary-color)' }) => (
+const MetricCard = ({ icon: Icon, label, value, color = 'var(--primary-color)' }) => (
   <div className="card" style={{ padding: '18px', display: 'flex', gap: '14px', alignItems: 'center' }}>
     <div style={{ width: '44px', height: '44px', flex: '0 0 auto', borderRadius: '13px', background: `${color}14`, display: 'grid', placeItems: 'center' }}><Icon size={22} color={color} /></div>
     <div style={{ minWidth: 0 }}>
       <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
       <div style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.2 }}>{value}</div>
-      {detail && <div style={{ color: 'var(--text-muted)', fontSize: '.72rem', marginTop: '2px' }}>{detail}</div>}
     </div>
   </div>
 );
@@ -45,12 +44,12 @@ const Toggle = ({ options, value, onChange }) => (
   </div>
 );
 
-const ChartCard = ({ title, subtitle, icon: Icon, controls, children }) => (
+const ChartCard = ({ title, icon: Icon, controls, children }) => (
   <div className="card">
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
         {Icon && <Icon size={18} color="var(--primary-color)" />}
-        <div><h3 style={{ margin: 0 }}>{title}</h3>{subtitle && <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', margin: '2px 0 0' }}>{subtitle}</p>}</div>
+        <h3 style={{ margin: 0 }}>{title}</h3>
       </div>
       {controls}
     </div>
@@ -71,12 +70,13 @@ const TurnsDashboard = () => {
   const [preset, setPreset] = useState('month');
   const [customFrom, setCustomFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), 1)));
   const [customTo, setCustomTo] = useState(iso(today));
-  const [granularity, setGranularity] = useState('day');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const [flowType, setFlowType] = useState('bars');
+  const [expandedBaristas, setExpandedBaristas] = useState([]);
+  const [turnPage, setTurnPage] = useState(1);
 
   const { from, to } = useMemo(() => {
     const t = new Date();
@@ -87,6 +87,11 @@ const TurnsDashboard = () => {
     return { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), to: iso(new Date(t.getFullYear(), t.getMonth() + 1, 0)) };
   }, [preset, customFrom, customTo]);
 
+  const granularity = useMemo(() => {
+    const days = Math.max(1, (new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000 + 1);
+    return days > 62 ? 'month' : days > 16 ? 'week' : 'day';
+  }, [from, to]);
+
   useEffect(() => {
     document.title = `Panel de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
     if (!from || !to) return;
@@ -95,6 +100,8 @@ const TurnsDashboard = () => {
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.mensaje || 'No fue posible cargar el panel de turnos.'); return result; })
       .then(setData).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [from, to, granularity]);
+
+  useEffect(() => { setTurnPage(1); }, [from, to]);
 
   const rangeLabel = useMemo(() => {
     if (!from || !to) return '';
@@ -105,12 +112,14 @@ const TurnsDashboard = () => {
   const presets = [
     { value: 'today', label: 'Hoy' },
     { value: '7d', label: '7 días' },
-    { value: '30d', label: '30 días' },
     { value: 'month', label: 'Este mes' },
     { value: 'custom', label: 'Personalizado' }
   ];
 
   const productos = data ? data.productosVendidos : [];
+  const turnPageSize = 10;
+  const turnPageCount = Math.max(1, Math.ceil((data?.turnos.length || 0) / turnPageSize));
+  const visibleTurns = data?.turnos.slice((turnPage - 1) * turnPageSize, turnPage * turnPageSize) || [];
 
   // Ventas de consumo del empleado agrupadas por barista (propietario del turno) para el rango.
   const consumosPorBarista = useMemo(() => {
@@ -146,12 +155,9 @@ const TurnsDashboard = () => {
   };
 
   return <div className="animate-fade-in">
+    <PageHeader title="Panel de turnos" icon={CalendarDays} backTo="/admin/turn-records" backLabel="Registros de turnos" />
+    <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', margin: '-10px 0 14px 4px' }}>{rangeLabel}</div>
     <div style={{ marginBottom: '18px' }}>
-      <Link to="/admin/turn-records" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '.82rem', textDecoration: 'none', marginBottom: '8px' }}>
-        <ArrowLeft size={15} /> Registros de turnos
-      </Link>
-      <h2 className="page-title">Panel de turnos</h2>
-      <p className="page-subtitle" style={{ marginBottom: '14px' }}>Turnos, baristas, productos y montos · {rangeLabel}</p>
       <div className="card" style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <span className="input-label">Período</span>
@@ -161,13 +167,7 @@ const TurnsDashboard = () => {
           <label className="input-group" style={{ margin: 0 }}><span className="input-label">Desde</span><input className="input-field" type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)} /></label>
           <label className="input-group" style={{ margin: 0 }}><span className="input-label">Hasta</span><input className="input-field" type="date" value={customTo} min={customFrom} onChange={e => setCustomTo(e.target.value)} /></label>
         </>}
-        <label className="input-group" style={{ margin: 0, marginLeft: 'auto' }}><span className="input-label">Agrupar</span>
-          <select className="input-field" value={granularity} onChange={e => setGranularity(e.target.value)}>
-            <option value="day">Por día</option>
-            <option value="week">Por semana</option>
-            <option value="month">Por mes</option>
-          </select>
-        </label>
+        <div style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '.75rem', alignSelf: 'center' }}>La agrupación se ajusta automáticamente al período.</div>
       </div>
     </div>
 
@@ -186,7 +186,7 @@ const TurnsDashboard = () => {
 
       {/* Movimiento por período */}
       <div style={{ marginBottom: '18px' }}>
-        <ChartCard title="Movimiento por período" subtitle="Turnos y ventas en cada tramo" icon={TrendingUp}
+        <ChartCard title="Movimiento por período" icon={TrendingUp}
           controls={<Toggle options={[{ value: 'bars', label: 'Turnos + $' }, { value: 'ventas', label: 'Ventas' }]} value={flowType} onChange={setFlowType} />}>
           <ResponsiveContainer width="100%" height={300}>
             {flowType === 'bars' ? (
@@ -213,7 +213,7 @@ const TurnsDashboard = () => {
 
       {/* Por barista */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: '18px', marginBottom: '18px' }}>
-        <ChartCard title="Turnos por barista" subtitle="A quién están asociados los turnos y montos" icon={Users}>
+        <ChartCard title="Turnos por barista" icon={Users}>
           {data.porBarista.length === 0 ? <EmptyState>Sin turnos en el período.</EmptyState> : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
@@ -243,7 +243,7 @@ const TurnsDashboard = () => {
             </div>
           )}
         </ChartCard>
-        <ChartCard title="Ventas por barista" subtitle="Participación del monto" icon={Wallet}>
+        <ChartCard title="Ventas por barista" icon={Wallet}>
           {data.porBarista.length === 0 ? <EmptyState>Sin datos.</EmptyState> : <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={data.porBarista} dataKey="monto" nameKey="usuario" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -257,7 +257,7 @@ const TurnsDashboard = () => {
 
       {/* Productos vendidos en los turnos */}
       <div style={{ marginBottom: '18px' }}>
-        <ChartCard title="Productos vendidos en los turnos" subtitle="Vendidos durante los turnos del período" icon={Package}>
+        <ChartCard title="Productos vendidos en los turnos" icon={Package}>
           {productos.length === 0 ? <EmptyState>Sin productos en el período.</EmptyState> : (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: '18px', alignItems: 'start' }}>
               <ResponsiveContainer width="100%" height={Math.max(220, productos.length * 30)}>
@@ -292,12 +292,14 @@ const TurnsDashboard = () => {
 
       {/* Consumos del empleado por barista: ventas asociadas a bitácora (por cobrar) en el rango */}
       <div style={{ marginBottom: '18px' }}>
-        <ChartCard title="Consumos del empleado por barista" subtitle="Ventas de consumo asociadas a la bitácora en el rango. Marca las pagadas por el vendedor." icon={Gift}>
+        <ChartCard title="Consumos del empleado por barista" icon={Gift}>
           {consumosPorBarista.length === 0 ? <EmptyState>Sin consumos de empleado registrados en el período.</EmptyState> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              {consumosPorBarista.map(barista => (
+              {consumosPorBarista.map(barista => {
+                const expanded = expandedBaristas.includes(barista.idUsuario);
+                return (
                 <div key={barista.idUsuario} style={{ border: '1px solid var(--panel-border)', borderRadius: '12px', overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', background: '#faf9f7', borderBottom: '1px solid var(--panel-border)' }}>
+                  <button type="button" onClick={() => setExpandedBaristas(current => expanded ? current.filter(id => id !== barista.idUsuario) : [...current, barista.idUsuario])} style={{ width: '100%', border: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', background: '#faf9f7', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
                     <div>
                       <div style={{ fontWeight: 700 }}>{barista.empleado || barista.usuario}</div>
                       {barista.empleado && <div style={{ color: 'var(--text-muted)', fontSize: '.72rem' }}>{barista.usuario}</div>}
@@ -306,9 +308,10 @@ const TurnsDashboard = () => {
                       <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: '999px', fontSize: '.74rem', fontWeight: 700 }}>Cortesía: {money(barista.totalCortesia)}</span>
                       <span style={{ background: '#e0f2fe', color: '#075985', padding: '3px 10px', borderRadius: '999px', fontSize: '.74rem', fontWeight: 700 }}>A pagar: {money(barista.totalAdeudado)}</span>
                       <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '999px', fontSize: '.74rem', fontWeight: 700 }}>Pendiente: {money(barista.totalPendiente)}</span>
+                      {expanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
                     </div>
-                  </div>
-                  <div style={{ overflowX: 'auto' }}>
+                  </button>
+                  {expanded && <div style={{ overflowX: 'auto', maxHeight: '340px', overflowY: 'auto', borderTop: '1px solid var(--panel-border)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead><tr>
                         <th style={th}>Fecha</th>
@@ -339,16 +342,16 @@ const TurnsDashboard = () => {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </div>}
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </ChartCard>
       </div>
 
       {/* Detalle de turnos */}
-      <ChartCard title="Detalle de turnos" subtitle="Cada turno del período" icon={ScrollText}>
+      <ChartCard title="Detalle de turnos" icon={ScrollText}>
         {data.turnos.length === 0 ? <EmptyState>Sin turnos en el período.</EmptyState> : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
@@ -360,7 +363,7 @@ const TurnsDashboard = () => {
                 <th style={{ ...th, textAlign: 'right' }}>Diferencia</th>
               </tr></thead>
               <tbody>
-                {data.turnos.map(t => {
+                {visibleTurns.map(t => {
                   const est = ESTADO_STYLE[t.idEstadoTurno] || { label: t.estado, bg: '#f1f5f9', color: '#475569' };
                   return (
                     <tr key={t.idTurno}>
@@ -382,6 +385,7 @@ const TurnsDashboard = () => {
             </table>
           </div>
         )}
+        {data.turnos.length > turnPageSize && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}><span style={{ color: 'var(--text-muted)', fontSize: '.76rem' }}>Página {turnPage} de {turnPageCount}</span><div style={{ display: 'flex', gap: '6px' }}><button className="btn btn-secondary" disabled={turnPage === 1} onClick={() => setTurnPage(page => page - 1)}>Anterior</button><button className="btn btn-secondary" disabled={turnPage === turnPageCount} onClick={() => setTurnPage(page => page + 1)}>Siguiente</button></div></div>}
       </ChartCard>
     </>}
   </div>;

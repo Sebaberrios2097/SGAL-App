@@ -10,7 +10,6 @@ import {
   CheckCircle2, 
   X, 
   Percent, 
-  Image as ImageIcon,
   Package,
   Upload,
   ClipboardList
@@ -19,6 +18,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import DataTable from '../components/DataTable';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import PageHeader from '../components/PageHeader';
 
 const InventoryManagement = () => {
   const { can } = useAuth();
@@ -419,24 +419,7 @@ const InventoryManagement = () => {
 
   return (
     <div className="animate-fade-in" style={{ width: '100%' }}>
-      {/* Header Panel */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '28px',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: '800', margin: 0 }} className="text-gradient">
-            Gestión de Inventario
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            Controla y configura el stock de productos y ofertas especiales.
-          </p>
-        </div>
-
+      <PageHeader title="Gestión de inventario" icon={Package} actions={
         <div style={{ display: 'flex', gap: '12px' }}>
           {activeTab === 'products' ? can('inventario.productos.crear') && (
             <button 
@@ -458,7 +441,7 @@ const InventoryManagement = () => {
             </button>
           )}
         </div>
-      </div>
+      } />
 
       {/* Tabs Menu */}
       <div style={{
@@ -625,12 +608,9 @@ const InventoryManagement = () => {
               <X size={20} color="var(--text-muted)" />
             </button>
             
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-solid">
               {editingProduct ? 'Editar Producto' : 'Crear Producto'}
             </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Ingresa los datos del producto para actualizar el catálogo.
-            </p>
 
             <form onSubmit={handleProductSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '28px' }}>
@@ -859,9 +839,6 @@ const InventoryManagement = () => {
                 <h4 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '8px', color: 'var(--primary-color)' }}>
                   Añadir Nueva Categoría
                 </h4>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  Crea una categoría directamente sin perder los datos del producto actual.
-                </p>
 
                 {quickCategoryError && (
                   <div className="badge badge-danger" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '6px', textTransform: 'none', marginBottom: '16px' }}>
@@ -930,12 +907,9 @@ const InventoryManagement = () => {
               <X size={20} color="var(--text-muted)" />
             </button>
 
-            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-gradient">
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', fontWeight: '700' }} className="text-solid">
               Crear Oferta Especial
             </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
-              Selecciona un producto y define el porcentaje de descuento promocional.
-            </p>
 
             <form onSubmit={handleDiscountSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '28px' }}>

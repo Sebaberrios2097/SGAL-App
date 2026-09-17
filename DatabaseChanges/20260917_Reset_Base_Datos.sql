@@ -151,10 +151,10 @@ BEGIN TRY
             ALTER TABLE dbo.Org_Fondos DROP CONSTRAINT CK_Org_Fondos_Zona;
 
         ALTER TABLE dbo.Org_Fondos ADD CONSTRAINT CK_Org_Fondos_Zona
-            CHECK (Zona IN ('login', 'sidebar', 'ventas', 'comandas'));
+            CHECK (Zona IN ('login', 'sidebar', 'ventas', 'comandas', 'carta'));
 
         INSERT INTO dbo.Org_Fondos (Zona, Habilitado)
-        VALUES ('login', 0), ('sidebar', 0), ('ventas', 0), ('comandas', 0);
+        VALUES ('login', 0), ('sidebar', 0), ('ventas', 0), ('comandas', 0), ('carta', 0);
     END;
 
     -- Módulos: todos los módulos activos quedan habilitados (como una instalación

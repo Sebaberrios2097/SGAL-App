@@ -162,12 +162,6 @@ Ya no existe una tabla propia de ingredientes extra: cualquier **materia prima**
 | Marcas | Crear | `configuracion_inventario.marcas.crear` | `POST .../brands` |
 | Marcas | Editar | `configuracion_inventario.marcas.editar` | `PUT .../brands/{id}` |
 | Marcas | Eliminar | `configuracion_inventario.marcas.eliminar` | `DELETE .../brands/{id}` |
-| Política de cortesía | Ver | `configuracion_inventario.cortesia.ver` | `GET .../courtesy-policy` |
-| Política de cortesía | Editar | `configuracion_inventario.cortesia.politica.editar` | `PUT .../courtesy-policy` |
-| Productos de cortesía | Listar | `configuracion_inventario.cortesia.ver` | `GET .../courtesy-products` |
-| Productos de cortesía | Crear | `configuracion_inventario.cortesia.crear` | `POST .../courtesy-products` |
-| Productos de cortesía | Editar | `configuracion_inventario.cortesia.editar` | `PUT .../courtesy-products/{id}` |
-| Productos de cortesía | Activar o desactivar | `configuracion_inventario.cortesia.estado.modificar` | `PUT .../courtesy-products/{id}/status` |
 | Materias primas | Listar | `configuracion_inventario.materias_primas.ver` | `GET .../raw-materials` |
 | Materias primas | Crear | `configuracion_inventario.materias_primas.crear` | `POST .../raw-materials` |
 | Materias primas | Editar | `configuracion_inventario.materias_primas.editar` | `PUT .../raw-materials/{id}` |
@@ -218,12 +212,17 @@ Hoy todas las escrituras comparan el rol `ADMINISTRADOR`; todas las lecturas y e
 | Ver historial propio | `turnos.propios.ver` | `GET /api/turn/history` |
 | Ver calendario propio | `turnos.propios.ver` | `GET /api/turn/calendar` |
 | Ver detalle diario propio | `turnos.propios.ver` | `GET /api/turn/day` |
+| Ver saldo y detalle de consumos propios | `turnos.propios.ver` o `bitacora.propia.ver` | `GET /api/turn/my-consumption-balance` |
+| Política de cortesía: ver/editar | `configuracion_inventario.cortesia.ver` / `.politica.editar` | `GET/PUT /api/inventory-configuration/courtesy-policy` |
+| Productos de cortesía: listar/crear/editar/estado | `configuracion_inventario.cortesia.*` | `/api/inventory-configuration/courtesy-products` |
 | Consultar denominaciones de efectivo | `turnos.operar` | `GET /api/turn/denominations` |
 | Abrir turno | `turnos.abrir` | `POST /api/turn/open` |
 | Ver resumen para cierre | `turnos.cerrar` | `GET /api/turn/summary` |
 | Cerrar turno y registrar desglose | `turnos.cerrar` | `POST /api/turn/close` |
 
 Los endpoints reciben `idUsuario` desde el cliente. El alcance “propio” debe comprobarse con la identidad autenticada, no confiando en ese parámetro.
+
+Los códigos de cortesía conservan el prefijo histórico `configuracion_inventario` por compatibilidad, pero sus permisos, navegación y vista pertenecen al módulo **Turnos**.
 
 ### 11. Ventas y caja
 

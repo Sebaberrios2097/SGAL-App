@@ -269,9 +269,9 @@ public class AdminDashboardController : ControllerBase
                 Unidades = t.VenVentas.Where(v => v.IdEstadoVenta == EstadosVenta.Terminada && v.IdBitacora == null)
                     .SelectMany(v => v.VenDetalleVenta).Sum(d => (int?)d.Cantidad) ?? 0,
                 // Consumos del empleado del turno (ventas de consumo asociadas a la bitácora).
-                ConsumoUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                ConsumoUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta == EstadosVenta.Terminada)
                     .SelectMany(v => v.VenDetalleVenta).Where(d => !d.EsCortesia).Sum(d => (int?)d.Cantidad) ?? 0,
-                CortesiaUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                CortesiaUnidades = t.VenVentas.Where(v => v.IdBitacora != null && v.IdEstadoVenta == EstadosVenta.Terminada)
                     .SelectMany(v => v.VenDetalleVenta).Where(d => d.EsCortesia).Sum(d => (int?)d.Cantidad) ?? 0
             })
             .ToListAsync();
@@ -367,7 +367,7 @@ public class AdminDashboardController : ControllerBase
         // Ventas de consumo del empleado durante los turnos del rango, con su detalle. El frontend
         // las agrupa por barista y permite marcarlas como pagadas. Muestra adeudado vs cortesía.
         var consumosPorBarista = await _context.VenVentas.AsNoTracking()
-            .Where(v => v.IdBitacora != null && v.IdEstadoVenta != EstadosVenta.Cancelada
+            .Where(v => v.IdBitacora != null && v.IdEstadoVenta == EstadosVenta.Terminada
                 && v.IdTurnoNavigation.FechaApertura >= start && v.IdTurnoNavigation.FechaApertura < end)
             .OrderByDescending(v => v.FechaVenta)
             .Select(v => new
@@ -513,7 +513,9 @@ public class AdminDashboardController : ControllerBase
                     b.FechaCreacion,
                     b.Observaciones,
                     CantidadExtracciones = b.TurExtracciones.Count,
-                    CantidadConsumos = b.TurProductosBitacora.Count(p => p.Activo)
+                    CantidadConsumos = b.IdTurnoNavigation.VenVentas
+                        .Where(v => v.IdBitacora == b.IdBitacora && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                        .SelectMany(v => v.VenDetalleVenta).Sum(d => (int?)d.Cantidad) ?? 0
                 }).ToList()
             }).ToListAsync();
 
@@ -603,17 +605,20 @@ public class AdminDashboardController : ControllerBase
                 {
                     e.IdExtraccion, e.Gramos, e.Segundos, e.Mililitros, e.Observaciones
                 }).ToList(),
-                ProductosConsumidos = x.TurProductosBitacora.OrderByDescending(p => p.FechaConsumo).Select(p => new
-                {
-                    p.IdProductosBitacora,
-                    p.IdProducto,
-                    p.IdProductoNavigation.NombreProducto,
-                    p.Cantidad,
-                    p.EsCortesia,
-                    p.FechaConsumo,
-                    p.Activo,
-                    p.Observacion
-                }).ToList()
+                ProductosConsumidos = x.IdTurnoNavigation.VenVentas
+                    .Where(v => v.IdBitacora == x.IdBitacora && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                    .SelectMany(v => v.VenDetalleVenta.Select(d => new
+                    {
+                        IdProductosBitacora = d.IdDetalleVenta,
+                        d.IdProducto,
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.EsCortesia,
+                        FechaConsumo = v.FechaVenta,
+                        Activo = v.IdEstadoVenta != EstadosVenta.Anulada,
+                        Observacion = (string?)null
+                    }))
+                    .OrderByDescending(p => p.FechaConsumo).ToList()
             }).FirstOrDefaultAsync();
 
         return logbook == null

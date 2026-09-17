@@ -94,6 +94,45 @@ namespace SgalApp.Api.Controllers
             });
         }
 
+        [HttpGet("my-consumption-balance")]
+        [Permission(Permissions.OwnTurnsView + "|" + Permissions.OwnLogbookView)]
+        public async Task<IActionResult> GetMyConsumptionBalance()
+        {
+            var userId = User.GetUserId();
+            var consumptions = await _context.VenVentas.AsNoTracking()
+                .Where(v => v.IdBitacora != null
+                    && v.IdTurnoNavigation.IdUsuario == userId
+                    && v.IdEstadoVenta == EstadosVenta.Terminada)
+                .OrderByDescending(v => v.FechaVenta)
+                .Select(v => new
+                {
+                    v.IdVenta,
+                    v.IdTurno,
+                    v.FechaVenta,
+                    v.PagadoPorEmpleado,
+                    MontoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                    MontoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                    Items = v.VenDetalleVenta.OrderBy(d => d.IdDetalleVenta).Select(d => new
+                    {
+                        d.IdProducto,
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.Subtotal,
+                        d.EsCortesia
+                    }).ToList()
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                TotalPendiente = consumptions.Where(x => !x.PagadoPorEmpleado).Sum(x => x.MontoAdeudado),
+                TotalHistorico = consumptions.Sum(x => x.MontoAdeudado),
+                TotalCortesia = consumptions.Sum(x => x.MontoCortesia),
+                CantidadPendiente = consumptions.Count(x => !x.PagadoPorEmpleado && x.MontoAdeudado > 0),
+                Consumos = consumptions
+            });
+        }
+
         [HttpGet("history")]
         [Permission(Permissions.OwnTurnsView)]
         public async Task<IActionResult> GetHistory([FromQuery] int idUsuario)
@@ -210,7 +249,9 @@ namespace SgalApp.Api.Controllers
                         b.FechaCreacion,
                         b.Observaciones,
                         CantidadExtracciones = b.TurExtracciones.Count,
-                        CantidadConsumos = b.TurProductosBitacora.Count(p => p.Activo)
+                        CantidadConsumos = b.IdTurnoNavigation.VenVentas
+                            .Where(v => v.IdBitacora == b.IdBitacora && v.IdEstadoVenta != EstadosVenta.Cancelada)
+                            .SelectMany(v => v.VenDetalleVenta).Sum(d => (int?)d.Cantidad) ?? 0
                     }).ToList()
                 })
                 .ToListAsync();

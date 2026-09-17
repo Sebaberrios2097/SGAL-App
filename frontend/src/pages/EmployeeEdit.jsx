@@ -220,9 +220,8 @@ const EmployeeEdit = () => {
           </Link>
           <div className="employee-avatar" aria-hidden="true">{employee.nombres.charAt(0)}{employee.apellido1.charAt(0)}</div>
           <div>
-            <p className="permissions-eyebrow">Gestión de usuarios</p>
-            <h2 className="page-title text-gradient">Editar usuario</h2>
-            <p className="page-subtitle">{employee.nombres} {employee.apellido1} · {employee.tipoDocumento === 'RUT' ? 'RUT' : 'RUN'} {employee.rut}-{employee.dv}</p>
+            <h2 className="page-title text-solid">Editar usuario</h2>
+            <div style={{ color: 'var(--text-muted)', fontSize: '.82rem', marginTop: 3 }}>{employee.nombres} {employee.apellido1} · {employee.tipoDocumento === 'RUT' ? 'RUT' : 'RUN'} {employee.rut}-{employee.dv}</div>
           </div>
         </div>
         <span className={`badge ${employee.activo ? 'badge-success' : 'badge-danger'}`}>{employee.activo ? 'Activo' : 'Inactivo'}</span>
@@ -235,7 +234,7 @@ const EmployeeEdit = () => {
         <section className="employee-edit-card">
           <div className="employee-edit-card-heading">
             <span><ContactRound size={19} /></span>
-            <div><h3>Datos personales</h3><p>Información visible del empleado.</p></div>
+            <h3>Datos personales</h3>
           </div>
           <div className="employee-form-grid">
             <div className="input-group">
@@ -281,13 +280,13 @@ const EmployeeEdit = () => {
               <input id="employee-email" type="email" className="input-field" maxLength={150} value={form.correo} onChange={e => updateField('correo', e.target.value)} disabled={!canEditEmployee || saving} />
             </div>
           </div>
-          {!canEditEmployee && <p className="employee-permission-note">Tu rol permite consultar estos datos, pero no modificarlos.</p>}
+          {!canEditEmployee && <p className="employee-permission-note">Solo lectura.</p>}
         </section>
 
         <section className="employee-edit-card">
           <div className="employee-edit-card-heading">
             <span><UserRound size={19} /></span>
-            <div><h3>Cuenta de acceso</h3><p>Credenciales para iniciar sesión.</p></div>
+            <h3>Cuenta de acceso</h3>
           </div>
           {employee.usuario ? (
             <>
@@ -328,7 +327,7 @@ const EmployeeEdit = () => {
         </section>
 
         <footer className="employee-edit-actions">
-          <div><strong>{hasChanges ? 'Hay cambios sin guardar' : 'Sin cambios pendientes'}</strong><span>Los cambios se aplicarán únicamente al guardar.</span></div>
+          <strong>{hasChanges ? 'Cambios sin guardar' : 'Sin cambios pendientes'}</strong>
           <div>
             <Link to="/employees" state={{ fromEmployeeEdit: true }} className="btn btn-secondary">Cancelar</Link>
             <button type="submit" className="btn btn-primary" disabled={!hasChanges || saving}><Save size={17} />{saving ? 'Guardando…' : 'Guardar cambios'}</button>

@@ -37,7 +37,18 @@ public class PurchaseOrderController : ControllerBase
             .OrderBy(x => x.NombreProveedor)
             .Select(x => new { x.IdProveedor, x.NombreProveedor })
             .ToListAsync();
-        var products = await _context.InvProductos.AsNoTracking()
+        var formats = await _context.InvFormatosCompra.AsNoTracking()
+            .Where(x => x.Activo)
+            .OrderBy(x => x.NombreFormato)
+            .Select(x => new
+            {
+                x.IdFormatoCompra,
+                x.IdProducto,
+                x.IdMateriaPrima,
+                x.NombreFormato,
+                x.CantidadContenido
+            }).ToListAsync();
+        var productData = await _context.InvProductos.AsNoTracking()
             .Where(x => x.Activo && !(x.RequiereReceta ?? false))
             .OrderBy(x => x.NombreProducto)
             .Select(x => new
@@ -50,6 +61,23 @@ public class PurchaseOrderController : ControllerBase
                 Stock = (decimal)(x.Stock ?? 0),
                 PrecioVenta = (int?)x.Precio
             }).ToListAsync();
+        var products = productData.Select(x => new
+        {
+            x.TipoItem,
+            x.IdItem,
+            x.Codigo,
+            x.Nombre,
+            x.Unidad,
+            x.Stock,
+            x.PrecioVenta,
+            Formatos = formats.Where(f => f.IdProducto == x.IdItem).Select(f => new
+            {
+                f.IdFormatoCompra,
+                f.NombreFormato,
+                f.CantidadContenido,
+                UnidadContenido = "un"
+            }).ToList()
+        }).ToList();
         var rawMaterialData = await _context.InvMateriaPrima.AsNoTracking()
             .OrderBy(x => x.NombreMaterial)
             .Select(x => new
@@ -67,10 +95,53 @@ public class PurchaseOrderController : ControllerBase
             Nombre = x.NombreMaterial,
             x.Unidad,
             Stock = x.Cantidad,
-            PrecioVenta = (int?)null
+            PrecioVenta = (int?)null,
+            Formatos = formats.Where(f => f.IdMateriaPrima == x.IdMateriaPrima).Select(f => new
+            {
+                f.IdFormatoCompra,
+                f.NombreFormato,
+                f.CantidadContenido,
+                UnidadContenido = x.Unidad
+            }).ToList()
         }).ToList();
 
         return Ok(new { Proveedores = providers, Productos = products, MateriasPrimas = rawMaterials });
+    }
+
+    [HttpPost("purchase-formats")]
+    [Permission(Permissions.PurchaseOrdersCreate + "|" + Permissions.PurchaseOrdersEdit)]
+    public async Task<IActionResult> CreatePurchaseFormat([FromBody] PurchaseFormatCreateDto dto)
+    {
+        var type = NormalizeItemType(dto.TipoItem);
+        if (type == null) return BadRequest(new { mensaje = "El tipo de artículo no es válido." });
+        var name = NormalizeText(dto.NombreFormato, 100);
+        if (string.IsNullOrWhiteSpace(name)) return BadRequest(new { mensaje = "Ingrese el nombre del formato." });
+        if (dto.CantidadContenido <= 0) return BadRequest(new { mensaje = "El contenido debe ser mayor que cero." });
+        if (type == "Producto" && decimal.Truncate(dto.CantidadContenido) != dto.CantidadContenido)
+            return BadRequest(new { mensaje = "El contenido de un producto debe expresarse en unidades enteras." });
+
+        var itemExists = type == "Producto"
+            ? await _context.InvProductos.AnyAsync(x => x.IdProducto == dto.IdItem && x.Activo && !(x.RequiereReceta ?? false))
+            : await _context.InvMateriaPrima.AnyAsync(x => x.IdMateriaPrima == dto.IdItem && !x.NoDescuentaInventario);
+        if (!itemExists) return BadRequest(new { mensaje = "El artículo no está disponible." });
+
+        var duplicate = await _context.InvFormatosCompra.AnyAsync(x =>
+            (type == "Producto" ? x.IdProducto == dto.IdItem : x.IdMateriaPrima == dto.IdItem)
+            && x.NombreFormato == name);
+        if (duplicate) return Conflict(new { mensaje = "Ya existe un formato con ese nombre." });
+
+        var format = new InvFormatosCompra
+        {
+            IdProducto = type == "Producto" ? dto.IdItem : null,
+            IdMateriaPrima = type == "MateriaPrima" ? dto.IdItem : null,
+            NombreFormato = name,
+            CantidadContenido = dto.CantidadContenido,
+            Activo = true,
+            FechaCreacion = DateTime.Now
+        };
+        _context.InvFormatosCompra.Add(format);
+        await _context.SaveChangesAsync();
+        return Ok(new { format.IdFormatoCompra, format.NombreFormato, format.CantidadContenido });
     }
 
     [HttpGet]
@@ -112,7 +183,7 @@ public class PurchaseOrderController : ControllerBase
             CantidadProductos = dto.Items.Count,
             MontoTotal = CalculateEstimatedTotal(dto.Items),
             PreciosConfirmados = !dto.Items.Any(x => x.NuevoPrecioVenta.HasValue),
-            InvOrdenDetalle = dto.Items.Select(CreateDetail).ToList()
+            InvOrdenDetalle = await BuildDetails(dto.Items)
         };
         _context.InvOrdenCompra.Add(order);
         await _context.SaveChangesAsync();
@@ -137,7 +208,7 @@ public class PurchaseOrderController : ControllerBase
         order.MontoTotal = CalculateEstimatedTotal(dto.Items);
         order.PreciosConfirmados = !dto.Items.Any(x => x.NuevoPrecioVenta.HasValue);
         _context.InvOrdenDetalle.RemoveRange(order.InvOrdenDetalle);
-        order.InvOrdenDetalle = dto.Items.Select(CreateDetail).ToList();
+        order.InvOrdenDetalle = await BuildDetails(dto.Items);
         await _context.SaveChangesAsync();
         return Ok(new { mensaje = "Orden de compra actualizada." });
     }
@@ -183,8 +254,12 @@ public class PurchaseOrderController : ControllerBase
                 return BadRequest(new { mensaje = $"La cantidad recibida de {GetItemName(detail)} debe estar entre 0 y {detail.Cantidad:0.###}." });
             if (received.PrecioUnitarioReal < 0)
                 return BadRequest(new { mensaje = "Los costos reales no pueden ser negativos." });
-            if (detail.IdProducto.HasValue && decimal.Truncate(received.CantidadRecibida) != received.CantidadRecibida)
-                return BadRequest(new { mensaje = $"La cantidad recibida de {GetItemName(detail)} debe ser entera." });
+            if ((detail.IdFormatoCompra.HasValue || detail.IdProducto.HasValue)
+                && decimal.Truncate(received.CantidadRecibida) != received.CantidadRecibida)
+                return BadRequest(new { mensaje = $"La cantidad de formatos recibidos de {GetItemName(detail)} debe ser entera." });
+            var baseQuantity = received.CantidadRecibida * detail.CantidadContenidoFormato;
+            if (detail.IdProducto.HasValue && decimal.Truncate(baseQuantity) != baseQuantity)
+                return BadRequest(new { mensaje = $"El formato de {GetItemName(detail)} debe contener una cantidad entera de unidades." });
             if (received.NuevoPrecioVenta.HasValue && (!detail.IdProducto.HasValue || received.NuevoPrecioVenta <= 0))
                 return BadRequest(new { mensaje = "El nuevo precio de venta solo puede asignarse a productos y debe ser mayor que cero." });
         }
@@ -202,11 +277,12 @@ public class PurchaseOrderController : ControllerBase
             if (detail.IdProductoNavigation != null)
             {
                 detail.PrecioVentaAnterior = detail.IdProductoNavigation.Precio;
-                detail.IdProductoNavigation.Stock = (detail.IdProductoNavigation.Stock ?? 0) + decimal.ToInt32(received.CantidadRecibida);
+                var unitsReceived = decimal.ToInt32(received.CantidadRecibida * detail.CantidadContenidoFormato);
+                detail.IdProductoNavigation.Stock = (detail.IdProductoNavigation.Stock ?? 0) + unitsReceived;
             }
             else if (detail.IdMateriaPrimaNavigation != null)
             {
-                detail.IdMateriaPrimaNavigation.Cantidad += received.CantidadRecibida;
+                detail.IdMateriaPrimaNavigation.Cantidad += received.CantidadRecibida * detail.CantidadContenidoFormato;
             }
         }
 
@@ -297,6 +373,7 @@ public class PurchaseOrderController : ControllerBase
         .Include(x => x.IdUsuarioNavigation).ThenInclude(x => x.EmpEmpleados)
         .Include(x => x.InvOrdenDetalle).ThenInclude(x => x.IdProductoNavigation)
         .Include(x => x.InvOrdenDetalle).ThenInclude(x => x.IdMateriaPrimaNavigation).ThenInclude(x => x!.IdUnidadMedidaNavigation)
+        .Include(x => x.InvOrdenDetalle).ThenInclude(x => x.IdFormatoCompraNavigation)
         .AsSplitQuery();
 
     private async Task<string?> ValidateOrder(PurchaseOrderSaveDto dto)
@@ -314,7 +391,15 @@ public class PurchaseOrderController : ControllerBase
             if (type == null) return "El tipo de artículo no es válido.";
             if (!keys.Add($"{type}:{item.IdItem}")) return "No puede repetir un artículo en la orden.";
             if (item.Cantidad <= 0) return "Todas las cantidades deben ser mayores que cero.";
+            if ((item.IdFormatoCompra > 0 || type == "Producto") && decimal.Truncate(item.Cantidad) != item.Cantidad)
+                return "La cantidad debe ser entera al comprar productos o formatos.";
             if (item.PrecioUnitario < 0) return "Los costos estimados no pueden ser negativos.";
+            if (item.IdFormatoCompra > 0)
+            {
+                var format = await _context.InvFormatosCompra.AsNoTracking().FirstOrDefaultAsync(x => x.IdFormatoCompra == item.IdFormatoCompra && x.Activo);
+                if (format == null || (type == "Producto" ? format.IdProducto != item.IdItem : format.IdMateriaPrima != item.IdItem))
+                    return "El formato de compra seleccionado no es válido.";
+            }
             if (type == "Producto")
             {
                 if (decimal.Truncate(item.Cantidad) != item.Cantidad) return "Las cantidades de productos deben ser enteras.";
@@ -324,24 +409,61 @@ public class PurchaseOrderController : ControllerBase
             }
             else
             {
-                if (!await _context.InvMateriaPrima.AnyAsync(x => x.IdMateriaPrima == item.IdItem)) return "Una de las materias primas no existe.";
+                var material = await _context.InvMateriaPrima.AsNoTracking()
+                    .Where(x => x.IdMateriaPrima == item.IdItem)
+                    .Select(x => new
+                    {
+                        x.IdMateriaPrima,
+                        TieneUnidad = _context.InvUnidadesMedida.Any(u => u.IdUnidadMedida == x.IdUnidadMedida)
+                    })
+                    .FirstOrDefaultAsync();
+                if (material == null) return "Una de las materias primas no existe.";
+                if (!material.TieneUnidad) return "Una de las materias primas no tiene una unidad de inventario válida.";
                 if (item.NuevoPrecioVenta.HasValue) return "Las materias primas no tienen precio de venta.";
             }
         }
         return null;
     }
 
-    private static InvOrdenDetalle CreateDetail(PurchaseOrderItemDto item) => new()
+    private async Task<List<InvOrdenDetalle>> BuildDetails(IEnumerable<PurchaseOrderItemDto> items)
     {
-        IdProducto = NormalizeItemType(item.TipoItem) == "Producto" ? item.IdItem : null,
-        IdMateriaPrima = NormalizeItemType(item.TipoItem) == "MateriaPrima" ? item.IdItem : null,
-        Cantidad = item.Cantidad,
-        PrecioUnitario = item.PrecioUnitario,
-        Subtotal = CalculateSubtotal(item.Cantidad, item.PrecioUnitario),
-        CantidadRecibida = 0,
-        NuevoPrecioVenta = item.NuevoPrecioVenta,
-        PrecioConfirmado = false
-    };
+        var itemList = items.ToList();
+        var formatIds = itemList.Where(x => x.IdFormatoCompra > 0).Select(x => x.IdFormatoCompra).Distinct().ToList();
+        var materialIds = itemList.Where(x => NormalizeItemType(x.TipoItem) == "MateriaPrima").Select(x => x.IdItem).Distinct().ToList();
+        var formats = await _context.InvFormatosCompra.AsNoTracking()
+            .Where(x => formatIds.Contains(x.IdFormatoCompra))
+            .ToDictionaryAsync(x => x.IdFormatoCompra);
+        var materialUnits = await (
+            from material in _context.InvMateriaPrima.AsNoTracking()
+            join unit in _context.InvUnidadesMedida.AsNoTracking()
+                on material.IdUnidadMedida equals unit.IdUnidadMedida
+            where materialIds.Contains(material.IdMateriaPrima)
+            select new { material.IdMateriaPrima, unit.Abreviacion })
+            .ToDictionaryAsync(x => x.IdMateriaPrima, x => x.Abreviacion);
+
+        return itemList.Select(item =>
+        {
+            var type = NormalizeItemType(item.TipoItem);
+            var usesFormat = item.IdFormatoCompra > 0;
+            var format = usesFormat ? formats[item.IdFormatoCompra] : null;
+            var inventoryUnit = type == "Producto" ? "un" : materialUnits[item.IdItem];
+            return new InvOrdenDetalle
+            {
+                IdProducto = type == "Producto" ? item.IdItem : null,
+                IdMateriaPrima = type == "MateriaPrima" ? item.IdItem : null,
+                IdFormatoCompra = format?.IdFormatoCompra,
+                NombreFormato = format?.NombreFormato ?? (type == "Producto" ? "Unidad" : "Unidad de inventario"),
+                CantidadContenidoFormato = format?.CantidadContenido ?? 1,
+                UnidadContenidoFormato = inventoryUnit,
+                Cantidad = item.Cantidad,
+                PrecioUnitario = item.PrecioUnitario,
+                Subtotal = CalculateSubtotal(item.Cantidad, item.PrecioUnitario),
+                CantidadRecibida = 0,
+                NuevoPrecioVenta = item.NuevoPrecioVenta,
+                PrecioConfirmado = false
+            };
+        }).ToList();
+    }
 
     private static int CalculateEstimatedTotal(IEnumerable<PurchaseOrderItemDto> items) =>
         items.Sum(x => CalculateSubtotal(x.Cantidad, x.PrecioUnitario));
@@ -425,7 +547,11 @@ public class PurchaseOrderController : ControllerBase
             IdItem = detail.IdProducto ?? detail.IdMateriaPrima,
             Codigo = detail.IdProductoNavigation?.CodigoProducto ?? $"MP-{detail.IdMateriaPrima:D5}",
             Nombre = GetItemName(detail),
-            Unidad = detail.IdProducto.HasValue ? "un" : detail.IdMateriaPrimaNavigation?.IdUnidadMedidaNavigation.Abreviacion,
+            detail.IdFormatoCompra,
+            Formato = detail.NombreFormato,
+            ContenidoFormato = detail.CantidadContenidoFormato,
+            UnidadContenido = detail.UnidadContenidoFormato,
+            Unidad = detail.NombreFormato,
             StockActual = detail.IdProductoNavigation != null
                 ? (decimal)(detail.IdProductoNavigation.Stock ?? 0)
                 : detail.IdMateriaPrimaNavigation?.Cantidad ?? 0,
@@ -466,7 +592,7 @@ public class PurchaseOrderController : ControllerBase
             detail.IdProducto.HasValue ? "Producto" : "Materia prima",
             detail.IdProductoNavigation?.CodigoProducto ?? $"MP-{detail.IdMateriaPrima:D5}",
             GetItemName(detail),
-            detail.IdProducto.HasValue ? "un" : detail.IdMateriaPrimaNavigation?.IdUnidadMedidaNavigation.Abreviacion ?? string.Empty,
+            detail.NombreFormato,
             detail.Cantidad,
             detail.CantidadRecibida,
             detail.PrecioUnitario,

@@ -1,6 +1,7 @@
 import { ArrowLeft, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Clock, Coffee, Eye, HandCoins, Receipt, ShoppingBag, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import PageHeader from './PageHeader';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const localMonth = () => {
@@ -48,7 +49,7 @@ const TurnSalesList = ({ idTurno }) => {
 
   return <div style={{ marginTop: '14px', borderTop: '1px dashed #d9e5de', paddingTop: '12px' }}>
     <button type="button" onClick={toggle} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', border: 0, background: 'none', color: 'var(--primary-color)', fontWeight: 700, cursor: 'pointer', font: 'inherit', padding: 0 }}>
-      <Receipt size={15} /> {open ? 'Ocultar ventas del día' : 'Ver ventas del día'}
+      <Receipt size={15} /> {open ? 'Ocultar ventas del turno' : 'Ver ventas del turno'}
     </button>
     {open && <div style={{ marginTop: '10px' }}>
       {error ? <div style={{ color: '#b91c1c', fontSize: '.8rem' }}>{error}</div>
@@ -64,6 +65,12 @@ const TurnSalesList = ({ idTurno }) => {
             <div style={{ marginTop: '5px', fontSize: '.72rem', color: 'var(--text-muted)' }}>
               {(sale.metodosPago || []).map(mp => `${mp.nombreMetodoPago}: ${money(mp.monto)}`).join(' · ') || 'Sin métodos registrados'}
             </div>
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', display: 'grid', gap: '5px' }}>
+              {(sale.items || []).map((item, index) => <div key={`${item.idProducto}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '.78rem' }}>
+                <span><strong>{item.cantidad}×</strong> {item.nombreProducto}{item.seleccionesMateriales?.length ? ` · ${item.seleccionesMateriales.map(x => x.nombreMateriaPrima).join(', ')}` : ''}{item.ingredientesExtra?.length ? ` + ${item.ingredientesExtra.map(x => x.nombre).join(', ')}` : ''}</span>
+                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{money(item.subtotal)}</span>
+              </div>)}
+            </div>
           </div>)}</div>}
     </div>}
   </div>;
@@ -71,7 +78,7 @@ const TurnSalesList = ({ idTurno }) => {
 
 const DayDetailView = ({ date, loading, data, showSales, showLogbooks, onBack, onLogbook }) => <div className="records-day-view">
     <button type="button" className="btn btn-secondary" onClick={onBack} style={{ marginBottom: '20px' }}><ArrowLeft size={17} /> Volver al calendario</button>
-    <div className="page-header"><div><span style={{ color: 'var(--primary-color)', fontSize: '.72rem', fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' }}>Detalle del día</span><h2 className="page-title" style={{ textTransform: 'capitalize', marginTop: '3px' }}>{new Date(`${date}T12:00:00`).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2><p className="page-subtitle">Turnos y bitácoras registrados durante esta jornada.</p></div><CalendarDays size={28} color="var(--primary-color)" /></div>
+    <PageHeader title={new Date(`${date}T12:00:00`).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })} icon={CalendarDays} />
     <div>
       {loading ? <div className="card" style={{ textAlign: 'center' }}>Cargando registros…</div> : data?.turnos.length === 0 ? <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No hubo turnos durante este día.</div> : <div style={{ display: 'grid', gap: '14px' }}>{data?.turnos.map(turn => <div className="card" key={turn.idTurno} style={{ padding: '19px', boxShadow: '0 2px 8px rgba(15,23,42,.05)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '15px' }}><div><h3>Turno #{turn.idTurno}</h3><p style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>{turn.empleado || turn.usuario}</p></div><span className={`badge ${turn.idEstadoTurno === 1 ? 'badge-warning' : 'badge-success'}`}>{turn.estado}</span></div>
@@ -82,7 +89,7 @@ const DayDetailView = ({ date, loading, data, showSales, showLogbooks, onBack, o
     </div>
 </div>;
 
-const TurnRecordsCalendar = ({ buildCalendarUrl, buildDayUrl, buildLogbookUrl, showSales = false, showLogbooks = true, title, subtitle, backTo = '/', backLabel = 'Volver al panel', documentTitle }) => {
+const TurnRecordsCalendar = ({ buildCalendarUrl, buildDayUrl, buildLogbookUrl, showSales = false, showLogbooks = true, title, backTo = '/', backLabel = 'Volver al panel', documentTitle }) => {
   const [month, setMonth] = useState(localMonth);
   const [calendar, setCalendar] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -124,7 +131,7 @@ const TurnRecordsCalendar = ({ buildCalendarUrl, buildDayUrl, buildLogbookUrl, s
   return <div className="animate-fade-in">
     <div className="records-calendar-view" style={{ display: selectedDate ? 'none' : 'block' }}>
     <Link to={backTo} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 700, marginBottom: '18px' }}><ArrowLeft size={16} /> {backLabel}</Link>
-    <div className="page-header"><div><h2 className="page-title"><CalendarDays size={25} /> {title}</h2><p className="page-subtitle">{subtitle}</p></div><input className="input-field" style={{ width: '185px' }} type="month" value={month} onChange={event => setMonth(event.target.value)} /></div>
+    <PageHeader title={title} icon={CalendarDays} actions={<input className="input-field" style={{ width: '185px' }} type="month" value={month} onChange={event => setMonth(event.target.value)} />} />
     {error && <div className="card" style={{ color: '#b91c1c', marginBottom: '18px' }}>{error}</div>}
     <div className="card" style={{ padding: '20px', marginBottom: '22px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}><button className="btn btn-secondary" style={{ padding: '8px' }} onClick={() => moveMonth(-1)}><ChevronLeft size={18} /></button><h3 style={{ textTransform: 'capitalize' }}>{monthLabel}</h3><button className="btn btn-secondary" style={{ padding: '8px' }} onClick={() => moveMonth(1)}><ChevronRight size={18} /></button></div>

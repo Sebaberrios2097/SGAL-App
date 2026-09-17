@@ -46,14 +46,14 @@ const ModuleSettings = () => {
   };
 
   return <div className="animate-fade-in">
-    <div className="page-header"><div><h2 className="page-title">Módulos de la instalación</h2><p className="page-subtitle">Define qué capacidades están disponibles para este cliente. Los roles controlan luego quién puede utilizarlas.</p></div><Boxes color="var(--primary-color)" /></div>
+    <div className="page-header"><h2 className="page-title">Módulos de la instalación</h2><Boxes color="var(--primary-color)" /></div>
     {message && <div className="badge badge-success" style={{ marginBottom: 16, padding: 12 }}>{message}</div>}
     {error && <div className="badge badge-danger" style={{ marginBottom: 16, padding: 12 }}>{error}</div>}
     {loading ? <div className="card">Cargando módulos…</div> : <>
       <div style={{ display: 'grid', gap: 12 }}>
         {modules.map(module => <label key={module.codigo} className="card" style={{ padding: 18, display: 'flex', gap: 16, alignItems: 'center', cursor: module.esNucleo ? 'default' : 'pointer' }}>
           <input type="checkbox" checked={module.habilitado} disabled={module.esNucleo} onChange={() => toggle(module.codigo)} style={{ width: 20, height: 20 }} />
-          <div style={{ flex: 1 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><strong>{module.nombre}</strong>{module.esNucleo && <span className="badge"><ShieldCheck size={12} /> Núcleo</span>}</div><p style={{ color: 'var(--text-muted)', fontSize: '.84rem', marginTop: 4 }}>{module.descripcion || 'Sin descripción.'}</p><small style={{ color: 'var(--text-muted)' }}>{module.codigo} · {module.cantidadPermisos} permisos{module.dependencias?.length ? ` · Requiere: ${module.dependencias.join(', ')}` : ''}</small></div>
+          <div style={{ flex: 1 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><strong>{module.nombre}</strong>{module.esNucleo && <span className="badge"><ShieldCheck size={12} /> Núcleo</span>}</div><small style={{ color: 'var(--text-muted)' }}>{module.codigo} · {module.cantidadPermisos} permisos{module.dependencias?.length ? ` · Requiere: ${module.dependencias.join(', ')}` : ''}</small></div>
         </label>)}
       </div>
       <button type="button" className="btn btn-primary" disabled={saving} onClick={save} style={{ marginTop: 18 }}><Save size={17} /> {saving ? 'Guardando…' : 'Guardar módulos'}</button>

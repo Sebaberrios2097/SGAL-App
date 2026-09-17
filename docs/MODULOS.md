@@ -29,7 +29,7 @@ Deshabilitar un módulo bloquea sus permisos en la API aunque un rol todavía lo
 | `ingredientes_extra` | Ingredientes extra | Materias primas que pueden agregarse opcionalmente a una venta. | `inventario`, `configuracion_inventario` |
 | `proveedores` | Proveedores | Registro de proveedores y sus datos comerciales. | — |
 | `ordenes_compra` | Órdenes de compra | Solicitud, exportación, recepción y costeo de compras. | `proveedores`, `inventario`, `configuracion_inventario` |
-| `turnos` | Turnos operativos | Apertura, cierre, arqueo, extracciones e historial del turno. | `usuarios` |
+| `turnos` | Turnos operativos | Apertura, cierre, arqueo, extracciones, consumos del vendedor, cortesías e historial del turno. | `usuarios` |
 | `ventas` | Ventas / punto de venta | Registro de ventas, medios de pago, descuentos, anulaciones y comprobantes. | `turnos`, `inventario` |
 | `bitacora` | Bitácora | Novedades, pérdidas y consumos registrados durante un turno. | `turnos`, `inventario` |
 | `registros_turnos` | Registros administrativos | Calendario, consulta y auditoría histórica de turnos. | `turnos` |

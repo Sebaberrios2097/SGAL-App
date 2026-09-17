@@ -252,9 +252,6 @@ const RecipeManagement = () => {
       <div className="page-header">
         <div>
           <h2 className="page-title"><ClipboardList size={25} /> Receta de {product?.nombreProducto || ''}</h2>
-          <p className="page-subtitle">
-            Configure las cantidades, unidades y alternativas de los ingredientes seleccionados.
-          </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
           <button className="btn btn-secondary" type="button" onClick={openMaterialSelector}>
@@ -273,9 +270,6 @@ const RecipeManagement = () => {
         <div className="card" style={{ textAlign: 'center', padding: '40px 24px' }}>
           <ClipboardList size={34} color="var(--text-muted)" style={{ opacity: 0.55, marginBottom: '10px' }} />
           <h3 style={{ margin: '0 0 6px', fontSize: '1rem' }}>La receta no tiene ingredientes</h3>
-          <p style={{ color: 'var(--text-muted)', margin: '0 0 18px', fontSize: '0.875rem' }}>
-            Seleccione las materias primas que se utilizarán para preparar el producto.
-          </p>
           <button className="btn btn-primary" type="button" onClick={openMaterialSelector}>
             <Plus size={16} /> Seleccionar ingredientes
           </button>
@@ -286,12 +280,12 @@ const RecipeManagement = () => {
             <div className="recipe-legend">
               <span className="recipe-legend-title">Referencias:</span>
               {hasCalibratable && (
-                <span className="recipe-legend-item tooltip-wide" data-tooltip="Café calibrable: la cantidad se toma de la última calibración (extracción) del turno abierto; el valor de la receta es solo de referencia.">
+                <span className="recipe-legend-item tooltip-wide" data-tooltip="Cantidad según calibración.">
                   <Coffee size={14} color="#b45309" /> Café calibrable
                 </span>
               )}
               {hasNoDescuenta && (
-                <span className="recipe-legend-item tooltip-wide" data-tooltip="No descuenta inventario: la materia no se controla en stock (p. ej. agua); la cantidad es solo de referencia y no descuenta durante la venta.">
+                <span className="recipe-legend-item tooltip-wide" data-tooltip="Sin descuento de inventario.">
                   <Droplet size={14} color="#0284c7" /> No descuenta inventario
                 </span>
               )}
@@ -313,12 +307,12 @@ const RecipeManagement = () => {
                   <span className="recipe-material-title">
                     <strong className="recipe-material-name">{material.nombreMaterial}</strong>
                     {calibratable && (
-                      <span className="recipe-mat-tag tooltip-wide" data-tooltip="Café calibrable: la cantidad se toma de la última calibración (extracción) del turno; el valor de aquí es solo de referencia." aria-label="Café calibrable">
+                      <span className="recipe-mat-tag tooltip-wide" data-tooltip="Cantidad según calibración." aria-label="Café calibrable">
                         <Coffee size={15} color="#b45309" />
                       </span>
                     )}
                     {noDescuenta && !calibratable && (
-                      <span className="recipe-mat-tag tooltip-wide" data-tooltip="No descuenta inventario: no se controla en stock (p. ej. agua); la cantidad es solo de referencia." aria-label="No descuenta inventario">
+                      <span className="recipe-mat-tag tooltip-wide" data-tooltip="Sin descuento de inventario." aria-label="No descuenta inventario">
                         <Droplet size={15} color="#0284c7" />
                       </span>
                     )}
@@ -435,14 +429,9 @@ const RecipeManagement = () => {
           <div className="modal-content" style={{ maxWidth: '760px', width: 'calc(100% - 32px)', maxHeight: '88vh', padding: '26px', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '16px' }}>
               <div>
-                <h3 style={{ margin: '0 0 5px', fontSize: '1.25rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>
                   {selectorMode === 'options' ? `Opciones para ${optionBase?.nombreMaterial || 'el ingrediente'}` : 'Seleccionar ingredientes'}
                 </h3>
-                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  {selectorMode === 'options'
-                    ? 'Puede seleccionar una o varias materias primas que reemplazarán a este ingrediente.'
-                    : 'Marque todas las materias primas principales que formarán parte de la receta.'}
-                </p>
               </div>
               <button type="button" onClick={() => setShowMaterialModal(false)} aria-label="Cerrar selector de ingredientes" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'grid', placeItems: 'center' }}>
                 <X size={21} />

@@ -18,7 +18,6 @@ const TurnHistory = () => {
       showSales={false}
       showLogbooks={can('bitacora.propia.ver')}
       title="Historial de turnos"
-      subtitle="Seleccione un día para revisar sus turnos y bitácoras."
       backTo="/"
       backLabel="Volver al inicio"
       documentTitle={`Historial de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`}

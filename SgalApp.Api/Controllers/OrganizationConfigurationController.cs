@@ -37,7 +37,8 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         ["login"] = (1920, 1080),
         ["sidebar"] = (600, 2024),
         ["ventas"] = (1920, 1080),
-        ["comandas"] = (1920, 1080)
+        ["comandas"] = (1920, 1080),
+        ["carta"] = (1920, 1080)
     };
 
     [AllowAnonymous]

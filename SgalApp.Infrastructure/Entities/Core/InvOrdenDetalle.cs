@@ -22,6 +22,20 @@ public partial class InvOrdenDetalle
     [Column("Id_Materia_Prima")]
     public int? IdMateriaPrima { get; set; }
 
+    [Column("Id_Formato_Compra")]
+    public int? IdFormatoCompra { get; set; }
+
+    [Column("Nombre_Formato")]
+    [StringLength(100)]
+    public string NombreFormato { get; set; } = null!;
+
+    [Column("Cantidad_Contenido_Formato", TypeName = "decimal(18, 3)")]
+    public decimal CantidadContenidoFormato { get; set; }
+
+    [Column("Unidad_Contenido_Formato")]
+    [StringLength(20)]
+    public string UnidadContenidoFormato { get; set; } = null!;
+
     [Column(TypeName = "decimal(18, 3)")]
     public decimal Cantidad { get; set; }
 
@@ -63,4 +77,7 @@ public partial class InvOrdenDetalle
     [ForeignKey("IdMateriaPrima")]
     [InverseProperty("InvOrdenDetalle")]
     public virtual InvMateriaPrima? IdMateriaPrimaNavigation { get; set; }
+
+    [ForeignKey("IdFormatoCompra")]
+    public virtual InvFormatosCompra? IdFormatoCompraNavigation { get; set; }
 }

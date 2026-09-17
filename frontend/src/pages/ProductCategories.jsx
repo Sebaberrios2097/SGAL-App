@@ -94,7 +94,6 @@ const ProductCategories = () => {
       <div className="page-header">
         <div>
           <h2 className="page-title"><Layers size={25} /> Categorías de producto</h2>
-          <p className="page-subtitle">Registra y modifica las categorías de productos de la organización.</p>
         </div>
         {can('inventario.categorias.crear') && (
           <button className="btn btn-primary" onClick={openCreate}>
@@ -142,7 +141,7 @@ const ProductCategories = () => {
             <button type="button" className="btn" style={{ position: 'absolute', right: '20px', top: '20px', padding: '6px', background: 'none' }} onClick={closeForm}>
               <X size={20} color="var(--text-muted)" />
             </button>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '18px', fontWeight: 700 }} className="text-gradient">
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '18px', fontWeight: 700 }} className="text-solid">
               {editing ? 'Editar categoría' : 'Nueva categoría'}
             </h3>
             {formError && (

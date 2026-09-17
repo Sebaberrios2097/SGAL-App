@@ -139,8 +139,7 @@ const RoleManagement = () => {
     <div className={location.state?.fromPermissions ? 'role-management-return' : 'animate-fade-in'}>
       <header className="page-header">
         <div>
-          <h2 className="page-title text-gradient">Mantenedor de Roles</h2>
-          <p className="page-subtitle">Crea, edita y administra los roles de acceso para el personal.</p>
+          <h2 className="page-title text-solid">Mantenedor de Roles</h2>
         </div>
       </header>
 

@@ -60,6 +60,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<InvOrdenDetalle> InvOrdenDetalle { get; set; }
 
+    public virtual DbSet<InvFormatosCompra> InvFormatosCompra { get; set; }
+
     public virtual DbSet<InvProductos> InvProductos { get; set; }
 
     public virtual DbSet<InvProductosCortesia> InvProductosCortesia { get; set; }
@@ -325,9 +327,24 @@ public partial class SgalContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Materia_Prima");
 
+            entity.HasOne(d => d.IdFormatoCompraNavigation).WithMany(p => p.InvOrdenDetalle)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Inv_Orden_Detalle_Inv_Formatos_Compra");
+
             entity.ToTable(t => t.HasCheckConstraint(
                 "CK_Inv_Orden_Detalle_Tipo_Item",
                 "([Id_Producto] IS NOT NULL AND [Id_Materia_Prima] IS NULL) OR ([Id_Producto] IS NULL AND [Id_Materia_Prima] IS NOT NULL)"));
+        });
+
+        modelBuilder.Entity<InvFormatosCompra>(entity =>
+        {
+            entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvFormatosCompra)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Inv_Formatos_Compra_Producto");
+
+            entity.HasOne(d => d.IdMateriaPrimaNavigation).WithMany(p => p.InvFormatosCompra)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Inv_Formatos_Compra_Materia");
         });
 
         modelBuilder.Entity<InvProductos>(entity =>

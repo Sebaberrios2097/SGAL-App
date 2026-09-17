@@ -117,7 +117,6 @@ const ProviderManagement = () => {
       <div className="page-header">
         <div>
           <h2 className="page-title"><Truck size={25} /> Proveedores</h2>
-          <p className="page-subtitle">Administre los proveedores disponibles para las órdenes de compra.</p>
         </div>
         {can('proveedores.crear') && <button type="button" className="btn btn-primary" onClick={openCreate}><Plus size={16} /> Nuevo proveedor</button>}
       </div>

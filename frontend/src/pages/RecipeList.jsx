@@ -62,7 +62,6 @@ const RecipeList = () => {
     <div className="page-header">
       <div>
         <h2 className="page-title"><ClipboardList size={25} /> Recetas</h2>
-        <p className="page-subtitle">Todas las recetas configuradas y sus materias primas.</p>
       </div>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
         <span className="badge badge-success">{recipes.filter(recipe => recipe.estado).length} activas</span>
@@ -74,12 +73,12 @@ const RecipeList = () => {
       <div className="recipe-legend" style={{ marginBottom: '18px' }}>
         <span className="recipe-legend-title">Referencias:</span>
         {anyCalibratable && (
-          <span className="recipe-legend-item tooltip-wide" data-tooltip="Café calibrable: la cantidad se toma de la última calibración (extracción) del turno abierto; el valor de la receta es solo de referencia.">
+          <span className="recipe-legend-item tooltip-wide" data-tooltip="Cantidad según calibración.">
             <Coffee size={14} color="#b45309" /> Café calibrable
           </span>
         )}
         {anyNoDescuenta && (
-          <span className="recipe-legend-item tooltip-wide" data-tooltip="No descuenta inventario: la materia no se controla en stock (p. ej. agua); la cantidad es solo de referencia (Ref.) y no descuenta durante la venta.">
+          <span className="recipe-legend-item tooltip-wide" data-tooltip="Sin descuento de inventario.">
             <Droplet size={14} color="#0284c7" /> No descuenta inventario
           </span>
         )}
@@ -117,10 +116,8 @@ const RecipeList = () => {
           <button type="button" className="btn" style={{ position: 'absolute', right: '20px', top: '20px', padding: '6px', background: 'none' }} onClick={() => setShowCreate(false)}>
             <X size={20} color="var(--text-muted)" />
           </button>
-          <h3 style={{ fontSize: '1.4rem', marginBottom: '8px', fontWeight: 700 }} className="text-gradient">Crear receta</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
-            Elige un producto marcado como "requiere receta" que aún no tenga una.
-          </p>
+          <h3 style={{ fontSize: '1.4rem', marginBottom: '8px', fontWeight: 700 }} className="text-solid">Crear receta</h3>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>Seleccione producto.</div>
           {pendingError && <div className="card" style={{ color: '#b91c1c', marginBottom: '14px' }}>{pendingError}</div>}
           {pendingLoading ? (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>Cargando productos…</div>
