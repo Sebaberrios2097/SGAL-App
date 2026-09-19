@@ -344,6 +344,26 @@ cd /opt/sgal/deploy/reverse-proxy && docker compose logs -f traefik
 bash /opt/sgal/deploy/deploy-all.sh
 ```
 
+## Solucion de problemas
+
+### Traefik informa `client version 1.24 is too old`
+
+Esto significa que una imagen antigua de Traefik intenta consultar el socket
+de un Docker Engine moderno usando una API obsoleta. El compose fija Traefik
+`v3.6.16`, que utiliza Docker API 1.40 o superior. Actualiza el repositorio y
+recrea solamente el proxy:
+
+```bash
+cd /opt/sgal
+git pull --ff-only origin main
+cd deploy/reverse-proxy
+docker compose pull traefik
+docker compose up -d --force-recreate traefik
+docker compose logs --tail=100 traefik
+```
+
+No es necesario eliminar la red `proxy`, las instancias ni los certificados.
+
 ## Notas de seguridad
 
 - Nunca subas los `.env` reales a Git (ya estan en `.gitignore`).

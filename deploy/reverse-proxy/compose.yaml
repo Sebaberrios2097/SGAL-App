@@ -3,7 +3,9 @@
 # (Let's Encrypt) automaticamente para cada tenant que declare sus labels.
 services:
   traefik:
-    image: traefik:v3.3
+    # v3.6.16+ usa Docker API 1.40 o superior. Versiones anteriores pueden
+    # intentar usar API 1.24, rechazada por Docker Engine moderno.
+    image: traefik:v3.6.16
     restart: unless-stopped
     command:
       # Descubrimiento de contenedores via Docker
