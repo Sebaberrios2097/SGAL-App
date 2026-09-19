@@ -1,0 +1,43 @@
+# Reverse proxy compartido para TODAS las instancias de SGAL.
+# Se levanta UNA sola vez en el servidor. Enruta por dominio y emite SSL
+# (Let's Encrypt) automaticamente para cada tenant que declare sus labels.
+services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      # Descubrimiento de contenedores via Docker
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy"
+      # Entradas HTTP/HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redireccion global HTTP -> HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Certificados Let's Encrypt (desafio TLS-ALPN, no requiere puerto extra)
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      # Logs
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      # Dashboard interno (opcional). Dejalo cerrado en produccion salvo que
+      # lo protejas. Descomenta para depurar:
+      # - "--api.dashboard=true"
+      # - "--api.insecure=true"   # SOLO en un entorno cerrado / tunel SSH
+    ports:
+      - "80:80"
+      - "443:443"
+      # - "8080:8080"   # dashboard inseguro, solo si lo habilitas arriba
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - proxy
+
+networks:
+  # Red compartida creada una sola vez con: docker network create proxy
+  proxy:
+    external: true

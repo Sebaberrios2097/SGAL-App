@@ -10,6 +10,7 @@ const formatPrice = (value) => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const Menu = () => {
   const { branding, getBackgroundStyle, getLogoUrl } = useOrganization();
   const [state, setState] = useState({ status: 'loading', categorias: [], motivo: null });
+  const [activeCategory, setActiveCategory] = useState('all');
   useDocumentTitle('Carta');
 
   useEffect(() => {
@@ -28,6 +29,9 @@ const Menu = () => {
 
   const backgroundStyle = useMemo(() => getBackgroundStyle('carta'), [getBackgroundStyle]);
   const logoUrl = getLogoUrl('login');
+  const visibleCategories = activeCategory === 'all'
+    ? state.categorias
+    : state.categorias.filter(categoria => categoria.idCategoria === activeCategory);
 
   return (
     <div className="carta-page" style={backgroundStyle || undefined}>
@@ -49,7 +53,29 @@ const Menu = () => {
             <p className="carta-message">La carta no está disponible en este momento.</p>
           )}
 
-          {state.status === 'ready' && state.categorias.map(categoria => (
+          {state.status === 'ready' && state.categorias.length > 1 && (
+            <div className="carta-filters" role="group" aria-label="Filtrar por categoría">
+              <button
+                type="button"
+                className={`carta-filter${activeCategory === 'all' ? ' is-active' : ''}`}
+                onClick={() => setActiveCategory('all')}
+              >
+                Todas
+              </button>
+              {state.categorias.map(categoria => (
+                <button
+                  key={categoria.idCategoria}
+                  type="button"
+                  className={`carta-filter${activeCategory === categoria.idCategoria ? ' is-active' : ''}`}
+                  onClick={() => setActiveCategory(categoria.idCategoria)}
+                >
+                  {categoria.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {state.status === 'ready' && visibleCategories.map(categoria => (
             <section key={categoria.idCategoria} className="carta-category">
               <h2 className="carta-category-title">{categoria.nombre}</h2>
               <div className="carta-products">

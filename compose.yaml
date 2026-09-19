@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/OWNER/sgal-app-api:${API_TAG:-latest}
+    image: ghcr.io/sebaberrios2097/sgal-app-api:${API_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -15,7 +15,7 @@ services:
       - sgal
 
   web:
-    image: ghcr.io/OWNER/sgal-app-web:${WEB_TAG:-latest}
+    image: ghcr.io/sebaberrios2097/sgal-app-web:${WEB_TAG:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile

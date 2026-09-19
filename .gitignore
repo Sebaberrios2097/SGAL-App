@@ -369,3 +369,7 @@ tmp/
 .env
 .env.*
 !.env.example
+
+# Despliegue: datos que viven solo en el servidor
+deploy/tenants/
+deploy/reverse-proxy/letsencrypt/

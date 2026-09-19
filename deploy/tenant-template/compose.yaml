@@ -1,0 +1,40 @@
+# Plantilla de UNA instancia (tenant) de SGAL.
+# Se copia una vez por cliente a deploy/tenants/<cliente>/ en el servidor.
+# Cada instancia:
+#   - Usa la MISMA imagen publicada en GHCR (no se construye aqui).
+#   - Tiene su propio .env => su propia base de datos y su propio dominio.
+#   - Se expone via Traefik por su dominio, con SSL automatico.
+services:
+  api:
+    image: ghcr.io/sebaberrios2097/sgal-app-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    extra_hosts:
+      # Permite alcanzar un SQL Server instalado en el propio host, si aplica.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+
+  web:
+    image: ghcr.io/sebaberrios2097/sgal-app-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - internal   # para resolver el servicio "api" (nginx hace proxy a api:8080)
+      - proxy      # para que Traefik lo alcance
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      # Enrutado por dominio. ${TENANT} debe ser unico por instancia.
+      - "traefik.http.routers.${TENANT}.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${TENANT}.entrypoints=websecure"
+      - "traefik.http.routers.${TENANT}.tls.certresolver=le"
+      - "traefik.http.services.${TENANT}.loadbalancer.server.port=80"
+
+networks:
+  internal:
+    # Red privada de este tenant (aislada del resto).
+  proxy:
+    external: true

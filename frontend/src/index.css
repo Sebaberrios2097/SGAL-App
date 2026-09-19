@@ -2999,6 +2999,59 @@ input[type=number] {
   text-shadow: none;
 }
 
+/* Filtros por categoría: pastillas armónicas con la carta. Se adaptan al fondo
+   (con o sin imagen) y el filtro activo usa el color de acento. */
+.carta-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.carta-filter {
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.carta-filter:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.carta-filter.is-active {
+  color: #ffffff;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+}
+
+/* Sin imagen de fondo las pastillas usan la paleta clara para contrastar. */
+.carta-overlay:not(.carta-overlay--image) .carta-filter {
+  color: var(--primary-color);
+  background: rgba(255, 255, 255, 0.9);
+  border-color: var(--panel-border);
+  backdrop-filter: none;
+}
+
+.carta-overlay:not(.carta-overlay--image) .carta-filter:hover {
+  background: #ffffff;
+}
+
+.carta-overlay:not(.carta-overlay--image) .carta-filter.is-active {
+  color: #ffffff;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
 /* Siempre un máximo de 2 tarjetas por fila (también en móvil). */
 .carta-products {
   display: grid;
