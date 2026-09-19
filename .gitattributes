@@ -61,3 +61,9 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Shell scripts are deployed to Linux servers. Keep Unix line endings so the
+# shebang works correctly after cloning from Windows.
+###############################################################################
+*.sh text eol=lf
