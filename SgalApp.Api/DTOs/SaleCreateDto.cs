@@ -2,7 +2,7 @@ namespace SgalApp.Api.DTOs
 {
     public class SaleCreateDto
     {
-        public int IdTurno { get; set; }
+        public int? IdTurno { get; set; }
         public List<SalePaymentMethodDto> MetodosPago { get; set; } = new();
         public List<SaleItemDto> Items { get; set; } = new();
 

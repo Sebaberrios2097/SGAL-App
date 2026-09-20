@@ -2,6 +2,7 @@ import { ArrowLeft, Check, ClipboardCheck, Download, FileSpreadsheet, LoaderCirc
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { downloadFile } from '../utils/downloadFile';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
@@ -21,6 +22,8 @@ const PurchaseOrderDetail = () => {
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
   const { user, can } = useAuth();
+  const { isModuleEnabled } = useOrganization();
+  const materialsEnabled = isModuleEnabled('recetas');
   const [catalogs, setCatalogs] = useState({ proveedores: [], productos: [], materiasPrimas: [] });
   const [order, setOrder] = useState(null);
   const [form, setForm] = useState({ idProveedor: '', fechaLlegadaEsperada: tomorrow(), observaciones: '', items: [] });
@@ -66,7 +69,7 @@ const PurchaseOrderDetail = () => {
         nuevoPrecioVenta: item.nuevoPrecioVenta ?? ''
       }))
     });
-    document.title = `Orden de compra #${data.idOrdenCompra} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Orden de compra #${data.idOrdenCompra} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     return data;
   };
 
@@ -78,14 +81,16 @@ const PurchaseOrderDetail = () => {
     })
       .then(async catalogData => {
         setCatalogs(catalogData);
-        if (isNew) document.title = `Nueva orden de compra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+        if (isNew) document.title = `Nueva orden de compra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
         else await loadOrder(id, catalogData);
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [id, isNew]);
 
-  const availableItems = useMemo(() => [...catalogs.productos, ...catalogs.materiasPrimas], [catalogs]);
+  const availableItems = useMemo(
+    () => materialsEnabled ? [...catalogs.productos, ...catalogs.materiasPrimas] : catalogs.productos,
+    [catalogs, materialsEnabled]);
   const filteredItems = useMemo(() => {
     const search = itemSearch.trim().toLowerCase();
     return availableItems.filter(item => {
@@ -272,7 +277,7 @@ const PurchaseOrderDetail = () => {
         <div className="purchase-section-heading"><div><h3>Artículos</h3><span>{form.items.length} agregado{form.items.length === 1 ? '' : 's'}</span></div>{isDraft && can(isNew ? 'ordenes_compra.crear' : 'ordenes_compra.editar') && <button type="button" className="btn btn-secondary" onClick={() => { setItemFilter('Todos'); setItemSearch(''); setShowItemModal(true); }}><Plus size={15} /> Agregar artículos</button>}</div>
 
         {form.items.length === 0 ? (
-          <div className="purchase-empty">Agregue los productos y materias primas que se comprarán.</div>
+          <div className="purchase-empty">{materialsEnabled ? 'Agregue los productos y materias primas que se comprarán.' : 'Agregue los productos que se comprarán.'}</div>
         ) : (
           <div className="table-scroll-wrapper">
             <table className="custom-table purchase-items-table purchase-order-edit-table">
@@ -304,7 +309,7 @@ const PurchaseOrderDetail = () => {
 
       {hasReception && <div className="card purchase-reception-card"><div className="purchase-section-heading"><div><h3>Resultado de la recepción</h3><span>{order.estado}</span></div>{pendingPrices.length > 0 && can('ordenes_compra.precios.confirmar') && <button type="button" className="btn btn-primary" onClick={openPriceConfirmation}><Check size={15} /> Confirmar precios ({pendingPrices.length})</button>}</div><div className="table-scroll-wrapper"><table className="custom-table"><thead><tr><th>Artículo</th><th>Solicitado</th><th>Recibido</th><th>Estado</th><th>Costo unitario real</th><th>Subtotal real</th><th>Cambio de precio</th></tr></thead><tbody>{order.items.map(item => <tr key={item.idOrdenDetalle}><td><PurchaseItemIdentity item={item} /></td><td>{item.cantidadSolicitada} {item.unidad}</td><td>{item.cantidadRecibida} {item.unidad}</td><td><span className={`badge ${item.estadoRecepcion === 'Recibido' ? 'badge-success' : item.estadoRecepcion === 'No recibido' ? 'badge-danger' : 'purchase-status-partial'}`}>{item.estadoRecepcion}</span></td><td>{money(item.precioUnitarioReal)}</td><td>{money(item.subtotalReal)}</td><td>{item.nuevoPrecioVenta ? <span>{money(item.precioVentaAnterior)} → {money(item.nuevoPrecioVenta)} · {item.precioConfirmado ? 'Confirmado' : 'Pendiente'}</span> : 'Sin cambio'}</td></tr>)}</tbody></table></div><div className="purchase-total-row"><span>Gasto real registrado</span><strong>{money(order.totalReal)}</strong></div></div>}
 
-      {showItemModal && <div className="modal-overlay"><div className="modal-content purchase-selector-modal"><div className="purchase-modal-heading"><div><h3>Agregar artículos</h3><p>Productos terminados y materias primas disponibles.</p></div><button type="button" className="purchase-modal-close" onClick={() => setShowItemModal(false)} aria-label="Cerrar"><X size={21} /></button></div><div className="purchase-search"><Search size={17} /><input className="input-field" autoFocus value={itemSearch} onChange={event => setItemSearch(event.target.value)} placeholder="Buscar artículo…" /></div><div className="purchase-filter-row">{[['Todos', 'Todos'], ['Producto', 'Productos'], ['MateriaPrima', 'Materias primas']].map(([value, label]) => <button key={value} type="button" className={itemFilter === value ? 'is-active' : ''} onClick={() => setItemFilter(value)}>{label}</button>)}</div><div className="purchase-selector-list">{filteredItems.map(item => {
+      {showItemModal && <div className="modal-overlay"><div className="modal-content purchase-selector-modal"><div className="purchase-modal-heading"><div><h3>Agregar artículos</h3><p>{materialsEnabled ? 'Productos terminados y materias primas disponibles.' : 'Productos terminados disponibles.'}</p></div><button type="button" className="purchase-modal-close" onClick={() => setShowItemModal(false)} aria-label="Cerrar"><X size={21} /></button></div><div className="purchase-search"><Search size={17} /><input className="input-field" autoFocus value={itemSearch} onChange={event => setItemSearch(event.target.value)} placeholder="Buscar artículo…" /></div>{materialsEnabled && <div className="purchase-filter-row">{[['Todos', 'Todos'], ['Producto', 'Productos'], ['MateriaPrima', 'Materias primas']].map(([value, label]) => <button key={value} type="button" className={itemFilter === value ? 'is-active' : ''} onClick={() => setItemFilter(value)}>{label}</button>)}</div>}<div className="purchase-selector-list">{filteredItems.map(item => {
         const selected = form.items.some(existing => itemKey(existing) === itemKey(item));
         return <button type="button" key={itemKey(item)} className={selected ? 'is-selected' : ''} onClick={() => addItem(item)} disabled={selected}><span><strong>{item.codigo} · {item.nombre}</strong><small>{item.tipoItem === 'Producto' ? 'Producto' : 'Materia prima'} · Stock: {item.stock} {item.unidad}</small></span>{selected ? <Check size={17} /> : <Plus size={17} />}</button>;
       })}</div><div className="purchase-modal-footer"><button type="button" className="btn btn-primary" onClick={() => setShowItemModal(false)}>Listo</button></div></div></div>}

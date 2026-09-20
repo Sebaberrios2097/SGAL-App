@@ -42,13 +42,22 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = "La venta debe contener al menos un producto." });
             }
 
-            // Check if active turn exists and is open
-            var turn = await _context.TurTurno.FindAsync(dto.IdTurno);
-            if (turn == null || turn.IdEstadoTurno != 1) // 1 = Abierto
+            var turnsEnabled = await AreTurnsEnabledAsync();
+            TurTurno? turn = null;
+            if (turnsEnabled)
             {
-                return BadRequest(new { mensaje = "El turno especificado no existe o no se encuentra abierto." });
+                if (!dto.IdTurno.HasValue)
+                    return BadRequest(new { mensaje = "Debe iniciar un turno antes de realizar ventas." });
+                turn = await _context.TurTurno.FindAsync(dto.IdTurno.Value);
+                if (turn == null || turn.IdEstadoTurno != 1)
+                    return BadRequest(new { mensaje = "El turno especificado no existe o no se encuentra abierto." });
+                if (turn.IdUsuario != User.GetUserId()) return Forbid();
             }
-            if (turn.IdUsuario != User.GetUserId()) return Forbid();
+            else if (dto.EsConsumoEmpleado)
+            {
+                return BadRequest(new { mensaje = "Los consumos de empleado requieren el módulo Turnos." });
+            }
+            var idTurno = turnsEnabled ? dto.IdTurno : null;
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -58,10 +67,11 @@ namespace SgalApp.Api.Controllers
                 int? idBitacora = null;
                 if (dto.EsConsumoEmpleado)
                 {
-                    var logbook = await _context.TurBitacora.FirstOrDefaultAsync(b => b.IdTurno == dto.IdTurno);
+                    var requiredTurnId = idTurno ?? throw new InvalidOperationException("El consumo de empleado requiere un turno activo.");
+                    var logbook = await _context.TurBitacora.FirstOrDefaultAsync(b => b.IdTurno == requiredTurnId);
                     if (logbook == null)
                     {
-                        logbook = new TurBitacora { IdTurno = dto.IdTurno, FechaCreacion = DateTime.Now };
+                        logbook = new TurBitacora { IdTurno = requiredTurnId, FechaCreacion = DateTime.Now };
                         _context.TurBitacora.Add(logbook);
                         await _context.SaveChangesAsync();
                     }
@@ -71,7 +81,8 @@ namespace SgalApp.Api.Controllers
                 // Initialize sale header
                 var sale = new VenVentas
                 {
-                    IdTurno = dto.IdTurno,
+                    IdTurno = idTurno,
+                    IdUsuario = User.GetUserId(),
                     IdBitacora = idBitacora,
                     IdEstadoVenta = EstadosVenta.Terminada,
                     FechaVenta = DateTime.Now,
@@ -84,8 +95,8 @@ namespace SgalApp.Api.Controllers
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
                 var lines = dto.EsConsumoEmpleado
-                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno, true, User.GetUserId(), default)
-                    : await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno);
+                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno, true, User.GetUserId(), default)
+                    : await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno);
                 if (!lines.EsValido)
                 {
                     return BadRequest(new { mensaje = lines.Error });
@@ -195,9 +206,6 @@ namespace SgalApp.Api.Controllers
             {
                 return BadRequest(new { mensaje = "La solicitud de venta no es válida." });
             }
-            if (!await _context.TurTurno.AnyAsync(x => x.IdTurno == dto.IdTurno
-                && x.IdUsuario == User.GetUserId() && x.IdEstadoTurno == 1)) return Forbid();
-
             // Descuento opcional: se valida el % máximo del usuario antes de enviar a la terminal.
             if (dto.PorcentajeDescuento != 0)
             {
@@ -210,7 +218,7 @@ namespace SgalApp.Api.Controllers
                     return BadRequest(new { mensaje = $"El descuento máximo que puede aplicar es {maxDescuento:0.##}%." });
             }
 
-            var result = await _pointSales.StartAsync(dto, cancellationToken);
+            var result = await _pointSales.StartAsync(dto, User.GetUserId(), cancellationToken);
 
             return result.EsValido
                 ? Ok(result.Value)
@@ -337,6 +345,60 @@ namespace SgalApp.Api.Controllers
             return Ok(sales);
         }
 
+        [HttpGet("mine")]
+        [Permission(Permissions.OwnSalesView + "|" + Permissions.SalesComandasManage)]
+        public async Task<IActionResult> GetMySales()
+        {
+            var userId = User.GetUserId();
+            var sales = await _context.VenVentas
+                .Where(v => v.IdUsuario == userId && v.IdEstadoVenta != EstadosVenta.Cancelada && v.IdBitacora == null)
+                .OrderByDescending(v => v.FechaVenta)
+                .Take(250)
+                .Select(v => new
+                {
+                    v.IdVenta,
+                    v.FechaVenta,
+                    v.MontoTotal,
+                    v.IdEstadoVenta,
+                    v.IdEstadoVentaNavigation.NombreEstadoVenta,
+                    v.FechaComandaTerminada,
+                    ComandaTerminada = v.FechaComandaTerminada != null,
+                    MetodosPago = v.VenMetodosPagoVenta.Select(mp => new
+                    {
+                        mp.IdMetodoPago,
+                        mp.IdMetodoPagoNavigation.NombreMetodoPago,
+                        mp.Monto
+                    }),
+                    Items = v.VenDetalleVenta.Select(d => new
+                    {
+                        d.IdProducto,
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.PrecioNormal,
+                        d.PrecioUnitario,
+                        d.Subtotal,
+                        SeleccionesMateriales = d.VenDetalleVentaMateriales
+                            .Where(m => m.EsEleccionAlternativa)
+                            .Select(m => new
+                            {
+                                m.IdMateriaPrima,
+                                NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial,
+                                m.Recargo
+                            }),
+                        IngredientesExtra = d.VenDetalleVentaIngrediente
+                            .Select(x => new
+                            {
+                                IdIngredienteExtra = x.IdMateriaPrima,
+                                Nombre = x.IdMateriaPrimaNavigation.NombreMaterial,
+                                x.Precio
+                            })
+                    })
+                })
+                .ToListAsync();
+
+            return Ok(sales);
+        }
+
         /// <summary>
         /// El administrador marca (o desmarca) como pagada por el empleado una venta de consumo,
         /// para no descontarla nuevamente en el futuro.
@@ -356,6 +418,11 @@ namespace SgalApp.Api.Controllers
         }
 
         private Task<bool> SaleBelongsToCurrentUser(int idVenta) => _context.VenVentas
-            .AnyAsync(x => x.IdVenta == idVenta && x.IdTurnoNavigation.IdUsuario == User.GetUserId());
+            .AnyAsync(x => x.IdVenta == idVenta && x.IdUsuario == User.GetUserId());
+
+        private Task<bool> AreTurnsEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "turnos" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                && module.ConfiguracionOrganizacion.Habilitado)));
     }
 }

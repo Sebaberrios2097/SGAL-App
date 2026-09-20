@@ -16,6 +16,7 @@ import {
 import { Link } from 'react-router-dom';
 import TurnOpeningModal from '../components/TurnOpeningModal';
 import TurnClosingModal from '../components/TurnClosingModal';
+import { useOrganization } from '../context/OrganizationContext';
 
 const actionPalette = {
   primary: { bg: 'var(--primary-color)', color: '#ffffff', border: 'var(--primary-color)' },
@@ -57,6 +58,8 @@ const TurnAction = ({ icon: Icon, label, tone = 'secondary', enabled, to, onClic
 
 const Turn = () => {
   const { user, can } = useAuth();
+  const { isModuleEnabled } = useOrganization();
+  const salesEnabled = isModuleEnabled('ventas');
   const [lastTurn, setLastTurn] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
@@ -68,10 +71,11 @@ const Turn = () => {
     ? (user.empleado.alias?.trim() || `${user.empleado.nombres} ${user.empleado.apellido1}`)
     : user?.nombreUsuario || 'Usuario';
 
-  const canOperateTurns = user?.permissions?.some(p => p.startsWith('turnos.') || p.startsWith('ventas.') || p.startsWith('bitacora.'));
+  const canOperateTurns = user?.permissions?.some(p =>
+    p.startsWith('turnos.') || p.startsWith('bitacora.') || (salesEnabled && p.startsWith('ventas.')));
 
   useEffect(() => {
-    document.title = `Turno - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Turno - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
   }, []);
 
   useEffect(() => {
@@ -145,7 +149,7 @@ const Turn = () => {
               <TurnAction icon={PlayCircle} label="Iniciar turno" tone="primary"
                 enabled={sinTurno} onClick={() => setShowOpening(true)} reason={startReason} />
             )}
-            {can('ventas.operar') && (
+            {salesEnabled && can('ventas.operar') && (
               <TurnAction icon={ShoppingBag} label="Ir a Ventas" tone={belongsToUser ? 'primary' : 'secondary'}
                 enabled={belongsToUser} to="/sales" reason={openReason} />
             )}

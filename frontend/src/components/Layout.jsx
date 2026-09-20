@@ -35,12 +35,25 @@ import BrandLogo from './BrandLogo';
 
 const Layout = () => {
   const { user, logout, can, canAny } = useAuth();
-  const { getBackgroundStyle } = useOrganization();
+  const { getBackgroundStyle, isModuleEnabled } = useOrganization();
   const sidebarBackground = getBackgroundStyle('sidebar');
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const canOperateTurns = canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver');
+  const turnsEnabled = isModuleEnabled('turnos');
+  const salesEnabled = isModuleEnabled('ventas');
+  const materialsEnabled = isModuleEnabled('recetas');
+  const canOperateTurns = turnsEnabled && (
+    canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'bitacora.propia.ver')
+    || (salesEnabled && can('ventas.operar')));
+  const hasAdministrativePanel = salesEnabled;
+  const hasTurnNavigation = turnsEnabled && (canOperateTurns || can('configuracion_inventario.cortesia.ver'));
+  const hasManagementNavigation = (hasAdministrativePanel && can('inicio.dashboard.ver'))
+    || canAny('usuarios.ver', 'inventario.productos.ver', 'ordenes_compra.ver', 'ordenes_compra.recibir', 'proveedores.ver')
+    || (materialsEnabled && canAny('recetas.ver', 'ingredientes_extra.ver', 'configuracion_inventario.materias_primas.ver', 'configuracion_inventario.presentaciones.ver'))
+    || (turnsEnabled && canAny('registros_turnos.ver', 'registros_turnos.dashboard.ver'));
+  const hasConfigurationNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar', 'roles.ver', 'inventario.categorias.ver')
+    || (materialsEnabled && canAny('configuracion_inventario.unidades.ver', 'configuracion_inventario.categorias_materia.ver', 'configuracion_inventario.marcas.ver'));
 
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
 
@@ -274,14 +287,14 @@ const Layout = () => {
         {/* Navigation */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
           {/* Turno */}
-          {(canOperateTurns || can('configuracion_inventario.cortesia.ver')) && (
+          {hasTurnNavigation && (
             <>
               {renderSectionTitle('Turno')}
               {canOperateTurns && renderNavItem({ label: 'Turno', path: '/turn', icon: Clock, exact: true })}
               {activeTurnInfo.hasActiveTurn && (
                 activeTurnInfo.belongsToCurrentUser ? (
                   <>
-                    {can('ventas.operar') && renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
+                    {salesEnabled && can('ventas.operar') && renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
                     {can('bitacora.propia.ver') && renderNavItem({ label: 'Bitácora', path: `/logbook/${activeTurnInfo.activeTurn?.idTurno}`, icon: BookOpen })}
                   </>
                 ) : (
@@ -313,36 +326,43 @@ const Layout = () => {
             </>
           )}
 
+          {!turnsEnabled && salesEnabled && can('ventas.operar') && (
+            <>
+              {renderSectionTitle('Ventas')}
+              {renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
+            </>
+          )}
+
           {/* Gestión */}
-          {canAny('inicio.dashboard.ver','usuarios.ver','inventario.productos.ver','recetas.ver','ingredientes_extra.ver','configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver','configuracion_inventario.cortesia.ver','ordenes_compra.ver','ordenes_compra.recibir','proveedores.ver','registros_turnos.ver','registros_turnos.dashboard.ver') && (
+          {hasManagementNavigation && (
             <>
               {renderSectionTitle('Gestión')}
-              {can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
+              {hasAdministrativePanel && can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
               {can('usuarios.ver') && renderNavItem(navItemsModule1[0])}
               {can('inventario.productos.ver') && renderNavItem(navItemsModule2[0])}
-              {canAny('inventario.productos.ver','configuracion_inventario.materias_primas.ver') && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
-              {can('recetas.ver') && renderNavItem(navItemsModule2[1])}
-              {canAny('configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver') && renderNavItem({ label: <>Materiales/<br />Ingredientes</>, path: '/settings/raw-materials', icon: Boxes })}
-              {can('ingredientes_extra.ver') && renderNavItem({ label: 'Ingredientes extra', path: '/settings/extra-ingredients', icon: Sparkles })}
+              {(can('inventario.productos.ver') || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'))) && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
+              {materialsEnabled && can('recetas.ver') && renderNavItem(navItemsModule2[1])}
+              {materialsEnabled && canAny('configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver') && renderNavItem({ label: <>Materiales/<br />Ingredientes</>, path: '/settings/raw-materials', icon: Boxes })}
+              {materialsEnabled && can('ingredientes_extra.ver') && renderNavItem({ label: 'Ingredientes extra', path: '/settings/extra-ingredients', icon: Sparkles })}
               {can('ordenes_compra.ver') && renderNavItem(navItemsModule2[2])}
               {can('ordenes_compra.recibir') && renderNavItem(navItemsModule2[3])}
               {can('proveedores.ver') && renderNavItem(navItemsModule2[4])}
-              {can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
-              {can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
+              {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
+              {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
             </>
           )}
 
           {/* Configuración */}
-          {canAny('configuracion_sistema.marca.ver','configuracion_sistema.modulos.administrar','roles.ver','inventario.categorias.ver','configuracion_inventario.unidades.ver','configuracion_inventario.categorias_materia.ver','configuracion_inventario.marcas.ver') && (
+          {hasConfigurationNavigation && (
             <>
               {renderSectionTitle('Configuración')}
               {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
               {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
               {can('roles.ver') && renderNavItem({ label: 'Roles', path: '/roles', icon: ShieldAlert })}
               {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
-              {can('configuracion_inventario.unidades.ver') && renderNavItem({ label: 'Unidades de medida', path: '/settings/units', icon: Ruler })}
-              {can('configuracion_inventario.categorias_materia.ver') && renderNavItem({ label: 'Categorías de materia', path: '/settings/material-categories', icon: Tags })}
-              {can('configuracion_inventario.marcas.ver') && renderNavItem({ label: 'Marcas', path: '/settings/brands', icon: Stamp })}
+              {materialsEnabled && can('configuracion_inventario.unidades.ver') && renderNavItem({ label: 'Unidades de medida', path: '/settings/units', icon: Ruler })}
+              {materialsEnabled && can('configuracion_inventario.categorias_materia.ver') && renderNavItem({ label: 'Categorías de materia', path: '/settings/material-categories', icon: Tags })}
+              {materialsEnabled && can('configuracion_inventario.marcas.ver') && renderNavItem({ label: 'Marcas', path: '/settings/brands', icon: Stamp })}
             </>
           )}
         </nav>

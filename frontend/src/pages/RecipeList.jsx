@@ -25,7 +25,7 @@ const RecipeList = () => {
   const [selectedProduct, setSelectedProduct] = useState('');
 
   useEffect(() => {
-    document.title = `Recetas - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Recetas - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetch('/api/recipe')
       .then(async response => {
         const data = await response.json();

@@ -48,7 +48,7 @@ namespace SgalApp.Api.Controllers
             var courtesyConsumedToday = await _context.VenDetalleVenta.AsNoTracking()
                 .Where(d => d.EsCortesia
                     && d.IdVentaNavigation.IdBitacora != null
-                    && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                    && d.IdVentaNavigation.IdUsuario == idUsuario
                     && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
                 .SumAsync(d => (int?)d.Cantidad) ?? 0;
             var courtesyLimit = await _context.InvConfiguracionCortesia
@@ -67,7 +67,7 @@ namespace SgalApp.Api.Controllers
                     ConsumidoHoy = _context.VenDetalleVenta
                         .Where(d => d.EsCortesia && d.IdProducto == x.IdProducto
                             && d.IdVentaNavigation.IdBitacora != null
-                            && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                            && d.IdVentaNavigation.IdUsuario == idUsuario
                             && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
                         .Sum(d => (int?)d.Cantidad) ?? 0
                 }).ToListAsync();

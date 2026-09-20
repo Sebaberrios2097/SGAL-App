@@ -122,6 +122,8 @@ namespace SgalApp.Api.Controllers
             {
                 return BadRequest(new { Mensaje = "El nombre del producto es obligatorio" });
             }
+            if ((dto.RequiereReceta || dto.AceptaIngredientesExtra) && !await IsMaterialsModuleEnabledAsync())
+                return BadRequest(new { Mensaje = "Habilite el módulo Recetas y materiales para configurar composición o ingredientes extra." });
 
             // El código es opcional: si viene vacío se guarda como null.
             var productCode = string.IsNullOrWhiteSpace(dto.CodigoProducto) ? null : dto.CodigoProducto.Trim().ToUpperInvariant();
@@ -216,6 +218,10 @@ namespace SgalApp.Api.Controllers
             {
                 return NotFound(new { Mensaje = "Producto no encontrado" });
             }
+            if (!await IsMaterialsModuleEnabledAsync()
+                && (dto.RequiereReceta != (product.RequiereReceta ?? false)
+                    || dto.AceptaIngredientesExtra != product.AceptaIngredientesExtra))
+                return BadRequest(new { Mensaje = "Habilite el módulo Recetas y materiales para modificar la composición del producto." });
 
             var category = await _context.InvCategoriaProductos.FindAsync(dto.IdCategoriaProducto);
             if (category == null)
@@ -295,6 +301,10 @@ namespace SgalApp.Api.Controllers
                 ImagenBase64 = product.Imagen != null ? Convert.ToBase64String(product.Imagen) : null
             });
         }
+
+        private Task<bool> IsMaterialsModuleEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "recetas" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)));
 
         [HttpPut("{id}/status")]
         [Permission(Permissions.ProductsStatusEdit)]

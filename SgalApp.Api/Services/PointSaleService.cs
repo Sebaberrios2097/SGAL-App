@@ -27,7 +27,7 @@ namespace SgalApp.Api.Services
     public interface IPointSaleService
     {
         /// <summary>Registra la venta como pendiente y envía el monto a la terminal.</summary>
-        Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, CancellationToken cancellationToken = default);
+        Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, int idUsuario, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Aplica a la venta el desenlace informado por Mercado Pago. Es idempotente:
@@ -64,7 +64,7 @@ namespace SgalApp.Api.Services
             _logger = logger;
         }
 
-        public async Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, CancellationToken cancellationToken = default)
+        public async Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, int idUsuario, CancellationToken cancellationToken = default)
         {
             if (dto.Items == null || dto.Items.Count == 0)
             {
@@ -86,17 +86,27 @@ namespace SgalApp.Api.Services
                     "No se debe indicar débito o crédito. Envía el monto mediante MontoTarjeta.");
             }
 
-            var turn = await _context.TurTurno.FindAsync([dto.IdTurno], cancellationToken);
-            if (turn == null || turn.IdEstadoTurno != 1) // 1 = Abierto
+            var turnsEnabled = await _context.SegModulos.AsNoTracking().AnyAsync(module =>
+                module.Codigo == "turnos" && module.Activo
+                && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                    && module.ConfiguracionOrganizacion.Habilitado)), cancellationToken);
+            TurTurno? turn = null;
+            if (turnsEnabled)
             {
-                return PointSaleResult<PointSaleStartResultDto>.Fallo("El turno especificado no existe o no se encuentra abierto.");
+                if (!dto.IdTurno.HasValue)
+                    return PointSaleResult<PointSaleStartResultDto>.Fallo("Debe iniciar un turno antes de realizar ventas.");
+                turn = await _context.TurTurno.FindAsync([dto.IdTurno.Value], cancellationToken);
+                if (turn == null || turn.IdEstadoTurno != 1 || turn.IdUsuario != idUsuario)
+                    return PointSaleResult<PointSaleStartResultDto>.Fallo("El turno especificado no existe, no está abierto o pertenece a otro usuario.");
             }
+            var idTurno = turnsEnabled ? dto.IdTurno : null;
 
             using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
             var sale = new VenVentas
             {
-                IdTurno = dto.IdTurno,
+                IdTurno = idTurno,
+                IdUsuario = idUsuario,
                 IdEstadoVenta = EstadosVenta.PendienteDePago,
                 FechaVenta = DateTime.Now,
                 MontoTotal = 0,
@@ -107,7 +117,7 @@ namespace SgalApp.Api.Services
             _context.VenVentas.Add(sale);
             await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
 
-            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, dto.IdTurno, cancellationToken);
+            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno, cancellationToken);
             if (!lines.EsValido)
             {
                 await transaction.RollbackAsync(cancellationToken);

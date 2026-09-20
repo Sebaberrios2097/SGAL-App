@@ -116,7 +116,9 @@ const describirRechazoPoint = (estadoOrden) => {
 
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
-  const { branding, getLogoUrl, hasLogo, getBackgroundStyle } = useOrganization();
+  const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled } = useOrganization();
+  const materialsEnabled = isModuleEnabled('recetas');
+  const turnsEnabled = isModuleEnabled('turnos');
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
   const [loading, setLoading] = useState(true);
@@ -192,6 +194,12 @@ const SalesView = () => {
 
   const checkShiftStatus = async () => {
     if (!user) return;
+    if (!turnsEnabled) {
+      setActiveTurn(null);
+      setCalibracionTurno(null);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/turn/active?idUsuario=${user.idUsuario}`);
       if (res.ok) {
@@ -226,7 +234,7 @@ const SalesView = () => {
         fetch('/api/product'),
         fetch('/api/category'),
         fetch('/api/discount'),
-        fetch('/api/extra-ingredient/active')
+        materialsEnabled ? fetch('/api/extra-ingredient/active') : null
       ]);
 
       if (prodRes.ok && catRes.ok && discRes.ok) {
@@ -235,7 +243,8 @@ const SalesView = () => {
         setDiscounts(await discRes.json());
       }
       // El catálogo de extras es opcional: si falla, los productos simplemente no ofrecerán extras.
-      if (extraRes.ok) setExtrasCatalog(await extraRes.json());
+      if (extraRes?.ok) setExtrasCatalog(await extraRes.json());
+      else setExtrasCatalog([]);
     } catch (e) {
       console.error('Error loading catalog', e);
     }
@@ -294,7 +303,7 @@ const SalesView = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          idTurno: activeTurn.idTurno,
+          idTurno: activeTurn?.idTurno ?? null,
           montoTarjeta,
           metodosPago,
           items,
@@ -334,7 +343,7 @@ const SalesView = () => {
   // Consumo de empleado: crea una venta asociada a la bitácora (por cobrar), sin métodos de
   // pago; la cortesía se aplica automáticamente en el servidor. No requiere pasar por el pago.
   const handleCreateConsumption = async () => {
-    if (submittingSale || cart.length === 0 || faltaCalibracion) return;
+    if (!turnsEnabled || !activeTurn || submittingSale || cart.length === 0 || faltaCalibracion) return;
     setError('');
     setSubmittingSale(true);
     try {
@@ -1055,9 +1064,9 @@ const SalesView = () => {
     setShowHistoryModal(true);
     setLoadingHistory(true);
     try {
-      const res = await fetch(`/api/sale/turn/${activeTurn.idTurno}`);
+      const res = await fetch(activeTurn ? `/api/sale/turn/${activeTurn.idTurno}` : '/api/sale/mine');
       if (!res.ok) {
-        throw new Error('Error al obtener el historial de ventas del turno');
+        throw new Error('Error al obtener el historial de ventas');
       }
       const data = await res.json();
       setSaleHistory(data);
@@ -1100,6 +1109,7 @@ const SalesView = () => {
 
   // Asegura en cache las recetas de todos los productos con receta de las comandas dadas.
   const ensureRecipesForComandas = (lista) => {
+    if (!materialsEnabled) return;
     const pendientes = new Set();
     lista.forEach(c => (c.items || []).forEach(item => {
       const prod = productById[item.idProducto];
@@ -1111,10 +1121,10 @@ const SalesView = () => {
   };
 
   const fetchComandas = async ({ silent } = {}) => {
-    if (!activeTurn) return;
+    if (turnsEnabled && !activeTurn) return;
     if (!silent) setLoadingComandas(true);
     try {
-      const res = await fetch(`/api/sale/turn/${activeTurn.idTurno}`);
+      const res = await fetch(activeTurn ? `/api/sale/turn/${activeTurn.idTurno}` : '/api/sale/mine');
       if (!res.ok) throw new Error('No se pudieron cargar las comandas del turno.');
       const data = await res.json();
       // Solo las ventas concretadas tienen comanda que preparar.
@@ -1157,12 +1167,12 @@ const SalesView = () => {
 
   // Carga y refresco periódico mientras la vista de comandas está activa.
   useEffect(() => {
-    if (viewMode !== 'comandas' || !activeTurn) return;
+    if (viewMode !== 'comandas' || (turnsEnabled && !activeTurn)) return;
     fetchComandas();
     const timer = setInterval(() => fetchComandas({ silent: true }), COMANDAS_POLL_MS);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, activeTurn?.idTurno]);
+  }, [viewMode, activeTurn?.idTurno, turnsEnabled]);
 
   // Get active discount for a product
   const getProductPriceInfo = (prod) => {
@@ -1195,7 +1205,7 @@ const SalesView = () => {
   const handleAddToCart = (prod) => {
     if (prod.stock !== null && prod.stock <= 0) return; // Out of stock
 
-    const alternativeGroups = buildAlternativeGroups(prod);
+    const alternativeGroups = materialsEnabled ? buildAlternativeGroups(prod) : [];
     if (alternativeGroups.length > 0) {
       setProductToCustomize(prod);
       setMaterialChoices(Object.fromEntries(
@@ -1239,6 +1249,7 @@ const SalesView = () => {
 
   // Abre el editor de extras para una línea del carrito.
   const openExtrasEditor = (index) => {
+    if (!materialsEnabled) return;
     setExtrasEditor({ index });
     setExtraChoices((cart[index].extras || []).map(extra => extra.idIngredienteExtra));
   };
@@ -1476,6 +1487,7 @@ const SalesView = () => {
 
   // Receta (ingredientes fijos) de una línea de comanda, si el producto la usa.
   const renderComandaRecipe = (item) => {
+    if (!materialsEnabled) return null;
     const prod = productById[item.idProducto];
     if (!prod?.requiereReceta || !prod?.tieneRecetaConfigurada) return null;
     const entry = recipeCache[item.idProducto];
@@ -1654,7 +1666,7 @@ const SalesView = () => {
 
     return (
       <div style={{
-        height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
+        height: salesContextReady ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
         overflowY: 'auto',
         // Fondo personalizado de comandas si está habilitado.
         ...(comandasBackground || {
@@ -1665,15 +1677,15 @@ const SalesView = () => {
         }),
         backgroundAttachment: 'fixed',
         padding: '24px',
-        opacity: activeTurn ? 1 : 0.5,
-        pointerEvents: activeTurn ? 'auto' : 'none'
+        opacity: salesContextReady ? 1 : 0.5,
+        pointerEvents: salesContextReady ? 'auto' : 'none'
       }}>
         <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .comanda-spin { animation: spin 0.9s linear infinite; }`}</style>
         {/* Section header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <div>
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '9px', margin: 0, fontSize: '1.3rem', fontWeight: 800, color: COMANDA_TEXT }}>
-              <ClipboardList size={22} /> Comandas del turno
+              <ClipboardList size={22} /> {turnsEnabled ? 'Comandas del turno' : 'Comandas'}
             </h2>
           </div>
           <button
@@ -1741,7 +1753,7 @@ const SalesView = () => {
                   }}
                 >
                   <History size={18} />
-                  Historial de comandas del turno ({terminadas.length})
+                  {turnsEnabled ? 'Historial de comandas del turno' : 'Historial de comandas'} ({terminadas.length})
                   <span style={{ fontSize: '0.75rem' }}>{showComandaHistory ? '▲' : '▼'}</span>
                 </button>
                 {showComandaHistory && (
@@ -1763,11 +1775,12 @@ const SalesView = () => {
 
   // Falta calibración: hay en el carrito alguna preparación que depende del café por calibración
   // y el turno todavía no tiene ninguna extracción registrada. El backend además lo bloquea.
-  const faltaCalibracion = cart.some(item => item.product?.requiereCalibracion)
+  const faltaCalibracion = turnsEnabled && cart.some(item => item.product?.requiereCalibracion)
     && calibracionTurno?.tieneCalibracion === false;
 
-  // El switch Venta/Comandas se ofrece a quien puede gestionar comandas y tiene turno activo.
-  const showViewSwitch = Boolean(activeTurn) && can('ventas.comandas.gestionar');
+  const salesContextReady = !turnsEnabled || Boolean(activeTurn);
+  // Con Turnos activo, las comandas pertenecen al turno abierto; sin Turnos, al usuario.
+  const showViewSwitch = salesContextReady && can('ventas.comandas.gestionar');
   const enComandas = viewMode === 'comandas';
   // Fondos personalizados por sección (si están habilitados en Identidad).
   const ventasBackground = getBackgroundStyle('ventas');
@@ -1848,10 +1861,12 @@ const SalesView = () => {
         zIndex: 90,
         boxSizing: 'border-box'
       }}>
-        {/* Left: Back to Admin button (Icon-only: Arrow & Home) */}
+        {/* Regresa al contexto anterior sin pasar por la redirección automática de '/'. */}
         <button
-          onClick={() => navigate('/')}
-          title="Volver a Administración"
+          type="button"
+          onClick={() => navigate(turnsEnabled ? '/turn' : '/welcome')}
+          title={turnsEnabled ? 'Volver al turno' : 'Volver al inicio'}
+          aria-label={turnsEnabled ? 'Volver al turno' : 'Volver al inicio'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1892,7 +1907,7 @@ const SalesView = () => {
               {user.empleado ? `${user.empleado.nombres} ${user.empleado.apellido1}` : user.nombreUsuario}
             </span>
             <span style={{ opacity: 0.75 }}>
-              Barista Activo
+              {turnsEnabled ? 'Operador con turno activo' : 'Usuario activo'}
             </span>
           </div>
           <div style={{
@@ -1928,7 +1943,7 @@ const SalesView = () => {
         <>
           {/* ACTIVE POS SCREEN */}
           <div className="pos-layout" style={{
-            height: activeTurn ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
+            height: salesContextReady ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
             overflow: 'hidden',
             // Fondo personalizado de venta si está habilitado.
             ...(ventasBackground || {
@@ -1938,9 +1953,9 @@ const SalesView = () => {
               backgroundRepeat: 'no-repeat'
             }),
             backgroundAttachment: 'fixed',
-            opacity: activeTurn ? 1 : 0.5,
-            pointerEvents: activeTurn ? 'auto' : 'none',
-            userSelect: activeTurn ? 'auto' : 'none',
+            opacity: salesContextReady ? 1 : 0.5,
+            pointerEvents: salesContextReady ? 'auto' : 'none',
+            userSelect: salesContextReady ? 'auto' : 'none',
             transition: 'all 0.3s ease'
           }}>
             {/* LEFT COLUMN: Catalog */}
@@ -2160,7 +2175,7 @@ const SalesView = () => {
                               ))}
                             </span>
                           )}
-                          {item.product.aceptaIngredientesExtra && extrasCatalog.length > 0 && (
+                          {materialsEnabled && item.product.aceptaIngredientesExtra && extrasCatalog.length > 0 && (
                             <button
                               type="button"
                               onClick={() => openExtrasEditor(index)}
@@ -2297,12 +2312,12 @@ const SalesView = () => {
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
                   {/* Historial: ícono, a la izquierda del botón de confirmar venta */}
-                  {activeTurn && can('ventas.propias.ver') && (
+                  {salesContextReady && can('ventas.propias.ver') && (
                     <button
                       type="button"
                       onClick={handleOpenHistory}
-                      title="Historial de ventas del turno"
-                      aria-label="Historial de ventas del turno"
+                      title={turnsEnabled ? 'Historial de ventas del turno' : 'Historial de mis ventas'}
+                      aria-label={turnsEnabled ? 'Historial de ventas del turno' : 'Historial de mis ventas'}
                       style={{
                         flexShrink: 0,
                         width: '46px',
@@ -2357,7 +2372,7 @@ const SalesView = () => {
                   >
                     Continuar al Pago
                   </button>}
-                  {can('ventas.crear') && <button
+                  {turnsEnabled && can('ventas.crear') && <button
                     type="button"
                     disabled={cart.length === 0 || faltaCalibracion || submittingSale}
                     onClick={() => { setError(''); setShowConsumoConfirm(true); }}
@@ -2389,7 +2404,7 @@ const SalesView = () => {
           {canAny('ventas.crear', 'ventas.crear_point') && <button
             type="button"
             className="pos-cart-bar"
-            disabled={!activeTurn}
+            disabled={!salesContextReady}
             onClick={() => setCartOpen(true)}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2402,7 +2417,7 @@ const SalesView = () => {
       )}
 
       {/* MODAL: elección excluyente de materias primas de la receta */}
-      {productToCustomize && (
+      {materialsEnabled && productToCustomize && (
         <div className="modal-overlay" style={{ zIndex: 1050 }}>
           <div className="modal-content" style={{ maxWidth: '500px', padding: '28px' }}>
             <button
@@ -2478,7 +2493,7 @@ const SalesView = () => {
       )}
 
       {/* MODAL: Ingredientes extra por línea del carrito */}
-      {extrasEditor && cart[extrasEditor.index] && (() => {
+      {materialsEnabled && extrasEditor && cart[extrasEditor.index] && (() => {
         const editorLine = cart[extrasEditor.index];
         const admitidos = extrasCatalog;
         const surchargeTotal = admitidos
@@ -3315,7 +3330,7 @@ const SalesView = () => {
                 color: 'var(--text-muted)'
               }}>
                 <ShoppingBag size={32} style={{ opacity: 0.3 }} />
-                <span style={{ fontSize: '0.85rem' }}>Aún no hay ventas registradas en este turno</span>
+                <span style={{ fontSize: '0.85rem' }}>{turnsEnabled ? 'Aún no hay ventas registradas en este turno' : 'Aún no has registrado ventas'}</span>
               </div>
             ) : (
               <div style={{

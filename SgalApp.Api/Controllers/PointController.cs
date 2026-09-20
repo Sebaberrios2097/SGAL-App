@@ -263,7 +263,7 @@ namespace SgalApp.Api.Controllers
 
         private Task<bool> OwnsOrder(string orderId, CancellationToken cancellationToken) =>
             _context.VenOrdenesPoint.AnyAsync(x => x.IdOrdenMp == orderId && x.IdVenta != null
-                && x.IdVentaNavigation!.IdTurnoNavigation.IdUsuario == User.GetUserId(), cancellationToken);
+                && x.IdVentaNavigation!.IdUsuario == User.GetUserId(), cancellationToken);
 
         private static int? ParseAmount(string? amount) =>
             decimal.TryParse(amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var value)

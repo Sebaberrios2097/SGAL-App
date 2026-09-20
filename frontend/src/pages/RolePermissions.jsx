@@ -56,7 +56,7 @@ const RolePermissions = () => {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    document.title = `Permisos del rol - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Permisos del rol - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     let active = true;
 
     const loadPermissions = async () => {
@@ -87,7 +87,7 @@ const RolePermissions = () => {
         const loadedLimits = permissionsData.limites || {};
         setLimits(loadedLimits);
         setInitialLimits(loadedLimits);
-        document.title = `Permisos de ${currentRole.nombreRol} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+        document.title = `Permisos de ${currentRole.nombreRol} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
       } catch (err) {
         if (active) setError(err.message);
       } finally {

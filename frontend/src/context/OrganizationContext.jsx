@@ -21,6 +21,10 @@ export const OrganizationProvider = ({ children }) => {
   const [enabledModules, setEnabledModules] = useState([]);
   const [backgrounds, setBackgrounds] = useState({});
   const [loading, setLoading] = useState(true);
+  const hasConfiguredIdentity = Boolean(
+    branding.nombreComercial?.trim() && branding.nombreComercial.trim().toLowerCase() !== 'sgal app'
+  );
+  const displayName = hasConfiguredIdentity ? branding.nombreComercial.trim() : 'Sistema de gestión';
 
   const loadConfiguration = useCallback(async () => {
     try {
@@ -52,15 +56,20 @@ export const OrganizationProvider = ({ children }) => {
     root.style.setProperty('--bg-color', branding.colorFondo);
     root.style.setProperty('--primary-rgb', hexToRgb(branding.colorPrimario));
     root.style.setProperty('--primary-glow', `rgba(${hexToRgb(branding.colorPrimario)}, 0.12)`);
-    document.title = branding.nombreComercial;
+    document.title = displayName;
     const favicon = document.querySelector("link[rel='icon']");
     if (favicon) {
       favicon.href = logoVersions.favicon
         ? `/api/organization-configuration/logo/favicon?v=${encodeURIComponent(logoVersions.favicon)}`
         : '/favicon.svg';
     }
-    window.__SGAL_CONFIGURATION__ = { branding, logoVersions, enabledModules, backgrounds };
-  }, [branding, logoVersions, enabledModules, backgrounds]);
+    window.__SGAL_CONFIGURATION__ = {
+      branding: { ...branding, nombreComercial: displayName },
+      logoVersions,
+      enabledModules,
+      backgrounds
+    };
+  }, [branding, displayName, logoVersions, enabledModules, backgrounds]);
 
   const getBackgroundStyle = useCallback(
     (zona) => backgroundStyleFor(backgrounds[zona]),
@@ -68,6 +77,8 @@ export const OrganizationProvider = ({ children }) => {
 
   const value = useMemo(() => ({
     branding,
+    displayName,
+    hasConfiguredIdentity,
     logoVersions,
     enabledModules,
     backgrounds,
@@ -79,7 +90,7 @@ export const OrganizationProvider = ({ children }) => {
     isModuleEnabled: (code) => enabledModules.includes(code),
     getBackgroundStyle,
     refreshConfiguration: loadConfiguration
-  }), [branding, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);
+  }), [branding, displayName, hasConfiguredIdentity, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);
 
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 };

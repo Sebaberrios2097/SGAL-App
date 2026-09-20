@@ -37,6 +37,27 @@ public sealed class UpdateOrganizationModulesDto
     public List<string> CodigosHabilitados { get; set; } = [];
 }
 
+public sealed class ModuleCatalogItemDto
+{
+    public string Codigo { get; set; } = string.Empty;
+    public string Nombre { get; set; } = string.Empty;
+    public string? Descripcion { get; set; }
+    public bool EsNucleo { get; set; }
+    public bool Habilitado { get; set; }
+    public List<string> Dependencias { get; set; } = [];
+    public int CantidadPermisos { get; set; }
+    public List<ModuleFeatureDto> Funcionalidades { get; set; } = [];
+}
+
+public sealed class ModuleFeatureDto
+{
+    public string Codigo { get; set; } = string.Empty;
+    public string Nombre { get; set; } = string.Empty;
+    public string? Descripcion { get; set; }
+    public string Grupo { get; set; } = string.Empty;
+    public bool EsCritico { get; set; }
+}
+
 public sealed class UpdateLogoLocationsDto
 {
     public List<string> Ubicaciones { get; set; } = [];

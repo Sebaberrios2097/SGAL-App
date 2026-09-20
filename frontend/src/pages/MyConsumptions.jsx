@@ -14,7 +14,7 @@ const MyConsumptions = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    document.title = `Mis consumos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Mis consumos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetch('/api/turn/my-consumption-balance')
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.mensaje || 'No fue posible cargar los consumos.'); return result; })
       .then(setData).catch(err => setError(err.message));

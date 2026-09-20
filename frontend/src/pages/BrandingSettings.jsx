@@ -14,17 +14,29 @@ const colorFields = [
 
 // Zona → etiqueta y dimensiones exactas requeridas (ancho x alto).
 const backgroundZones = [
-  ['login', 'Inicio de sesión', 1920, 1080],
-  ['sidebar', 'Menú lateral', 600, 2024],
-  ['ventas', 'Ventas', 1920, 1080],
-  ['comandas', 'Comandas', 1920, 1080],
-  ['carta', 'Carta de productos', 1920, 1080]
+  ['login', 'Inicio de sesión', 1920, 1080, null],
+  ['sidebar', 'Menú lateral', 600, 2024, null],
+  ['ventas', 'Ventas', 1920, 1080, 'ventas'],
+  ['comandas', 'Comandas', 1920, 1080, 'ventas'],
+  ['carta', 'Carta de productos', 1920, 1080, 'ventas']
 ];
+
+const logoLocationModules = {
+  punto_venta: 'ventas',
+  boletas: 'ventas'
+};
+
+const editableBranding = (branding) => ({
+  ...branding,
+  nombreComercial: branding.nombreComercial?.trim().toLowerCase() === 'sgal app'
+    ? ''
+    : branding.nombreComercial
+});
 
 const BrandingSettings = () => {
   const { can } = useAuth();
-  const { branding, backgrounds, refreshConfiguration } = useOrganization();
-  const [form, setForm] = useState(branding);
+  const { branding, backgrounds, enabledModules, refreshConfiguration } = useOrganization();
+  const [form, setForm] = useState(() => editableBranding(branding));
   const [logos, setLogos] = useState([]);
   const [locations, setLocations] = useState([]);
   const [newLogoName, setNewLogoName] = useState('');
@@ -34,6 +46,12 @@ const BrandingSettings = () => {
   const [bgErrors, setBgErrors] = useState({});
   const [previewZone, setPreviewZone] = useState(null);
   const canEdit = can('configuracion_sistema.marca.editar');
+  const visibleLocations = locations.filter(location => {
+    const requiredModule = logoLocationModules[location.codigo];
+    return !requiredModule || enabledModules.includes(requiredModule);
+  });
+  const visibleBackgroundZones = backgroundZones.filter(([, , , , requiredModule]) =>
+    !requiredModule || enabledModules.includes(requiredModule));
   useDocumentTitle('Identidad de la organización');
 
   const loadLogos = useCallback(async () => {
@@ -44,7 +62,7 @@ const BrandingSettings = () => {
     setLocations(data.ubicaciones || []);
   }, []);
 
-  useEffect(() => { setForm(branding); }, [branding]);
+  useEffect(() => { setForm(editableBranding(branding)); }, [branding]);
   useEffect(() => { loadLogos().catch(exception => setError(exception.message)); }, [loadLogos]);
 
   const update = (field) => (event) => setForm(current => ({ ...current, [field]: event.target.value }));
@@ -213,7 +231,7 @@ const BrandingSettings = () => {
     <form className="card" onSubmit={save} style={{ marginBottom: 20 }}>
       <h3 style={{ marginBottom: 18 }}>Datos y colores</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
-        <div className="input-group"><label className="input-label">Nombre comercial</label><input className="input-field" maxLength={120} required disabled={!canEdit} value={form.nombreComercial || ''} onChange={update('nombreComercial')} /></div>
+        <div className="input-group"><label className="input-label">Nombre comercial</label><input className="input-field" maxLength={120} required disabled={!canEdit} placeholder="Nombre de su empresa" value={form.nombreComercial || ''} onChange={update('nombreComercial')} /></div>
         <div className="input-group"><label className="input-label">Razón social</label><input className="input-field" maxLength={180} disabled={!canEdit} value={form.razonSocial || ''} onChange={update('razonSocial')} /></div>
         <div className="input-group"><label className="input-label">Descripción breve</label><input className="input-field" maxLength={300} disabled={!canEdit} value={form.descripcion || ''} onChange={update('descripcion')} /></div>
         <div className="input-group"><label className="input-label">Mensaje al pie de documentos</label><input className="input-field" maxLength={250} disabled={!canEdit} value={form.textoPieDocumentos || ''} onChange={update('textoPieDocumentos')} /></div>
@@ -245,7 +263,7 @@ const BrandingSettings = () => {
               {canEdit && <button type="button" className="btn btn-danger" title="Eliminar logo" disabled={saving} onClick={() => deleteLogo(logo)} style={{ padding: 8 }}><Trash2 size={15} /></button>}
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
-              {locations.map(location => <label key={location.codigo} title={location.descripcion} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '.84rem', cursor: canEdit ? 'pointer' : 'default' }}>
+              {visibleLocations.map(location => <label key={location.codigo} title={location.descripcion} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '.84rem', cursor: canEdit ? 'pointer' : 'default' }}>
                 <input type="checkbox" checked={logo.ubicaciones.includes(location.codigo)} disabled={!canEdit || saving} onChange={() => toggleLocation(logo, location.codigo)} />
                 <span>{location.nombre}</span>
               </label>)}
@@ -259,7 +277,7 @@ const BrandingSettings = () => {
         <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LayoutIcon size={19} /> Fondos personalizados</h3>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-        {backgroundZones.map(([zona, label, ancho, alto]) => {
+        {visibleBackgroundZones.map(([zona, label, ancho, alto]) => {
           const config = backgrounds[zona] || {};
           const tieneImagen = Boolean(config.tieneImagen);
           return (
@@ -302,7 +320,7 @@ const BrandingSettings = () => {
     </section>
 
     {previewZone && (() => {
-      const [, plabel, pancho, palto] = backgroundZones.find(([z]) => z === previewZone) || [];
+      const [, plabel, pancho, palto] = visibleBackgroundZones.find(([z]) => z === previewZone) || [];
       const pconfig = backgrounds[previewZone] || {};
       return (
         <div onClick={() => setPreviewZone(null)} style={{

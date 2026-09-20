@@ -93,7 +93,7 @@ const TurnsDashboard = () => {
   }, [from, to]);
 
   useEffect(() => {
-    document.title = `Panel de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Panel de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     if (!from || !to) return;
     setLoading(true); setError('');
     fetch(`/api/admin-dashboard/turns-overview?from=${from}&to=${to}&granularity=${granularity}`)

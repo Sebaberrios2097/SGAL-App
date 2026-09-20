@@ -15,6 +15,9 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
     public async Task<IActionResult> GetOverview()
     {
         var since = DateTime.Today.AddDays(-30);
+        var materialsEnabled = await context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "recetas" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)));
 
         var productExits = await context.VenDetalleVenta.AsNoTracking()
             .Where(d => d.IdVentaNavigation.FechaVenta >= since
@@ -120,13 +123,13 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
             {
                 ProductosAgotados = products.Count(x => x.Estado == "agotado"),
                 ProductosBajos = products.Count(x => x.Estado == "bajo"),
-                MaterialesAgotados = materials.Count(x => x.Estado == "agotado"),
-                MaterialesBajos = materials.Count(x => x.Estado == "bajo"),
+                MaterialesAgotados = materialsEnabled ? materials.Count(x => x.Estado == "agotado") : 0,
+                MaterialesBajos = materialsEnabled ? materials.Count(x => x.Estado == "bajo") : 0,
                 OrdenesPendientes = await context.InvOrdenCompra.CountAsync(o => o.InvOrdenDetalle.Any(d => d.Cantidad > d.CantidadRecibida)
                     && o.IdEstadoOrdenCompraNavigation.NombreEstadoOrdenCompra != "Cancelada")
             },
             Products = products,
-            Materials = materials,
+            Materials = materialsEnabled ? materials.Cast<object>().ToList() : [],
             RecentEntries = recentOrders
         });
     }

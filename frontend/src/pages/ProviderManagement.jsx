@@ -44,7 +44,7 @@ const ProviderManagement = () => {
   };
 
   useEffect(() => {
-    document.title = `Proveedores - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Proveedores - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     loadProviders()
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));

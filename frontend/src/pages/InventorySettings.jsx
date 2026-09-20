@@ -487,7 +487,7 @@ const InventorySettings = () => {
     finally { setLoading(false); }
   }, [section, can]);
 
-  useEffect(() => { document.title = `${sectionInfo[section]?.title || 'Configuraciones'} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`; load(); }, [section, load]);
+  useEffect(() => { document.title = `${sectionInfo[section]?.title || 'Configuraciones'} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`; load(); }, [section, load]);
   const info = sectionInfo[section] || sectionInfo.courtesy;
 
   let content;

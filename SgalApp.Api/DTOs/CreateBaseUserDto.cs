@@ -19,5 +19,9 @@ namespace SgalApp.Api.DTOs
         // Credenciales de la cuenta
         public string NombreUsuario { get; set; } = null!;
         public string Pass { get; set; } = null!;
+
+        // Selección comercial realizada en el primer paso del asistente.
+        // Los módulos de núcleo se habilitan siempre en el servidor.
+        public List<string> CodigosModulosHabilitados { get; set; } = [];
     }
 }

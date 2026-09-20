@@ -19,7 +19,8 @@ La identidad de la organización se administra en tiempo de ejecución: nombre, 
 - [Catálogo de módulos](docs/MODULOS.md)
 - [Plan de generalización y cambios](docs/PLAN_GENERALIZACION.md)
 - [Matriz detallada de permisos](MATRIZ_MODULOS_PERMISOS.md)
-- [Despliegue manual con Docker](DEPLOYMENT.md)
+- [Despliegue completo en Ubuntu: Docker, HTTPS, multi-instancia y CI/CD](deploy/README.md)
+- [Referencia de despliegue manual](DEPLOYMENT.md)
 
 ## Desarrollo local
 
@@ -30,7 +31,7 @@ npm ci
 npm run dev
 ```
 
-Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`; los fondos personalizados por zona (imagen de fondo para menú lateral, ventas y comandas) mediante `20260918_Fondos_Personalizados.sql`, y el fondo de inicio de sesión mediante `20260919_Fondo_Login.sql`.
+Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`; los fondos personalizados por zona (imagen de fondo para menú lateral, ventas y comandas) mediante `20260918_Fondos_Personalizados.sql`; el fondo de inicio de sesión mediante `20260919_Fondo_Login.sql`; el catálogo funcional consolidado mediante `20260920_Consolidacion_Modulos.sql`, y las ventas sin turno mediante `20260920_Ventas_Sin_Turnos.sql`.
 
 En desarrollo, configura la conexión sin guardarla en Git:
 

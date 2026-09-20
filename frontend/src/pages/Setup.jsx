@@ -1,14 +1,17 @@
-import { AlertCircle, Eye, EyeOff, Lock, ShieldCheck, User } from 'lucide-react';
-import { useState } from 'react';
+import { AlertCircle, ArrowLeft, ArrowRight, Boxes, Eye, EyeOff, LoaderCircle, Lock, ShieldCheck, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
+import ModuleCatalog from '../components/ModuleCatalog';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 // Formulario de arranque: se muestra cuando la base no tiene ningún usuario
 // Desarrollador. Crea al usuario base y deja la sesión iniciada.
 const Setup = () => {
   const { createBaseUser } = useAuth();
+  const { refreshConfiguration } = useOrganization();
   const navigate = useNavigate();
   useDocumentTitle('Configuración inicial');
 
@@ -24,8 +27,23 @@ const Setup = () => {
     confirmPass: '',
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState(1);
+  const [modules, setModules] = useState([]);
+  const [modulesLoading, setModulesLoading] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/organization-configuration/modules/bootstrap')
+      .then(async response => {
+        if (!response.ok) throw new Error('No fue posible cargar los módulos disponibles.');
+        return response.json();
+      })
+      // En una instalación nueva la selección opcional debe ser explícita.
+      .then(items => setModules(items.map(item => ({ ...item, habilitado: item.esNucleo }))))
+      .catch(exception => setError(exception.message))
+      .finally(() => setModulesLoading(false));
+  }, []);
 
   const setField = (name) => (e) => setForm((prev) => ({ ...prev, [name]: e.target.value }));
 
@@ -62,7 +80,9 @@ const Setup = () => {
         correo: form.correo.trim() || null,
         nombreUsuario: form.nombreUsuario.trim(),
         pass: form.pass,
+        codigosModulosHabilitados: modules.filter(module => module.habilitado).map(module => module.codigo),
       });
+      await refreshConfiguration();
       navigate('/');
     } catch (err) {
       setError(err.message || 'Error al crear el usuario base');
@@ -89,7 +109,7 @@ const Setup = () => {
     }} className="animate-fade-in">
       <div className="glass-panel" style={{
         width: '100%',
-        maxWidth: '520px',
+        maxWidth: step === 1 ? '1180px' : '560px',
         padding: '40px',
         position: 'relative',
         overflow: 'hidden'
@@ -103,7 +123,10 @@ const Setup = () => {
           marginBottom: '28px'
         }}>
           <BrandLogo location="login" maxHeight={90} />
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }} className="text-solid">Configuración inicial</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }} className="text-solid">Prepare su instalación</h2>
+          <div className="setup-progress" aria-label={`Paso ${step} de 2`}>
+            <span className="is-active">1</span><i className={step === 2 ? 'is-active' : ''} /><span className={step === 2 ? 'is-active' : ''}>2</span>
+          </div>
         </div>
 
         <div className="badge badge-warning" style={{
@@ -119,10 +142,22 @@ const Setup = () => {
           lineHeight: '1.35'
         }}>
           <ShieldCheck size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
-          <span>Cree el usuario <strong>Desarrollador</strong>.</span>
+          <span>{step === 1 ? 'Primero seleccione las áreas que utilizará la organización.' : 'Ahora cree el usuario Desarrollador que administrará la instalación.'}</span>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        {step === 1 && <>
+          {error && <div className="badge badge-danger" style={{ display: 'flex', gap: 8, padding: 12, marginBottom: 18, textTransform: 'none' }}><AlertCircle size={16} />{error}</div>}
+          {modulesLoading ? <div className="setup-modules-loading"><LoaderCircle className="spin" size={28} /> Cargando catálogo…</div> : <>
+            <div className="setup-modules-intro">
+              <div><Boxes size={23} /><div><strong>¿Qué necesita esta instalación?</strong><p>Puede modificar esta selección más adelante desde Configuración.</p></div></div>
+              <span>{modules.filter(module => module.habilitado).length} seleccionados</span>
+            </div>
+            <ModuleCatalog modules={modules} onChange={setModules} />
+            <div className="setup-actions"><span>Los módulos esenciales ya están incluidos.</span><button type="button" className="btn btn-primary" disabled={modules.length === 0} onClick={() => { setError(''); setStep(2); }}>Continuar <ArrowRight size={17} /></button></div>
+          </>}
+        </>}
+
+        {step === 2 && <form onSubmit={handleSubmit}>
           {error && (
             <div className="badge badge-danger" style={{
               display: 'flex',
@@ -284,15 +319,18 @@ const Setup = () => {
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '14px', borderRadius: '10px' }}
-            disabled={loading}
-          >
-            {loading ? 'Creando...' : 'Crear usuario base'}
-          </button>
-        </form>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => { setError(''); setStep(1); }} disabled={loading}><ArrowLeft size={17} /> Módulos</button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ flex: 1, padding: '14px', borderRadius: '10px' }}
+              disabled={loading}
+            >
+              {loading ? 'Creando...' : 'Finalizar configuración'}
+            </button>
+          </div>
+        </form>}
       </div>
     </div>
   );

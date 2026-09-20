@@ -22,7 +22,7 @@ const PurchaseOrders = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    document.title = `Órdenes de compra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Órdenes de compra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetch('/api/purchase-orders')
       .then(async response => {
         const body = await response.text();
@@ -57,7 +57,10 @@ const PurchaseOrders = () => {
         <div>
           <h2 className="page-title"><ClipboardCheck size={25} /> Órdenes de compra</h2>
         </div>
-        <div className="page-actions">{can('ordenes_compra.recibir') && <Link className="btn btn-secondary" to="/purchase-orders/receptions"><PackageCheck size={16} /> Recepciones</Link>}{can('ordenes_compra.crear') && <Link className="btn btn-primary" to="/purchase-orders/new"><Plus size={16} /> Nueva orden</Link>}</div>
+        <div className="page-actions">
+          {can('ordenes_compra.recibir') && <Link className="btn btn-secondary" to="/purchase-orders/receptions"><PackageCheck size={16} /> Recepciones</Link>}
+          {can('ordenes_compra.crear') && <Link className="btn btn-primary" to="/purchase-orders/new"><Plus size={16} /> Nueva orden</Link>}
+        </div>
       </div>
 
       {error && <div className="card" style={{ color: '#b91c1c', marginBottom: '18px' }}>{error}</div>}

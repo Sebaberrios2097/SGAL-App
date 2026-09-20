@@ -101,7 +101,7 @@ namespace SgalApp.Api.Controllers
             var userId = User.GetUserId();
             var consumptions = await _context.VenVentas.AsNoTracking()
                 .Where(v => v.IdBitacora != null
-                    && v.IdTurnoNavigation.IdUsuario == userId
+                    && v.IdUsuario == userId
                     && v.IdEstadoVenta == EstadosVenta.Terminada)
                 .OrderByDescending(v => v.FechaVenta)
                 .Select(v => new
@@ -286,10 +286,11 @@ namespace SgalApp.Api.Controllers
                 .Where(o => o.IdVenta != null
                          && o.MontoPropina != null
                          && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
-                         && o.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
-                         && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
+                         && o.IdVentaNavigation.IdTurno != null
+                         && o.IdVentaNavigation.IdUsuario == idUsuario
+                         && o.IdVentaNavigation.IdTurnoNavigation!.FechaApertura >= start
                          && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
-                .GroupBy(o => o.IdVentaNavigation!.IdTurnoNavigation.FechaApertura.Date)
+                .GroupBy(o => o.IdVentaNavigation!.IdTurnoNavigation!.FechaApertura.Date)
                 .Select(g => new { Fecha = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
                 .ToListAsync();
 
@@ -308,8 +309,9 @@ namespace SgalApp.Api.Controllers
                 .Where(o => o.IdVenta != null
                          && o.MontoPropina != null
                          && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
-                         && turnIds.Contains(o.IdVentaNavigation.IdTurno))
-                .GroupBy(o => o.IdVentaNavigation!.IdTurno)
+                         && o.IdVentaNavigation.IdTurno.HasValue
+                         && turnIds.Contains(o.IdVentaNavigation.IdTurno.Value))
+                .GroupBy(o => o.IdVentaNavigation!.IdTurno!.Value)
                 .Select(g => new { IdTurno = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
                 .ToListAsync();
 

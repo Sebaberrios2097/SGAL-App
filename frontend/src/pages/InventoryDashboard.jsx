@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowDownToLine, Boxes, Package, Search, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import PageHeader from '../components/PageHeader';
+import { useOrganization } from '../context/OrganizationContext';
 
 const number = value => Number(value || 0).toLocaleString('es-CL', { maximumFractionDigits: 3 });
 const statusMeta = {
@@ -11,16 +12,22 @@ const statusMeta = {
 };
 
 const InventoryDashboard = () => {
+  const { isModuleEnabled } = useOrganization();
+  const materialsEnabled = isModuleEnabled('recetas');
   const [data, setData] = useState(null);
-  const [tab, setTab] = useState('materials');
+  const [tab, setTab] = useState(() => materialsEnabled ? 'materials' : 'products');
   const [status, setStatus] = useState('attention');
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    document.title = `Control de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Control de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetch('/api/inventory-dashboard').then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.mensaje || 'No fue posible cargar el inventario.'); return result; }).then(setData).catch(err => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (!materialsEnabled && tab === 'materials') setTab('products');
+  }, [materialsEnabled, tab]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -47,7 +54,7 @@ const InventoryDashboard = () => {
       <div className="card" style={{ padding: '15px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
           <div style={{ display: 'flex', gap: '6px', flex: '0 0 auto' }}>
-            <button className={`btn ${tab === 'materials' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 12px', width: 'auto', minHeight: 38, flex: '0 0 auto' }} onClick={() => setTab('materials')}><Boxes size={15} /> Materia prima</button>
+            {materialsEnabled && <button className={`btn ${tab === 'materials' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 12px', width: 'auto', minHeight: 38, flex: '0 0 auto' }} onClick={() => setTab('materials')}><Boxes size={15} /> Materia prima</button>}
             <button className={`btn ${tab === 'products' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 12px', width: 'auto', minHeight: 38, flex: '0 0 auto' }} onClick={() => setTab('products')}><Package size={15} /> Productos</button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 auto', flexWrap: 'wrap' }}>

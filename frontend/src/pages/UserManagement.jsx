@@ -72,7 +72,7 @@ const EmployeeManagement = () => {
   };
 
   useEffect(() => {
-    document.title = `Usuarios - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Usuarios - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetchEmployees();
     if (can('roles.ver')) fetchRoles();
   }, [can]);

@@ -42,7 +42,7 @@ const LogbookView = () => {
   }, [idTurno, user.idUsuario]);
 
   useEffect(() => {
-    document.title = `Bitácora turno #${idTurno} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Bitácora turno #${idTurno} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     loadLogbook();
   }, [idTurno, loadLogbook]);
 

@@ -42,14 +42,14 @@ namespace SgalApp.Api.Services
     /// </summary>
     public interface ISaleLinesService
     {
-        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default);
+        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Igual que <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int, CancellationToken)"/> pero,
+        /// Igual que <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int?, CancellationToken)"/> pero,
         /// para consumos de empleado, marca automáticamente como cortesía las líneas elegibles según los
         /// cupos diarios (global y por producto) del usuario, excluyéndolas del total a cobrar.
         /// </summary>
-        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default);
+        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default);
 
         Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default);
     }
@@ -63,13 +63,17 @@ namespace SgalApp.Api.Services
             _context = context;
         }
 
-        public Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, CancellationToken cancellationToken = default)
+        public Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default)
             => BuildAsync(idVenta, items, idTurno, false, 0, cancellationToken);
 
-        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default)
+        public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default)
         {
             int total = 0;
             int montoCortesia = 0;
+            var materialsEnabled = await _context.SegModulos.AsNoTracking().AnyAsync(module =>
+                module.Codigo == "recetas" && module.Activo
+                && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)),
+                cancellationToken);
 
             // Cupos de cortesía del usuario para hoy (solo para consumos de empleado). Se marca la
             // línea completa como cortesía si su cantidad cabe en el cupo global y en el del producto.
@@ -90,7 +94,7 @@ namespace SgalApp.Api.Services
                 var consumidasHoy = await _context.VenDetalleVenta.AsNoTracking()
                     .Where(d => d.EsCortesia
                         && d.IdVentaNavigation.IdBitacora != null
-                        && d.IdVentaNavigation.IdTurnoNavigation.IdUsuario == idUsuario
+                        && d.IdVentaNavigation.IdUsuario == idUsuario
                         && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
                     .GroupBy(d => d.IdProducto)
                     .Select(g => new { IdProducto = g.Key, Cantidad = g.Sum(x => x.Cantidad) })
@@ -113,11 +117,13 @@ namespace SgalApp.Api.Services
             {
                 if (!gramosCalibracionCargados)
                 {
-                    gramosCalibracion = await _context.TurExtracciones
-                        .Where(e => e.IdBitacoraNavigation.IdTurno == idTurno)
-                        .OrderByDescending(e => e.IdExtraccion)
-                        .Select(e => (double?)e.Gramos)
-                        .FirstOrDefaultAsync(cancellationToken);
+                    gramosCalibracion = idTurno.HasValue
+                        ? await _context.TurExtracciones
+                            .Where(e => e.IdBitacoraNavigation.IdTurno == idTurno.Value)
+                            .OrderByDescending(e => e.IdExtraccion)
+                            .Select(e => (double?)e.Gramos)
+                            .FirstOrDefaultAsync(cancellationToken)
+                        : null;
                     gramosCalibracionCargados = true;
                 }
                 return gramosCalibracion;
@@ -153,6 +159,8 @@ namespace SgalApp.Api.Services
                 // unidad de inventario. El snapshot permite reponer exactamente al anular.
                 if (prod.RequiereReceta == true)
                 {
+                    if (!materialsEnabled)
+                        return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} requiere el módulo Recetas y materiales." };
                     // Cada producto con receta tiene la suya propia e independiente.
                     var receta = await CargarRecetaActivaAsync(prod.IdProducto, cancellationToken);
                     if (receta == null || receta.InvMaterialesReceta.Count == 0)
@@ -213,7 +221,7 @@ namespace SgalApp.Api.Services
                         // bloquea la venta. La receta obliga a configurar el café en gramos, por lo
                         // que la conversión a la unidad de stock sigue siendo la misma.
                         decimal cantidadReceta;
-                        if (material.IdMateriaPrimaNavigation.EsCafeCalibrable)
+                        if (material.IdMateriaPrimaNavigation.EsCafeCalibrable && idTurno.HasValue)
                         {
                             var gramos = await ObtenerGramosCalibracionAsync();
                             if (gramos is not > 0)
@@ -265,6 +273,8 @@ namespace SgalApp.Api.Services
                     .ToList();
                 if (idsExtra.Count > 0)
                 {
+                    if (!materialsEnabled)
+                        return new SaleLinesResult { Error = "Los ingredientes extra requieren el módulo Recetas y materiales." };
                     if (!prod.AceptaIngredientesExtra)
                         return new SaleLinesResult { Error = $"El producto {prod.NombreProducto} no admite ingredientes extra." };
 

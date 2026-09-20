@@ -100,6 +100,7 @@ public class AdminDashboardController : ControllerBase
         if ((end - start).TotalDays > 366) return BadRequest(new { mensaje = "El rango no puede superar los 366 días." });
         var gran = (granularity ?? "day").ToLowerInvariant();
         if (gran is not ("day" or "week" or "month")) gran = "day";
+        var turnsEnabled = await IsModuleEnabledAsync("turnos");
 
         var sales = _context.VenVentas.AsNoTracking()
             .Where(x => x.IdEstadoVenta == EstadosVenta.Terminada && x.IdBitacora == null && x.FechaVenta >= start && x.FechaVenta < end);
@@ -183,11 +184,29 @@ public class AdminDashboardController : ControllerBase
             .Select(g => new { g.Key.IdCategoriaProducto, NombreCategoria = g.Key.NombreCategoriaProducto, Cantidad = g.Sum(x => x.Cantidad), Monto = g.Sum(x => x.Subtotal) })
             .OrderByDescending(x => x.Cantidad).ThenByDescending(x => x.Monto).Take(8).ToListAsync();
 
-        var cantidadTurnos = await _context.TurTurno.CountAsync(x => x.FechaApertura >= start && x.FechaApertura < end);
+        var salesByUser = await sales
+            .GroupBy(x => new { x.IdUsuario, x.IdUsuarioNavigation.NombreUsuario })
+            .Select(g => new
+            {
+                g.Key.IdUsuario,
+                Usuario = g.Key.NombreUsuario,
+                Empleado = g.Select(x => x.IdUsuarioNavigation.EmpEmpleados
+                    .Where(e => e.Activo)
+                    .Select(e => e.Nombres + " " + e.Apellido1)
+                    .FirstOrDefault()).FirstOrDefault(),
+                CantidadVentas = g.Count(),
+                Monto = g.Sum(x => x.MontoTotal)
+            })
+            .OrderByDescending(x => x.Monto)
+            .ToListAsync();
+
+        var cantidadTurnos = turnsEnabled
+            ? await _context.TurTurno.CountAsync(x => x.FechaApertura >= start && x.FechaApertura < end)
+            : 0;
 
         // Flujo de caja: esperado vs real por método (turnos del rango).
         var porMetodo = await _context.TurTurnoDesglose.AsNoTracking()
-            .Where(d => d.IdTurnoNavigation.FechaApertura >= start && d.IdTurnoNavigation.FechaApertura < end)
+            .Where(d => turnsEnabled && d.IdTurnoNavigation.FechaApertura >= start && d.IdTurnoNavigation.FechaApertura < end)
             .GroupBy(d => d.IdMetodoPagoNavigation.NombreMetodoPago)
             .Select(g => new { NombreMetodoPago = g.Key, Esperado = g.Sum(x => x.MontoEsperado), Real = g.Sum(x => x.MontoReal) })
             .ToListAsync();
@@ -195,13 +214,13 @@ public class AdminDashboardController : ControllerBase
 
         // Efectivo por tipo de movimiento (1 = Apertura, 2 = Cierre).
         var efectivo = await _context.TurTurnoDesgloseEfectivo.AsNoTracking()
-            .Where(e => e.IdTurnoNavigation.FechaApertura >= start && e.IdTurnoNavigation.FechaApertura < end)
+            .Where(e => turnsEnabled && e.IdTurnoNavigation.FechaApertura >= start && e.IdTurnoNavigation.FechaApertura < end)
             .GroupBy(e => e.IdTipoMovimiento)
             .Select(g => new { Tipo = g.Key, Monto = g.Sum(x => x.Cantidad * x.IdDenominacionNavigation.Valor) })
             .ToListAsync();
 
         var diffByDay = await _context.TurTurno.AsNoTracking()
-            .Where(t => t.FechaApertura >= start && t.FechaApertura < end && t.DiferenciaTotal != null)
+            .Where(t => turnsEnabled && t.FechaApertura >= start && t.FechaApertura < end && t.DiferenciaTotal != null)
             .GroupBy(t => t.FechaApertura.Date)
             .Select(g => new { Fecha = g.Key, Diferencia = g.Sum(x => x.DiferenciaTotal ?? 0) })
             .OrderBy(x => x.Fecha).ToListAsync();
@@ -218,12 +237,14 @@ public class AdminDashboardController : ControllerBase
             cantidadVentas,
             ticketPromedio = cantidadVentas > 0 ? (decimal)totalIngresos / cantidadVentas : 0,
             totalPropinas,
+            turnsEnabled,
             cantidadTurnos,
             diferenciaCajaTotal = diffByDay.Sum(x => x.Diferencia),
             series,
             metodosPago = paymentMethods,
             productosMasVendidos = topProducts,
             categoriasMasVendidas = topCategories,
+            ventasPorUsuario = salesByUser,
             flujoCaja = new
             {
                 porMetodo = flujoPorMetodo,
@@ -357,7 +378,8 @@ public class AdminDashboardController : ControllerBase
         var productosVendidos = await _context.VenDetalleVenta.AsNoTracking()
             .Where(d => d.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
                 && d.IdVentaNavigation.IdBitacora == null
-                && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
+                && d.IdVentaNavigation.IdTurno != null
+                && d.IdVentaNavigation.IdTurnoNavigation!.FechaApertura >= start
                 && d.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
             .GroupBy(d => new { d.IdProducto, d.IdProductoNavigation.NombreProducto })
             .Select(g => new { g.Key.IdProducto, g.Key.NombreProducto, cantidad = g.Sum(x => x.Cantidad), monto = g.Sum(x => x.Subtotal) })
@@ -368,16 +390,17 @@ public class AdminDashboardController : ControllerBase
         // las agrupa por barista y permite marcarlas como pagadas. Muestra adeudado vs cortesía.
         var consumosPorBarista = await _context.VenVentas.AsNoTracking()
             .Where(v => v.IdBitacora != null && v.IdEstadoVenta == EstadosVenta.Terminada
-                && v.IdTurnoNavigation.FechaApertura >= start && v.IdTurnoNavigation.FechaApertura < end)
+                && v.IdTurno != null
+                && v.IdTurnoNavigation!.FechaApertura >= start && v.IdTurnoNavigation.FechaApertura < end)
             .OrderByDescending(v => v.FechaVenta)
             .Select(v => new
             {
                 v.IdVenta,
                 v.FechaVenta,
                 v.PagadoPorEmpleado,
-                idUsuario = v.IdTurnoNavigation.IdUsuario,
-                usuario = v.IdTurnoNavigation.IdUsuarioNavigation.NombreUsuario,
-                empleado = v.IdTurnoNavigation.IdUsuarioNavigation.EmpEmpleados
+                idUsuario = v.IdUsuario,
+                usuario = v.IdUsuarioNavigation.NombreUsuario,
+                empleado = v.IdUsuarioNavigation.EmpEmpleados
                     .Where(e => e.Activo).Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
                 montoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
                 montoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
@@ -541,17 +564,16 @@ public class AdminDashboardController : ControllerBase
         return Ok(new { Fecha = start, Turnos = turnos });
     }
 
-    // Suma de propinas (Ven_Ordenes_Point.Monto_Propina) por día de apertura del turno,
-    // considerando solo ventas terminadas.
+    // Suma de propinas por fecha de venta. Funciona con ventas asociadas a turnos y directas.
     private async Task<Dictionary<DateTime, int>> GetTipsByDayAsync(DateTime start, DateTime end)
     {
         var tips = await _context.VenOrdenesPoint.AsNoTracking()
             .Where(o => o.IdVenta != null
                      && o.MontoPropina != null
                      && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
-                     && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura >= start
-                     && o.IdVentaNavigation.IdTurnoNavigation.FechaApertura < end)
-            .GroupBy(o => o.IdVentaNavigation!.IdTurnoNavigation.FechaApertura.Date)
+                     && o.IdVentaNavigation.FechaVenta >= start
+                     && o.IdVentaNavigation.FechaVenta < end)
+            .GroupBy(o => o.IdVentaNavigation!.FechaVenta.Date)
             .Select(g => new { Fecha = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
             .ToListAsync();
 
@@ -570,13 +592,19 @@ public class AdminDashboardController : ControllerBase
             .Where(o => o.IdVenta != null
                      && o.MontoPropina != null
                      && o.IdVentaNavigation!.IdEstadoVenta == EstadosVenta.Terminada
-                     && turnIds.Contains(o.IdVentaNavigation.IdTurno))
-            .GroupBy(o => o.IdVentaNavigation!.IdTurno)
+                     && o.IdVentaNavigation.IdTurno.HasValue
+                     && turnIds.Contains(o.IdVentaNavigation.IdTurno.Value))
+            .GroupBy(o => o.IdVentaNavigation!.IdTurno!.Value)
             .Select(g => new { IdTurno = g.Key, Propina = g.Sum(o => o.MontoPropina ?? 0) })
             .ToListAsync();
 
         return tips.ToDictionary(t => t.IdTurno, t => t.Propina);
     }
+
+    private Task<bool> IsModuleEnabledAsync(string code) => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+        module.Codigo == code && module.Activo
+        && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+            && module.ConfiguracionOrganizacion.Habilitado)));
 
     [HttpGet("turn-records/logbook/{idBitacora:int}")]
     [Permission(Permissions.TurnRecordsLogbookView + "|" + Permissions.OwnLogbookView)]

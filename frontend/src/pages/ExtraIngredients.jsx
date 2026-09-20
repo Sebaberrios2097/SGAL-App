@@ -48,7 +48,7 @@ const ExtraIngredients = () => {
   };
 
   useEffect(() => {
-    document.title = `Ingredientes extra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Ingredientes extra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     Promise.all([loadItems(), loadOptions()])
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));

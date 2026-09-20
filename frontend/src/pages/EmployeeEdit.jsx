@@ -44,7 +44,7 @@ const EmployeeEdit = () => {
   const canResetPassword = can('usuarios.password.restablecer');
 
   useEffect(() => {
-    document.title = `Editar empleado - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Editar empleado - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     let active = true;
 
     fetch(`/api/employee/${id}`)
@@ -67,7 +67,7 @@ const EmployeeEdit = () => {
         setEmployee(data);
         setForm(loadedForm);
         setOriginalForm(loadedForm);
-        document.title = `Editar ${data.nombres} ${data.apellido1} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+        document.title = `Editar ${data.nombres} ${data.apellido1} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
       })
       .catch(err => {
         if (active) setError(err.message);

@@ -1,62 +1,70 @@
-# Catálogo de módulos de SGAL App
+# Catálogo de módulos
 
-Fecha de revisión: 16 de septiembre de 2026.
+Fecha de revisión: 20 de septiembre de 2026.
 
-SGAL App utiliza tres niveles complementarios:
+La configuración se divide en tres niveles:
 
-1. **Catálogo del producto:** define qué módulos existen, su descripción y dependencias.
-2. **Instalación del cliente:** determina cuáles de esos módulos están habilitados para esa empresa.
-3. **Roles y permisos:** establece qué acciones puede realizar cada usuario dentro de los módulos habilitados.
+1. **Módulos:** dominios amplios que una instalación contrata o habilita.
+2. **Permisos:** acciones específicas disponibles dentro de cada módulo.
+3. **Roles:** conjuntos de permisos entregados a cada usuario.
 
-Deshabilitar un módulo bloquea sus permisos en la API aunque un rol todavía los tenga asignados. Los módulos de núcleo no se pueden deshabilitar.
+Un módulo no debe representar una sola pantalla o tabla. Si dos capacidades siempre pertenecen al mismo dominio y solo necesitan autorizaciones diferentes, se mantienen como permisos del mismo módulo. Deshabilitar un módulo bloquea todos sus permisos en la API, aunque un rol todavía los tenga asignados.
 
-## Módulos de núcleo
+## Módulos nucleares
 
-| Código | Nombre | Descripción |
+| Código | Nombre | Funcionalidad incluida |
 |---|---|---|
-| `configuracion_sistema` | Configuración del sistema | Identidad visual de la empresa y administración de módulos contratados. |
-| `inicio` | Inicio | Panel principal y resumen administrativo. |
-| `usuarios` | Usuarios | Empleados, cuentas, estados, credenciales y asignación de roles. |
-| `roles` | Roles y permisos | Catálogo de roles y permisos granulares. |
+| `configuracion_sistema` | Configuración del sistema | Identidad de la organización, logos, colores, fondos y selección de módulos. |
+| `usuarios` | Usuarios y accesos | Empleados, cuentas, estados, contraseñas, roles y asignación granular de permisos. |
+| `inventario` | Inventario | Productos terminados, categorías y stock simple por unidades; base logística apropiada para reventa. |
+| `ordenes_compra` | Compras y proveedores | Proveedores, órdenes de compra, emisión, exportación, recepción, costos y actualización de stock. |
 
-## Módulos opcionales disponibles
+Los módulos nucleares no se pueden deshabilitar. Inventario y Compras y proveedores forman una única base logística: las compras actualizan las existencias y el inventario proporciona los productos que se compran.
 
-| Código | Nombre comercial | Descripción | Depende de |
+## Módulos opcionales
+
+| Código | Nombre comercial | Funcionalidad incluida | Depende de |
 |---|---|---|---|
-| `inventario` | Inventario | Productos, materias primas, existencias, movimientos y descuentos. | — |
-| `configuracion_inventario` | Configuración de inventario | Categorías, unidades de medida, marcas, presentaciones y reglas operativas. | `inventario` |
-| `recetas` | Recetas | Composición de productos y consumo de materias primas. | `inventario`, `configuracion_inventario` |
-| `ingredientes_extra` | Ingredientes extra | Materias primas que pueden agregarse opcionalmente a una venta. | `inventario`, `configuracion_inventario` |
-| `proveedores` | Proveedores | Registro de proveedores y sus datos comerciales. | — |
-| `ordenes_compra` | Órdenes de compra | Solicitud, exportación, recepción y costeo de compras. | `proveedores`, `inventario`, `configuracion_inventario` |
-| `turnos` | Turnos operativos | Apertura, cierre, arqueo, extracciones, consumos del vendedor, cortesías e historial del turno. | `usuarios` |
-| `ventas` | Ventas / punto de venta | Registro de ventas, medios de pago, descuentos, anulaciones y comprobantes. | `turnos`, `inventario` |
-| `bitacora` | Bitácora | Novedades, pérdidas y consumos registrados durante un turno. | `turnos`, `inventario` |
-| `registros_turnos` | Registros administrativos | Calendario, consulta y auditoría histórica de turnos. | `turnos` |
-| `integraciones` | Integraciones | Conectores con servicios externos, actualmente Mercado Pago Point. | `ventas` |
+| `recetas` | Recetas y materiales | Materias primas, recetas, unidades, presentaciones, marcas, ingredientes extra y consumo de materiales. | `inventario` |
+| `turnos` | Turnos | Apertura, cierre, arqueo, cortesías, bitácora, consumos, extracciones, historial y registros administrativos. | `usuarios` |
+| `ventas` | Ventas | Punto de venta, descuentos, medios de pago, comandas, anulaciones, comprobantes y panel administrativo. Exige un turno abierto únicamente cuando el módulo Turnos está habilitado. | `inventario` |
 
-El detalle de cada acción y su permiso está en [MATRIZ_MODULOS_PERMISOS.md](../MATRIZ_MODULOS_PERMISOS.md).
+El módulo de Integraciones se retiró temporalmente del catálogo. Sus permisos quedaron inactivos hasta definir un apartado exclusivo para el rol Desarrollador y su modelo de operación.
 
-## Módulos previstos, todavía no implementados
+## Consolidaciones realizadas
 
-Estos módulos corresponden a la evolución logística planteada y no deben venderse aún como funcionalidad existente:
+Los códigos de permisos se conservan para no romper roles, endpoints ni instalaciones existentes, aunque su prefijo histórico ya no coincida con el módulo que los contiene.
 
-| Código sugerido | Alcance esperado |
-|---|---|
-| `clientes` | Empresas o personas compradoras, contactos, direcciones y condiciones comerciales. |
-| `pedidos` | Solicitudes de clientes, líneas de producto, fechas comprometidas y estados. |
-| `preparacion` | Empaquetamiento, responsables, incidencias y control de avance. |
-| `despachos` | Envíos, transportista, seguimiento, entrega y evidencia de recepción. |
-| `devoluciones` | Rechazos, devoluciones y reintegro o merma de existencias. |
+| Módulos anteriores | Módulo actual | Motivo |
+|---|---|---|
+| `roles` | `usuarios` | Roles y permisos son parte del control de acceso de usuarios. |
+| `configuracion_inventario`, `ingredientes_extra` | `recetas` | Forman la capa avanzada de composición y consumo de materiales. |
+| `proveedores` | `ordenes_compra` | El maestro de proveedores forma parte del ciclo de compras. |
+| `bitacora`, `registros_turnos` | `turnos` | Solo existen en el contexto operacional o histórico de un turno. |
+| `inicio` | `ventas` | El panel administrativo resume la operación comercial y de turnos. |
 
-## Cómo añadir un módulo
+En particular, los permisos `inventario.descuentos.*` aparecen dentro de **Ventas**, mientras que `inventario.productos.*` e `inventario.categorias.*` permanecen en **Inventario**.
 
-1. Definir un código estable en minúsculas y una descripción orientada al cliente.
-2. Agregar el módulo y sus dependencias mediante un script versionado en `DatabaseChanges`.
-3. Crear permisos con el formato `modulo.recurso.accion` y proteger todos los endpoints correspondientes.
-4. Añadir rutas y opciones de navegación condicionadas por esos permisos.
-5. Verificar que el módulo deshabilitado no exponga operaciones desde la API, no solo que se oculte en pantalla.
+Ventas puede funcionar de manera autónoma. Con **Turnos** habilitado, cada venta exige un turno abierto y participa en la cuadratura; sin **Turnos**, la venta se registra directamente a nombre del usuario y el panel omite indicadores de apertura, cierre y diferencia de caja.
+
+Esta separación permite que comercios de reventa —por ejemplo, una botillería— utilicen productos con stock unitario sin habilitar recetas ni materias primas. Cafeterías, cocinas u otros negocios que transforman insumos pueden habilitar adicionalmente **Recetas y materiales**.
+
+## Cómo añadir o dividir un módulo
+
+Un nuevo módulo solo se justifica cuando al menos una de estas condiciones es cierta:
+
+- puede contratarse y operar razonablemente sin otro dominio;
+- necesita una dependencia o despliegue claramente diferente;
+- representa una frontera comercial estable, no una pantalla aislada;
+- deshabilitarlo debe retirar un conjunto coherente de capacidades.
+
+Para incorporarlo:
+
+1. Definir un código estable y una descripción orientada al cliente.
+2. Agregar el módulo y sus dependencias mediante un script versionado.
+3. Asociar cada permiso al módulo, manteniendo reglas de negocio adicionales.
+4. Condicionar rutas y navegación por permisos efectivos.
+5. Verificar en la API que un módulo deshabilitado bloquee sus operaciones.
 6. Actualizar este catálogo y la matriz de permisos.
-7. Agregar pruebas de autorización, dependencias y regresión funcional.
 
-La activación de módulos es configuración comercial; los permisos continúan siendo configuración operacional de cada cliente.
+La activación de módulos es una decisión comercial. Los permisos continúan siendo la unidad de control operacional.

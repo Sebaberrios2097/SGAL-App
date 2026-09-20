@@ -48,7 +48,7 @@ const RecipeManagement = () => {
       .then(([recipeData, rawMaterials, unitCatalog]) => {
         setProduct(recipeData.producto);
         applyRecipe(recipeData.receta);
-        document.title = `Receta de ${recipeData.producto.nombreProducto} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+        document.title = `Receta de ${recipeData.producto.nombreProducto} - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
         setMaterials(rawMaterials);
         setUnits(unitCatalog || []);
       }).catch(err => setError(err.message || 'No fue posible cargar la receta.')).finally(() => setLoading(false));

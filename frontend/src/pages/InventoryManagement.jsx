@@ -18,10 +18,14 @@ import SearchableSelect from '../components/SearchableSelect';
 import DataTable from '../components/DataTable';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import PageHeader from '../components/PageHeader';
 
 const InventoryManagement = () => {
   const { can } = useAuth();
+  const { isModuleEnabled } = useOrganization();
+  const materialsEnabled = isModuleEnabled('recetas');
+  const salesEnabled = isModuleEnabled('ventas');
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => can('inventario.productos.ver') ? 'products' : 'offers'); // 'products' | 'offers'
   const [products, setProducts] = useState([]);
@@ -82,9 +86,15 @@ const InventoryManagement = () => {
   };
 
   useEffect(() => {
-    document.title = `Gestión de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Gestión de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'offers' && (!salesEnabled || !can('inventario.descuentos.ver'))) {
+      setActiveTab('products');
+    }
+  }, [activeTab, salesEnabled, can]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -93,7 +103,7 @@ const InventoryManagement = () => {
       const [prodRes, catRes, discRes] = await Promise.all([
         can('inventario.productos.ver') ? fetch('/api/product') : null,
         can('inventario.categorias.ver') ? fetch('/api/category') : null,
-        can('inventario.descuentos.ver') ? fetch('/api/discount') : null
+        salesEnabled && can('inventario.descuentos.ver') ? fetch('/api/discount') : null
       ]);
 
       if (prodRes && !prodRes.ok || catRes && !catRes.ok || discRes && !discRes.ok) {
@@ -430,7 +440,7 @@ const InventoryManagement = () => {
               <Plus size={16} />
               <span>Nuevo Producto</span>
             </button>
-          ) : can('inventario.descuentos.crear') && (
+          ) : salesEnabled && can('inventario.descuentos.crear') && (
             <button 
               onClick={handleOpenCreateDiscount}
               className="btn btn-primary"
@@ -470,7 +480,7 @@ const InventoryManagement = () => {
           <Coffee size={18} />
           <span>Productos</span>
         </button>}
-        {can('inventario.descuentos.ver') && <button
+        {salesEnabled && can('inventario.descuentos.ver') && <button
           onClick={() => setActiveTab('offers')}
           style={{
             padding: '12px 4px',
@@ -545,19 +555,19 @@ const InventoryManagement = () => {
             ) },
             { key: 'categoria', header: 'Categoría', sortValue: p => p.nombreCategoriaProducto, cell: prod => <span className="badge" style={{ fontSize: '0.75rem', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>{prod.nombreCategoriaProducto}</span> },
             { key: 'precio', header: 'Precio Original', sortValue: p => p.precio, cell: prod => <span style={{ fontWeight: 600 }}>${prod.precio.toLocaleString('es-CL')}</span> },
-            { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
+            materialsEnabled && { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
             { key: 'stock', header: 'Stock', sortValue: p => (p.stock ?? -1), cell: prod => prod.stock !== null ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}><Package size={14} /><span>{prod.stock}</span></div>
-            ) : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Usa Receta</span> },
+            ) : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{materialsEnabled ? 'Usa receta' : 'Sin stock configurado'}</span> },
             { key: 'estado', header: 'Estado', sortValue: p => (p.activo ? 1 : 0), cell: prod => <span className={`badge ${prod.activo ? 'badge-success' : 'badge-danger'}`}>{prod.activo ? 'Activo' : 'Desactivado'}</span> },
             { key: 'acciones', header: 'Acciones', align: 'right', cell: prod => (
               <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                {prod.requiereReceta && can('recetas.editar') && <button onClick={() => navigate(`/inventory/products/${prod.idProducto}/recipe`)} className="btn btn-primary" style={{ padding: '4px', borderRadius: '6px' }} title={prod.tieneRecetaConfigurada ? 'Editar receta' : 'Crear receta'}><ClipboardList size={14} /></button>}
+                {materialsEnabled && prod.requiereReceta && can('recetas.editar') && <button onClick={() => navigate(`/inventory/products/${prod.idProducto}/recipe`)} className="btn btn-primary" style={{ padding: '4px', borderRadius: '6px' }} title={prod.tieneRecetaConfigurada ? 'Editar receta' : 'Crear receta'}><ClipboardList size={14} /></button>}
                 {can('inventario.productos.editar') && <button onClick={() => handleOpenEditProduct(prod)} className="btn btn-secondary" style={{ padding: '4px', borderRadius: '6px' }} title="Editar Producto"><Edit2 size={14} /></button>}
                 {can('inventario.productos.estado.modificar') && <button onClick={() => handleToggleProductStatus(prod)} className={`btn ${prod.activo ? 'btn-danger' : 'btn-primary'}`} style={{ padding: '4px', borderRadius: '6px' }} title={prod.activo ? 'Desactivar' : 'Activar'}>{prod.activo ? <Trash2 size={14} /> : <CheckCircle2 size={14} />}</button>}
               </div>
             ) }
-          ]}
+          ].filter(Boolean)}
         />
       ) : (
         /* OFFERS TAB */
@@ -690,14 +700,14 @@ const InventoryManagement = () => {
                       value={productForm.stock}
                       onChange={(e) => setProductForm(prev => ({ ...prev, stock: e.target.value }))}
                       style={inputStyle}
-                      placeholder="Ej. 50 (Vacío si usa receta)"
+                      placeholder={materialsEnabled ? 'Ej. 50 (Vacío si usa receta)' : 'Ej. 50'}
                       min={0}
-                      disabled={productForm.requiereReceta}
+                      disabled={materialsEnabled && productForm.requiereReceta}
                     />
                   </div>
                 </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
+                {materialsEnabled && <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
                   <input
                     type="checkbox"
                     checked={productForm.requiereReceta}
@@ -705,9 +715,9 @@ const InventoryManagement = () => {
                     style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)' }}
                   />
                   <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>Este producto requiere receta para su preparación</span>
-                </label>
+                </label>}
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
+                {materialsEnabled && <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
                   <input
                     type="checkbox"
                     checked={productForm.aceptaIngredientesExtra}
@@ -715,7 +725,7 @@ const InventoryManagement = () => {
                     style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)' }}
                   />
                   <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>Este producto acepta ingredientes extra en la venta</span>
-                </label>
+                </label>}
 
                 {/* 4. Imagen del Producto (CUARTO - NEW!) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

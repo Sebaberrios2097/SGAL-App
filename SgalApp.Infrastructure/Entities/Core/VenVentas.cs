@@ -14,7 +14,10 @@ public partial class VenVentas
     public int IdVenta { get; set; }
 
     [Column("Id_Turno")]
-    public int IdTurno { get; set; }
+    public int? IdTurno { get; set; }
+
+    [Column("Id_Usuario")]
+    public int IdUsuario { get; set; }
 
     /// <summary>
     /// Si != null, la venta es un "consumo de empleado" asociado a esta bitácora (por cobrar al
@@ -88,7 +91,11 @@ public partial class VenVentas
 
     [ForeignKey("IdTurno")]
     [InverseProperty("VenVentas")]
-    public virtual TurTurno IdTurnoNavigation { get; set; } = null!;
+    public virtual TurTurno? IdTurnoNavigation { get; set; }
+
+    [ForeignKey("IdUsuario")]
+    [InverseProperty("VenVentas")]
+    public virtual EmpUsuarios IdUsuarioNavigation { get; set; } = null!;
 
     [ForeignKey("IdBitacora")]
     [InverseProperty("VenVentas")]

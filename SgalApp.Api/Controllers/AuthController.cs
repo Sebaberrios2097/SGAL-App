@@ -95,6 +95,32 @@ namespace SgalApp.Api.Controllers
             if (string.IsNullOrWhiteSpace(dto.Pass) || dto.Pass.Length < 4)
                 return BadRequest(new { Mensaje = "La contraseña debe tener al menos 4 caracteres" });
 
+            var requestedModules = (dto.CodigosModulosHabilitados ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim().ToLowerInvariant())
+                .ToHashSet();
+            var modules = await _context.SegModulos
+                .Where(x => x.Activo)
+                .Include(x => x.ConfiguracionOrganizacion)
+                .ToListAsync();
+            var unknownModules = requestedModules.Except(modules.Select(x => x.Codigo)).ToList();
+            if (unknownModules.Count != 0)
+                return BadRequest(new { Mensaje = $"Módulos desconocidos: {string.Join(", ", unknownModules)}" });
+
+            var selectedModules = requestedModules
+                .Concat(modules.Where(x => x.EsNucleo).Select(x => x.Codigo))
+                .ToHashSet();
+            var missingDependencies = await _context.SegModulosDependencias.AsNoTracking()
+                .Where(x => selectedModules.Contains(x.Modulo.Codigo) && !selectedModules.Contains(x.ModuloRequerido.Codigo))
+                .Select(x => new { Modulo = x.Modulo.Codigo, Requerido = x.ModuloRequerido.Codigo })
+                .ToListAsync();
+            if (missingDependencies.Count != 0)
+                return BadRequest(new
+                {
+                    Mensaje = "La selección no cumple las dependencias entre módulos.",
+                    DependenciasFaltantes = missingDependencies
+                });
+
             var devRole = await _context.EmpRolesUsuarios.AnyAsync(r => r.IdRolUsuario == RolesUsuario.Desarrollador);
             if (!devRole)
                 return Conflict(new { Mensaje = "Falta el catálogo de roles: no existe el rol Desarrollador." });
@@ -145,6 +171,25 @@ namespace SgalApp.Api.Controllers
                 Activo = true,
                 FechaAsignacion = DateTime.Now
             });
+
+            // La selección de módulos forma parte del arranque y queda fijada antes
+            // de crear el rol y construir la primera sesión y sus permisos efectivos.
+            foreach (var module in modules)
+            {
+                var enabled = module.EsNucleo || requestedModules.Contains(module.Codigo);
+                if (module.ConfiguracionOrganizacion == null)
+                    _context.OrgModulos.Add(new OrgModulo
+                    {
+                        IdModulo = module.IdModulo,
+                        Habilitado = enabled,
+                        FechaActualizacion = DateTime.UtcNow
+                    });
+                else
+                {
+                    module.ConfiguracionOrganizacion.Habilitado = enabled;
+                    module.ConfiguracionOrganizacion.FechaActualizacion = DateTime.UtcNow;
+                }
+            }
             await _context.SaveChangesAsync();
 
             // 4) Contraseña elegida (reset administrativo: no exige la contraseña actual).

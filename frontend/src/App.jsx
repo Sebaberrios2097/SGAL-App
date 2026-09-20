@@ -30,6 +30,8 @@ import MyConsumptions from './pages/MyConsumptions';
 import InventoryDashboard from './pages/InventoryDashboard';
 import PurchaseOrderReceptions from './pages/PurchaseOrderReceptions';
 import Menu from './pages/Menu';
+import Welcome from './pages/Welcome';
+import { useOrganization } from './context/OrganizationContext';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -106,13 +108,30 @@ const PermissionRoute = ({ permission, anyOf, children }) => {
   return children;
 };
 
-// Sales can only be entered while the signed-in barista owns the open turn.
+const ModuleRoute = ({ required, children }) => {
+  const { enabledModules, loading } = useOrganization();
+  if (loading) return null;
+  return required.every(code => enabledModules.includes(code))
+    ? children
+    : <Navigate to="/welcome" replace />;
+};
+
+// Si Turnos está habilitado, Ventas exige que el usuario sea dueño del turno abierto.
+// Sin Turnos, el punto de venta funciona directamente con la identidad autenticada.
 const ActiveTurnRoute = ({ children }) => {
   const { user } = useAuth();
+  const { isModuleEnabled, loading: organizationLoading } = useOrganization();
+  const turnsEnabled = isModuleEnabled('turnos');
   const [checking, setChecking] = React.useState(true);
   const [allowed, setAllowed] = React.useState(false);
 
   React.useEffect(() => {
+    if (organizationLoading) return undefined;
+    if (!turnsEnabled) {
+      setAllowed(true);
+      setChecking(false);
+      return undefined;
+    }
     let active = true;
     fetch(`/api/turn/active?idUsuario=${user.idUsuario}`)
       .then(response => response.ok ? response.json() : Promise.reject())
@@ -126,9 +145,9 @@ const ActiveTurnRoute = ({ children }) => {
         if (active) setChecking(false);
       });
     return () => { active = false; };
-  }, [user.idUsuario]);
+  }, [user.idUsuario, turnsEnabled, organizationLoading]);
 
-  if (checking) return <div style={{ padding: '40px', textAlign: 'center' }}>Verificando turno…</div>;
+  if (organizationLoading || checking) return <div style={{ padding: '40px', textAlign: 'center' }}>Verificando acceso…</div>;
   return allowed ? children : <Navigate to="/" replace />;
 };
 
@@ -170,15 +189,22 @@ const SetupRoute = ({ children }) => {
 // Permisos que dan acceso operativo al turno. Coincide con la sección "Turno" del menú.
 const TURN_PERMISSIONS = ['turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver'];
 
-// Landing route: todos aterrizan en su turno; solo quien no tiene acceso al turno
-// pero sí al panel administrativo aterriza en el dashboard.
+// Destino inicial según las capacidades efectivamente habilitadas.
 const LandingRoute = () => {
   const { user } = useAuth();
-  const canOperateTurns = TURN_PERMISSIONS.some(code => user?.permissions?.includes(code));
-  if (!canOperateTurns && user?.permissions?.includes('inicio.dashboard.ver')) {
+  const { enabledModules, loading } = useOrganization();
+  if (loading) return null;
+  const salesEnabled = enabledModules.includes('ventas');
+  const hasAdministrativePanel = salesEnabled;
+  const canOperateTurns = enabledModules.includes('turnos') && (
+    TURN_PERMISSIONS.filter(code => code !== 'ventas.operar').some(code => user?.permissions?.includes(code))
+    || (enabledModules.includes('ventas') && user?.permissions?.includes('ventas.operar')));
+  if (canOperateTurns) return <Navigate to="/turn" replace />;
+  if (salesEnabled && user?.permissions?.includes('ventas.operar')) return <Navigate to="/sales" replace />;
+  if (hasAdministrativePanel && user?.permissions?.includes('inicio.dashboard.ver')) {
     return <Navigate to="/dashboard" replace />;
   }
-  return <Navigate to="/turn" replace />;
+  return <Navigate to="/welcome" replace />;
 };
 
 function App() {
@@ -218,10 +244,11 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* Root index: todos van a su turno; el panel queda como respaldo para quien no opera turnos */}
+            {/* Destino inicial: turno, panel administrativo o bienvenida neutra. */}
             <Route index element={<LandingRoute />} />
-            <Route path="dashboard" element={<PermissionRoute permission="inicio.dashboard.ver"><AdminDashboard /></PermissionRoute>} />
-            <Route path="turn" element={<PermissionRoute anyOf={TURN_PERMISSIONS}><Turn /></PermissionRoute>} />
+            <Route path="welcome" element={<Welcome />} />
+            <Route path="dashboard" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="inicio.dashboard.ver"><AdminDashboard /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn" element={<ModuleRoute required={['turnos']}><PermissionRoute anyOf={TURN_PERMISSIONS}><Turn /></PermissionRoute></ModuleRoute>} />
             <Route path="employees" element={<PermissionRoute permission="usuarios.ver"><EmployeeManagement /></PermissionRoute>} />
             <Route path="employees/:id/edit" element={<PermissionRoute anyOf={['usuarios.empleado.editar','usuarios.cuenta.editar','usuarios.password.restablecer']}><EmployeeEdit /></PermissionRoute>} />
             <Route path="users" element={<Navigate to="/employees" replace />} />
@@ -229,9 +256,9 @@ function App() {
             <Route path="roles/:id/permissions" element={<PermissionRoute permission="roles.permisos.asignar"><RolePermissions /></PermissionRoute>} />
             <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver']}><InventoryManagement /></PermissionRoute>} />
             <Route path="inventory/control" element={<PermissionRoute anyOf={['inventario.productos.ver','configuracion_inventario.materias_primas.ver']}><InventoryDashboard /></PermissionRoute>} />
-            <Route path="inventory/products/:idProducto/recipe" element={<PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute>} />
-            <Route path="recipes" element={<PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute>} />
-            <Route path="settings/extra-ingredients" element={<PermissionRoute permission="ingredientes_extra.ver"><ExtraIngredients /></PermissionRoute>} />
+            <Route path="inventory/products/:idProducto/recipe" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute></ModuleRoute>} />
+            <Route path="recipes" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute></ModuleRoute>} />
+            <Route path="settings/extra-ingredients" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="ingredientes_extra.ver"><ExtraIngredients /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/product-categories" element={<PermissionRoute permission="inventario.categorias.ver"><ProductCategories /></PermissionRoute>} />
             <Route path="purchase-orders" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrders /></PermissionRoute>} />
             <Route path="purchase-orders/new" element={<PermissionRoute permission="ordenes_compra.crear"><PurchaseOrderDetail /></PermissionRoute>} />
@@ -239,19 +266,19 @@ function App() {
             <Route path="purchase-orders/receptions/:id" element={<PermissionRoute permission="ordenes_compra.recibir"><PurchaseOrderReceptions /></PermissionRoute>} />
             <Route path="purchase-orders/:id" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrderDetail /></PermissionRoute>} />
             <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
-            <Route path="admin/turn-records" element={<PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute>} />
-            <Route path="admin/turns-dashboard" element={<PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute>} />
-            <Route path="turn/courtesy" element={<PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="admin/turn-records" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute></ModuleRoute>} />
+            <Route path="admin/turns-dashboard" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn/courtesy" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/courtesy" element={<Navigate to="/turn/courtesy" replace />} />
-            <Route path="settings/raw-materials" element={<PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute>} />
-            <Route path="settings/units" element={<PermissionRoute permission="configuracion_inventario.unidades.ver"><InventorySettings /></PermissionRoute>} />
-            <Route path="settings/material-categories" element={<PermissionRoute permission="configuracion_inventario.categorias_materia.ver"><InventorySettings /></PermissionRoute>} />
-            <Route path="settings/brands" element={<PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute>} />
+            <Route path="settings/raw-materials" element={<ModuleRoute required={['recetas']}><PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute></ModuleRoute>} />
+            <Route path="settings/units" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.unidades.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
+            <Route path="settings/material-categories" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.categorias_materia.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
+            <Route path="settings/brands" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
-            <Route path="turn-history" element={<PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute>} />
-            <Route path="turn/consumptions" element={<PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute>} />
-            <Route path="logbook/:idTurno" element={<PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute>} />
+            <Route path="turn-history" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn/consumptions" element={<ModuleRoute required={['turnos']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />
+            <Route path="logbook/:idTurno" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute></ModuleRoute>} />
           </Route>
 
           {/* Standalone Sales View */}
@@ -259,9 +286,11 @@ function App() {
             path="/sales" 
             element={
               <ProtectedRoute>
-                <PermissionRoute permission="ventas.operar">
-                  <ActiveTurnRoute><SalesView /></ActiveTurnRoute>
-                </PermissionRoute>
+                <ModuleRoute required={['ventas']}>
+                  <PermissionRoute permission="ventas.operar">
+                    <ActiveTurnRoute><SalesView /></ActiveTurnRoute>
+                  </PermissionRoute>
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />

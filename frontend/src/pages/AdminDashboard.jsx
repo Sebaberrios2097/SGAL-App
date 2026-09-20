@@ -1,6 +1,6 @@
 import {
   Banknote, CalendarDays, Coins, CreditCard, DollarSign, ReceiptText, Scale,
-  ShoppingBag, TrendingDown, TrendingUp, Wallet
+  ShoppingBag, TrendingDown, TrendingUp, Users, Wallet
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -74,7 +74,7 @@ const AdminDashboard = () => {
   }, [preset, customFrom, customTo]);
 
   useEffect(() => {
-    document.title = `Panel administrativo - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Panel administrativo - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     if (!from || !to) return;
     setLoading(true); setError('');
     fetch(`/api/admin-dashboard/overview?from=${from}&to=${to}&granularity=${granularity}`)
@@ -129,8 +129,8 @@ const AdminDashboard = () => {
         <MetricCard icon={ShoppingBag} label="Ventas" value={Number(data.cantidadVentas).toLocaleString('es-CL')} detail="Operaciones" color="#2563eb" />
         <MetricCard icon={ReceiptText} label="Ticket promedio" value={money(Math.round(data.ticketPromedio))} detail="Por venta" color="#0d8a4d" />
         <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />
-        <MetricCard icon={Wallet} label="Diferencia de caja" value={money(data.diferenciaCajaTotal)} detail="Sobrante/faltante" color={data.diferenciaCajaTotal === 0 ? '#0d8a4d' : '#dc2626'} />
-        <MetricCard icon={CalendarDays} label="Turnos" value={data.cantidadTurnos} detail="En el período" color="#6d28d9" />
+        {data.turnsEnabled && <MetricCard icon={Wallet} label="Diferencia de caja" value={money(data.diferenciaCajaTotal)} detail="Sobrante/faltante" color={data.diferenciaCajaTotal === 0 ? '#0d8a4d' : '#dc2626'} />}
+        {data.turnsEnabled && <MetricCard icon={CalendarDays} label="Turnos" value={data.cantidadTurnos} detail="En el período" color="#6d28d9" />}
       </div>
 
       {/* Ingresos vs Egresos */}
@@ -204,8 +204,8 @@ const AdminDashboard = () => {
         </ChartCard>
       </div>
 
-      {/* Flujo de caja */}
-      <div style={{ marginBottom: '18px' }}>
+      {/* Flujo de caja: solo existe cuando la instalación trabaja con turnos. */}
+      {data.turnsEnabled && <div style={{ marginBottom: '18px' }}>
         <ChartCard title="Flujo de caja" icon={Wallet}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
             <div style={{ padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px' }}><div style={{ color: 'var(--text-muted)', fontSize: '.72rem', fontWeight: 700 }}>EFECTIVO APERTURA</div><strong style={{ fontSize: '1.1rem' }}>{money(data.flujoCaja.efectivoApertura)}</strong></div>
@@ -238,6 +238,20 @@ const AdminDashboard = () => {
               </ResponsiveContainer>}
             </div>
           </div>
+        </ChartCard>
+      </div>}
+
+      <div style={{ marginBottom: '18px' }}>
+        <ChartCard title="Ventas por usuario" icon={Users}>
+          {data.ventasPorUsuario.length === 0 ? <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>Sin ventas en el período.</div> : <ResponsiveContainer width="100%" height={Math.max(210, data.ventasPorUsuario.length * 42)}>
+            <BarChart data={data.ventasPorUsuario.map(item => ({ ...item, nombre: item.empleado || item.usuario }))} layout="vertical" margin={{ left: 8, right: 18 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f5" horizontal={false} />
+              <XAxis type="number" {...axisProps} tickFormatter={shortMoney} />
+              <YAxis type="category" dataKey="nombre" width={145} {...axisProps} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => name === 'Monto' ? money(value) : value} />
+              <Bar dataKey="monto" name="Monto" fill="var(--primary-color)" radius={[0, 5, 5, 0]} />
+            </BarChart>
+          </ResponsiveContainer>}
         </ChartCard>
       </div>
 

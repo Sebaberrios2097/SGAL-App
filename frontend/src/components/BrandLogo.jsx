@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useOrganization } from '../context/OrganizationContext';
 
 const BrandLogo = ({ location = 'sidebar', maxHeight = 64, compact = false, light = false }) => {
-  const { branding, getLogoUrl, logoVersions } = useOrganization();
+  const { branding, displayName, hasConfiguredIdentity, getLogoUrl, logoVersions } = useOrganization();
   const [failed, setFailed] = useState(false);
   const logoUrl = getLogoUrl(location);
 
@@ -12,7 +12,7 @@ const BrandLogo = ({ location = 'sidebar', maxHeight = 64, compact = false, ligh
   if (logoUrl && !failed) {
     return <img
       src={logoUrl}
-      alt={`Logo de ${branding.nombreComercial}`}
+      alt={hasConfiguredIdentity ? `Logo de ${displayName}` : 'Logo de la organización'}
       onError={() => setFailed(true)}
       style={{ maxWidth: '100%', maxHeight, objectFit: 'contain' }}
     />;
@@ -31,10 +31,10 @@ const BrandLogo = ({ location = 'sidebar', maxHeight = 64, compact = false, ligh
     }}><Boxes size={compact ? 20 : 28} /></div>
     <div style={{ minWidth: 0 }}>
       <strong style={{ display: 'block', color: light ? '#ffffff' : 'var(--text-main)', fontSize: compact ? '1rem' : '1.35rem' }}>
-        {branding.nombreComercial}
+        {hasConfiguredIdentity ? displayName : 'Gestión interna'}
       </strong>
-      {!compact && branding.descripcion && <span style={{ display: 'block', color: light ? 'rgba(255,255,255,.72)' : 'var(--text-muted)', fontSize: '.75rem' }}>
-        {branding.descripcion}
+      {!compact && <span style={{ display: 'block', color: light ? 'rgba(255,255,255,.72)' : 'var(--text-muted)', fontSize: '.75rem' }}>
+        {hasConfiguredIdentity && branding.descripcion ? branding.descripcion : 'Acceso seguro a la plataforma'}
       </span>}
     </div>
   </div>;

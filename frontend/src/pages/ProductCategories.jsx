@@ -28,7 +28,7 @@ const ProductCategories = () => {
   };
 
   useEffect(() => {
-    document.title = `Categorías de producto - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Categorías de producto - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     load();
   }, []);
 

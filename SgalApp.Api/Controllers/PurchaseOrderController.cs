@@ -32,13 +32,14 @@ public class PurchaseOrderController : ControllerBase
     [Permission(Permissions.PurchaseOrdersView)]
     public async Task<IActionResult> GetCatalogs()
     {
+        var materialsEnabled = await IsMaterialsModuleEnabledAsync();
         var providers = await _context.InvProveedores.AsNoTracking()
             .Where(x => x.Activo)
             .OrderBy(x => x.NombreProveedor)
             .Select(x => new { x.IdProveedor, x.NombreProveedor })
             .ToListAsync();
         var formats = await _context.InvFormatosCompra.AsNoTracking()
-            .Where(x => x.Activo)
+            .Where(x => x.Activo && (materialsEnabled || x.IdMateriaPrima == null))
             .OrderBy(x => x.NombreFormato)
             .Select(x => new
             {
@@ -78,32 +79,36 @@ public class PurchaseOrderController : ControllerBase
                 UnidadContenido = "un"
             }).ToList()
         }).ToList();
-        var rawMaterialData = await _context.InvMateriaPrima.AsNoTracking()
-            .OrderBy(x => x.NombreMaterial)
-            .Select(x => new
-            {
-                x.IdMateriaPrima,
-                x.NombreMaterial,
-                Unidad = x.IdUnidadMedidaNavigation.Abreviacion,
-                x.Cantidad
-            }).ToListAsync();
-        var rawMaterials = rawMaterialData.Select(x => new
+        var rawMaterials = new List<object>();
+        if (materialsEnabled)
         {
-            TipoItem = "MateriaPrima",
-            IdItem = x.IdMateriaPrima,
-            Codigo = $"MP-{x.IdMateriaPrima:D5}",
-            Nombre = x.NombreMaterial,
-            x.Unidad,
-            Stock = x.Cantidad,
-            PrecioVenta = (int?)null,
-            Formatos = formats.Where(f => f.IdMateriaPrima == x.IdMateriaPrima).Select(f => new
+            var rawMaterialData = await _context.InvMateriaPrima.AsNoTracking()
+                .OrderBy(x => x.NombreMaterial)
+                .Select(x => new
+                {
+                    x.IdMateriaPrima,
+                    x.NombreMaterial,
+                    Unidad = x.IdUnidadMedidaNavigation.Abreviacion,
+                    x.Cantidad
+                }).ToListAsync();
+            rawMaterials = rawMaterialData.Select(x => (object)new
             {
-                f.IdFormatoCompra,
-                f.NombreFormato,
-                f.CantidadContenido,
-                UnidadContenido = x.Unidad
-            }).ToList()
-        }).ToList();
+                TipoItem = "MateriaPrima",
+                IdItem = x.IdMateriaPrima,
+                Codigo = $"MP-{x.IdMateriaPrima:D5}",
+                Nombre = x.NombreMaterial,
+                x.Unidad,
+                Stock = x.Cantidad,
+                PrecioVenta = (int?)null,
+                Formatos = formats.Where(f => f.IdMateriaPrima == x.IdMateriaPrima).Select(f => new
+                {
+                    f.IdFormatoCompra,
+                    f.NombreFormato,
+                    f.CantidadContenido,
+                    UnidadContenido = x.Unidad
+                }).ToList()
+            }).ToList();
+        }
 
         return Ok(new { Proveedores = providers, Productos = products, MateriasPrimas = rawMaterials });
     }
@@ -114,6 +119,8 @@ public class PurchaseOrderController : ControllerBase
     {
         var type = NormalizeItemType(dto.TipoItem);
         if (type == null) return BadRequest(new { mensaje = "El tipo de artículo no es válido." });
+        if (type == "MateriaPrima" && !await IsMaterialsModuleEnabledAsync())
+            return BadRequest(new { mensaje = "El módulo Recetas y materiales no está habilitado." });
         var name = NormalizeText(dto.NombreFormato, 100);
         if (string.IsNullOrWhiteSpace(name)) return BadRequest(new { mensaje = "Ingrese el nombre del formato." });
         if (dto.CantidadContenido <= 0) return BadRequest(new { mensaje = "El contenido debe ser mayor que cero." });
@@ -220,6 +227,8 @@ public class PurchaseOrderController : ControllerBase
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
         if (order == null) return NotFound(new { mensaje = "Orden de compra no encontrada." });
         if (!StateIs(order, Draft)) return Conflict(new { mensaje = "La orden ya no está en borrador." });
+        if (order.InvOrdenDetalle.Any(x => x.IdMateriaPrima != null) && !await IsMaterialsModuleEnabledAsync())
+            return Conflict(new { mensaje = "Habilite el módulo Recetas y materiales para emitir una orden con materias primas." });
         if (order.InvOrdenDetalle.Count == 0) return BadRequest(new { mensaje = "La orden no tiene artículos." });
 
         var state = await GetState(Issued);
@@ -239,6 +248,8 @@ public class PurchaseOrderController : ControllerBase
         var order = await BaseQuery().FirstOrDefaultAsync(x => x.IdOrdenCompra == id);
         if (order == null) return NotFound(new { mensaje = "Orden de compra no encontrada." });
         if (!StateIs(order, Issued)) return Conflict(new { mensaje = "Solo se pueden recibir órdenes emitidas." });
+        if (order.InvOrdenDetalle.Any(x => x.IdMateriaPrima != null) && !await IsMaterialsModuleEnabledAsync())
+            return Conflict(new { mensaje = "Habilite el módulo Recetas y materiales para recibir materias primas." });
         if (dto.Items.Count != order.InvOrdenDetalle.Count
             || dto.Items.Select(x => x.IdOrdenDetalle).Distinct().Count() != order.InvOrdenDetalle.Count)
             return BadRequest(new { mensaje = "Debe informar la recepción de todos los artículos de la orden." });
@@ -383,6 +394,8 @@ public class PurchaseOrderController : ControllerBase
         if (dto.FechaLlegadaPedido.Date < DateTime.Today) return "La fecha esperada de llegada no puede estar en el pasado.";
         if (dto.Observaciones?.Trim().Length > 500) return "Las observaciones no pueden superar los 500 caracteres.";
         if (dto.Items.Count == 0) return "Debe agregar al menos un artículo.";
+        if (dto.Items.Any(x => NormalizeItemType(x.TipoItem) == "MateriaPrima") && !await IsMaterialsModuleEnabledAsync())
+            return "El módulo Recetas y materiales no está habilitado.";
 
         var keys = new HashSet<string>();
         foreach (var item in dto.Items)
@@ -424,6 +437,10 @@ public class PurchaseOrderController : ControllerBase
         }
         return null;
     }
+
+    private Task<bool> IsMaterialsModuleEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+        module.Codigo == "recetas" && module.Activo
+        && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)));
 
     private async Task<List<InvOrdenDetalle>> BuildDetails(IEnumerable<PurchaseOrderItemDto> items)
     {

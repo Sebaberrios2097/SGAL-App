@@ -42,4 +42,7 @@ public partial class EmpUsuarios
 
     [InverseProperty("IdUsuarioNavigation")]
     public virtual ICollection<TurTurno> TurTurno { get; set; } = new List<TurTurno>();
+
+    [InverseProperty("IdUsuarioNavigation")]
+    public virtual ICollection<VenVentas> VenVentas { get; set; } = new List<VenVentas>();
 }

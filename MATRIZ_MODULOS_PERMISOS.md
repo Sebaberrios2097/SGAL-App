@@ -21,21 +21,15 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Código | Módulo visible | Pantallas principales | Control de acceso |
 |---|---|---|---|
 | `configuracion_sistema` | Configuración del sistema | `/settings/organization`, `/settings/modules` | Permisos `configuracion_sistema.*`; la administración de módulos está reservada al superusuario desarrollador |
-| `inicio` | Inicio y panel administrativo | `/dashboard` | `inicio.dashboard.ver`; es el respaldo de `/` cuando el usuario no opera turnos |
-| `usuarios` | Usuarios (empleados y externos) | `/employees`, `/employees/:id/edit` | Permisos modulares `usuarios.*` |
-| `roles` | Roles | `/roles` | Permisos `roles.*` |
-| `inventario` | Productos y descuentos (categorías en Configuración) | `/inventory`, `/settings/product-categories` | Permisos `inventario.*` |
-| `recetas` | Recetas (una por producto, sin preparaciones base) | `/recipes`, `/inventory/products/:idProducto/recipe` | Permisos `recetas.*` |
-| `ingredientes_extra` | Ingredientes extra (materias primas marcadas) | `/settings/extra-ingredients` | Permisos `ingredientes_extra.*` |
-| `configuracion_inventario` | Parámetros de inventario | `/settings/:section` | Permisos `configuracion_inventario.*` |
-| `proveedores` | Proveedores | `/providers` | Permisos `proveedores.*` |
-| `ordenes_compra` | Órdenes de compra | `/purchase-orders`, `/purchase-orders/:id` | Permisos `ordenes_compra.*` |
-| `registros_turnos` | Consulta administrativa de turnos | `/admin/turn-records` | Permisos `registros_turnos.*` |
-| `turnos` | Operación e historial del turno propio | `/` (landing), `/turn`, `/turn-history` | Permisos `turnos.*` y reglas sobre el turno propio |
-| `ventas` | Punto de venta | `/sales` | Permisos `ventas.*` y turno propio abierto cuando corresponde |
-| `bitacora` | Bitácora del turno | `/logbook/:idTurno` | Permisos `bitacora.*` y reglas sobre el turno propio |
-| `integraciones` | Integraciones externas | Sin pantalla independiente | Permisos `integraciones.*` |
+| `usuarios` | Usuarios y accesos | `/employees`, `/roles` | Permisos `usuarios.*` y `roles.*` |
+| `inventario` | Inventario | `/inventory`, `/settings/product-categories` | Permisos de productos y categorías; stock simple por unidades |
+| `recetas` | Recetas y materiales | `/recipes`, `/settings/raw-materials` y catálogos de materiales | Permisos `recetas.*`, `ingredientes_extra.*` y `configuracion_inventario.*`, salvo cortesías |
+| `ordenes_compra` | Compras y proveedores | `/purchase-orders`, `/providers` | Permisos `ordenes_compra.*` y `proveedores.*` |
+| `turnos` | Turnos | `/turn`, `/turn-history`, `/logbook/:idTurno`, `/admin/turn-records` | Permisos `turnos.*`, `bitacora.*`, `registros_turnos.*` y cortesías |
+| `ventas` | Ventas | `/sales`, `/dashboard` y descuentos | Permisos `ventas.*`, `inventario.descuentos.*` e `inicio.dashboard.ver`; el turno solo es obligatorio si el módulo Turnos está habilitado |
 | `sesion` | Inicio de sesión y contraseña | `/login` | Público / usuario identificado por la solicitud |
+
+`inventario` y `ordenes_compra` son nucleares y siempre están habilitados. Integraciones no forma parte del catálogo activo: sus permisos están desactivados hasta que se diseñe un apartado exclusivo para el rol Desarrollador.
 
 ### Configuración de organización y módulos
 
@@ -65,7 +59,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
-| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` | `GET /api/admin-dashboard/monthly-summary` |
+| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` (módulo Ventas) | `GET /api/admin-dashboard/monthly-summary` |
 | Ver panel de turnos (dashboard analítico) | `registros_turnos.dashboard.ver` | `GET /api/admin-dashboard/turns-overview` |
 | Ver calendario administrativo de turnos | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/calendar` |
 | Ver turnos de un día | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/day` |
@@ -250,14 +244,14 @@ El acceso a la pantalla exige actualmente el nombre de rol de barista y que el f
 
 Al igual que en turnos, la pertenencia al turno debe comprobarse en el servidor a partir de la identidad autenticada.
 
-### 13. Integración Mercado Pago Point
+### 13. Integración Mercado Pago Point (diferida)
 
-Estas capacidades existen en la API, pero las llamadas de bajo nivel no deberían asignarse normalmente a roles humanos. Deben quedar como operaciones internas usadas por el módulo de ventas.
+Estas rutas técnicas siguen existiendo en la API, pero no constituyen un módulo habilitable. El permiso `integraciones.point.administrar` está inactivo y no debe asignarse a roles; el apartado se revisará posteriormente como una capacidad exclusiva del rol Desarrollador.
 
 | Funcionalidad técnica | Clasificación sugerida | Endpoint |
 |---|---|---|
-| Listar terminales | Interna; opcionalmente `integraciones.point.administrar` | `GET /api/point/terminals` |
-| Cambiar modo de terminal | `integraciones.point.administrar` | `PATCH /api/point/terminals/{terminalId}/operating-mode` |
+| Listar terminales | Diferida; permiso inactivo `integraciones.point.administrar` | `GET /api/point/terminals` |
+| Cambiar modo de terminal | Diferida; permiso inactivo `integraciones.point.administrar` | `PATCH /api/point/terminals/{terminalId}/operating-mode` |
 | Crear/consultar/cancelar/reembolsar/simular orden Point | Interna | Rutas bajo `/api/point/orders` |
 | Recibir webhook de Mercado Pago | No asignable; validar firma | `POST /api/point/webhook` |
 

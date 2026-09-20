@@ -18,7 +18,7 @@ const AdminTurnRecords = () => {
       title="Registros de turnos"
       backTo="/"
       backLabel="Volver al panel"
-      documentTitle={`Registros de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`}
+      documentTitle={`Registros de turnos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`}
     />
   );
 };

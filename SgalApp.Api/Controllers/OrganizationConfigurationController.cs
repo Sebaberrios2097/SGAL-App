@@ -496,25 +496,121 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
     [HttpGet("modules")]
     [Permission(Permissions.SystemModulesManage)]
     public async Task<IActionResult> GetModules()
+        => Ok(await BuildModuleCatalogAsync());
+
+    /// <summary>
+    /// Catálogo disponible para el primer paso de una instalación nueva. Deja de
+    /// estar expuesto tan pronto existe el usuario Desarrollador.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("modules/bootstrap")]
+    public async Task<IActionResult> GetBootstrapModules()
     {
+        var developerExists = await context.EmpRolesXusuario.AsNoTracking().AnyAsync(rx =>
+            rx.Activo && rx.IdRolUsuario == RolesUsuario.Desarrollador && rx.IdUsuarioNavigation.Activo);
+        if (developerExists) return NotFound();
+        return Ok(await BuildModuleCatalogAsync());
+    }
+
+    private async Task<List<ModuleCatalogItemDto>> BuildModuleCatalogAsync()
+    {
+        // Se materializa el catálogo completo antes de construir el DTO. Así la
+        // cantidad y el detalle proceden exactamente de la misma colección y nunca
+        // puede mostrarse "4 capacidades" con una lista vacía.
         var modules = await context.SegModulos.AsNoTracking()
             .Where(x => x.Activo)
+            .Include(x => x.Dependencias).ThenInclude(x => x.ModuloRequerido)
+            .Include(x => x.Permisos)
+            .Include(x => x.ConfiguracionOrganizacion)
             .OrderBy(x => x.Orden)
-            .Select(x => new
+            .ToListAsync();
+
+        return modules.Select(x =>
+        {
+            var features = x.Permisos
+                .Where(p => p.Activo)
+                .OrderBy(p => p.Nombre)
+                .Select(p => new ModuleFeatureDto
+                {
+                    Codigo = p.Codigo,
+                    Nombre = p.Nombre,
+                    Descripcion = p.Descripcion,
+                    Grupo = GetFeatureGroup(x.Codigo, p.Codigo),
+                    EsCritico = p.EsCritico
+                }).ToList();
+
+            return new ModuleCatalogItemDto
             {
-                x.Codigo,
-                x.Nombre,
-                x.Descripcion,
-                x.EsNucleo,
+                Codigo = x.Codigo,
+                Nombre = x.Nombre,
+                Descripcion = x.Descripcion,
+                EsNucleo = x.EsNucleo,
                 Habilitado = x.EsNucleo || (x.ConfiguracionOrganizacion != null && x.ConfiguracionOrganizacion.Habilitado),
                 Dependencias = x.Dependencias
                     .Select(d => d.ModuloRequerido.Codigo)
                     .OrderBy(c => c)
                     .ToList(),
-                CantidadPermisos = x.Permisos.Count(p => p.Activo)
-            })
-            .ToListAsync();
-        return Ok(modules);
+                CantidadPermisos = features.Count,
+                Funcionalidades = features
+            };
+        }).ToList();
+    }
+
+    private static string GetFeatureGroup(string moduleCode, string permissionCode)
+    {
+        if (moduleCode == "configuracion_sistema")
+            return permissionCode.Contains(".modulos.") ? "Módulos de la instalación" : "Identidad de la organización";
+
+        if (moduleCode == "usuarios")
+        {
+            if (permissionCode.StartsWith("roles.") || permissionCode.StartsWith("usuarios.roles.")) return "Roles y permisos";
+            if (permissionCode.StartsWith("usuarios.empleado.") || permissionCode == "usuarios.ver") return "Empleados";
+            if (permissionCode.StartsWith("usuarios.password.")) return "Contraseñas";
+            return "Cuentas de usuario";
+        }
+
+        if (moduleCode == "inventario")
+        {
+            if (permissionCode.StartsWith("inventario.productos.")) return "Productos";
+            if (permissionCode.StartsWith("inventario.categorias.")) return "Categorías de producto";
+            return "Inventario simple";
+        }
+
+        if (moduleCode == "recetas")
+        {
+            if (permissionCode.StartsWith("recetas.")) return "Recetas";
+            if (permissionCode.StartsWith("ingredientes_extra.")) return "Ingredientes extra";
+            if (permissionCode.Contains(".materias_primas.")) return "Materias primas";
+            if (permissionCode.Contains(".presentaciones.")) return "Presentaciones";
+            if (permissionCode.Contains(".unidades.")) return "Unidades de medida";
+            if (permissionCode.Contains(".categorias_materia.")) return "Categorías de materia prima";
+            if (permissionCode.Contains(".marcas.")) return "Marcas";
+            if (permissionCode.Contains(".stock.")) return "Existencias";
+            return "Configuración de materiales";
+        }
+
+        if (moduleCode == "ordenes_compra")
+            return permissionCode.StartsWith("proveedores.") ? "Proveedores" : "Órdenes de compra";
+
+        if (moduleCode == "turnos")
+        {
+            if (permissionCode.StartsWith("registros_turnos.")) return "Registros administrativos";
+            if (permissionCode.StartsWith("bitacora.")) return "Bitácora";
+            if (permissionCode.Contains(".cortesia.")) return "Cortesías";
+            return "Operación de turnos";
+        }
+
+        if (moduleCode == "ventas")
+        {
+            if (permissionCode == "inicio.dashboard.ver") return "Panel administrativo";
+            if (permissionCode.StartsWith("inventario.descuentos.") || permissionCode == "ventas.descuento.aplicar") return "Descuentos";
+            if (permissionCode.StartsWith("ingredientes_extra.")) return "Ingredientes extra";
+            if (permissionCode.StartsWith("ventas.comandas.")) return "Comandas";
+            if (permissionCode.StartsWith("ventas.documentos.")) return "Comprobantes";
+            return "Punto de venta";
+        }
+
+        return "Otras funcionalidades";
     }
 
     [HttpPut("modules")]

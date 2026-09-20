@@ -1,5 +1,6 @@
-import { Boxes, Save, ShieldCheck } from 'lucide-react';
+import { Boxes, Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import ModuleCatalog from '../components/ModuleCatalog';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
@@ -23,8 +24,6 @@ const ModuleSettings = () => {
   };
 
   useEffect(() => { load(); }, []);
-
-  const toggle = (code) => setModules(items => items.map(item => item.codigo === code && !item.esNucleo ? { ...item, habilitado: !item.habilitado } : item));
 
   const save = async () => {
     setSaving(true); setMessage(''); setError('');
@@ -50,13 +49,14 @@ const ModuleSettings = () => {
     {message && <div className="badge badge-success" style={{ marginBottom: 16, padding: 12 }}>{message}</div>}
     {error && <div className="badge badge-danger" style={{ marginBottom: 16, padding: 12 }}>{error}</div>}
     {loading ? <div className="card">Cargando módulos…</div> : <>
-      <div style={{ display: 'grid', gap: 12 }}>
-        {modules.map(module => <label key={module.codigo} className="card" style={{ padding: 18, display: 'flex', gap: 16, alignItems: 'center', cursor: module.esNucleo ? 'default' : 'pointer' }}>
-          <input type="checkbox" checked={module.habilitado} disabled={module.esNucleo} onChange={() => toggle(module.codigo)} style={{ width: 20, height: 20 }} />
-          <div style={{ flex: 1 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><strong>{module.nombre}</strong>{module.esNucleo && <span className="badge"><ShieldCheck size={12} /> Núcleo</span>}</div><small style={{ color: 'var(--text-muted)' }}>{module.codigo} · {module.cantidadPermisos} permisos{module.dependencias?.length ? ` · Requiere: ${module.dependencias.join(', ')}` : ''}</small></div>
-        </label>)}
+      <p style={{ color: 'var(--text-muted)', margin: '-4px 0 24px', maxWidth: 760 }}>
+        Defina las áreas disponibles para esta instalación. Las dependencias se activan automáticamente y los módulos nucleares permanecen siempre disponibles.
+      </p>
+      <ModuleCatalog modules={modules} onChange={setModules} />
+      <div className="module-save-bar">
+        <div><strong>{modules.filter(module => module.habilitado).length} módulos habilitados</strong><span>Los cambios se aplican a toda la instalación.</span></div>
+        <button type="button" className="btn btn-primary" disabled={saving} onClick={save}><Save size={17} /> {saving ? 'Guardando…' : 'Guardar configuración'}</button>
       </div>
-      <button type="button" className="btn btn-primary" disabled={saving} onClick={save} style={{ marginTop: 18 }}><Save size={17} /> {saving ? 'Guardando…' : 'Guardar módulos'}</button>
     </>}
   </div>;
 };

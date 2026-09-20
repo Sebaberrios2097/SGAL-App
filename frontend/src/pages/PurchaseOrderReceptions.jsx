@@ -12,7 +12,7 @@ const ReceptionList = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    document.title = `Recepciones - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Recepciones - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetch('/api/purchase-orders').then(async response => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.mensaje || 'No fue posible cargar las órdenes.');

@@ -25,7 +25,7 @@ const RoleManagement = () => {
   const [roleInputError, setRoleInputError] = useState(false);
 
   useEffect(() => {
-    document.title = `Mantenedor de roles - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'SGAL App'}`;
+    document.title = `Mantenedor de roles - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
     fetchRoles();
   }, []);
 

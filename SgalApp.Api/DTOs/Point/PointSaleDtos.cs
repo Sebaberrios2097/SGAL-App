@@ -6,7 +6,7 @@ namespace SgalApp.Api.DTOs.Point
     /// </summary>
     public class PointSaleStartDto
     {
-        public int IdTurno { get; set; }
+        public int? IdTurno { get; set; }
 
         /// <summary>
         /// Monto que se enviará a la terminal. El tipo definitivo (débito o crédito)
