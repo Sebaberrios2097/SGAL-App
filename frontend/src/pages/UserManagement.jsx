@@ -13,6 +13,7 @@ import {
     X
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { confirmDialog, notify, useNotificationMessage } from '../components/NotificationCenter';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import DataTable from '../components/DataTable';
@@ -23,7 +24,7 @@ const EmployeeManagement = () => {
   const [employees, setEmployees] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   // Modals state
   const [showAddEmpModal, setShowAddEmpModal] = useState(false);
@@ -41,7 +42,7 @@ const EmployeeManagement = () => {
   const [newEmpAp2, setNewEmpAp2] = useState('');
   const [newEmpPhone, setNewEmpPhone] = useState('');
   const [newEmpEmail, setNewEmpEmail] = useState('');
-  const [addEmpError, setAddEmpError] = useState('');
+  const [addEmpError, setAddEmpError] = useNotificationMessage('error');
   const [addEmpLoading, setAddEmpLoading] = useState(false);
 
   // Selected employee for role management
@@ -269,7 +270,7 @@ const EmployeeManagement = () => {
   };
 
   const handleCreateUserAccount = async (emp) => {
-    if (!window.confirm(`¿Desea crear una cuenta de usuario para ${emp.nombres} ${emp.apellido1}?`)) {
+    if (!await confirmDialog({ title: 'Crear cuenta de usuario', message: `Se creará una cuenta para ${emp.nombres} ${emp.apellido1}.`, confirmText: 'Crear cuenta' })) {
       return;
     }
 
@@ -296,7 +297,7 @@ const EmployeeManagement = () => {
       setShowSuccessUserModal(true);
       await fetchEmployees();
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -304,7 +305,7 @@ const EmployeeManagement = () => {
 
   const handleToggleStatus = async (emp) => {
     const actionText = emp.activo ? 'desactivar' : 'activar';
-    if (!window.confirm(`¿Está seguro de que desea ${actionText} a ${emp.nombres} ${emp.apellido1}?`)) {
+    if (!await confirmDialog({ title: `${emp.activo ? 'Desactivar' : 'Activar'} usuario`, message: `Se ${actionText}á a ${emp.nombres} ${emp.apellido1}.`, confirmText: emp.activo ? 'Desactivar' : 'Activar', tone: emp.activo ? 'danger' : 'warning' })) {
       return;
     }
 
@@ -327,7 +328,7 @@ const EmployeeManagement = () => {
 
       await fetchEmployees();
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -373,7 +374,7 @@ const EmployeeManagement = () => {
       await fetchEmployees();
       setShowRolesModal(false);
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     } finally {
       setRolesLoading(false);
     }
@@ -623,7 +624,6 @@ const EmployeeManagement = () => {
                     <label className="input-label">{newEmpTipoDoc === 'RUT' ? 'RUT' : 'RUN'} (sin puntos)</label>
                     <input
                       type="number"
-                      placeholder="ej. 12345678"
                       className="input-field"
                       value={newEmpRut}
                       onChange={(e) => {
@@ -642,7 +642,6 @@ const EmployeeManagement = () => {
                     <input
                       type="text"
                       maxLength="1"
-                      placeholder="ej. 9"
                       className="input-field"
                       value={newEmpDv}
                       onChange={(e) => {
@@ -668,7 +667,6 @@ const EmployeeManagement = () => {
                     <input
                       type="text"
                       maxLength="100"
-                      placeholder="ej. Juan Andrés"
                       className="input-field"
                       value={newEmpNombres}
                       onChange={(e) => {
@@ -684,7 +682,7 @@ const EmployeeManagement = () => {
                   </div>
                   <div className="input-group" style={{ marginBottom: 0 }}>
                     <label className="input-label">Alias</label>
-                    <input type="text" maxLength="50" placeholder="ej. Juanito (opcional)" className="input-field" value={newEmpAlias} onChange={(e) => setNewEmpAlias(e.target.value)} />
+                    <input type="text" maxLength="50" className="input-field" value={newEmpAlias} onChange={(e) => setNewEmpAlias(e.target.value)} />
                   </div>
                 </div>
 
@@ -693,7 +691,6 @@ const EmployeeManagement = () => {
                     <label className="input-label">Apellido Paterno</label>
                     <input
                       type="text"
-                      placeholder="ej. Pérez"
                       className="input-field"
                       value={newEmpAp1}
                       onChange={(e) => {
@@ -715,7 +712,6 @@ const EmployeeManagement = () => {
                     <label className="input-label">Apellido Materno</label>
                     <input
                       type="text"
-                      placeholder="ej. González"
                       className="input-field"
                       value={newEmpAp2}
                       onChange={(e) => setNewEmpAp2(e.target.value)}
@@ -728,7 +724,6 @@ const EmployeeManagement = () => {
                     <label className="input-label">Teléfono</label>
                     <input
                       type="number"
-                      placeholder="ej. 912345678"
                       className="input-field"
                       value={newEmpPhone}
                       onChange={(e) => setNewEmpPhone(e.target.value)}
@@ -738,7 +733,6 @@ const EmployeeManagement = () => {
                     <label className="input-label">Correo Electrónico</label>
                     <input
                       type="email"
-                      placeholder="juan.perez@gmail.cl"
                       className="input-field"
                       value={newEmpEmail}
                       onChange={(e) => setNewEmpEmail(e.target.value)}

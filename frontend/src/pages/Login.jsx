@@ -1,5 +1,6 @@
 import { AlertCircle, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useState } from 'react';
+import { notify, useNotificationMessage } from '../components/NotificationCenter';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
@@ -17,7 +18,7 @@ const Login = () => {
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [pass, setPass] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
   const [loading, setLoading] = useState(false);
 
   // Password change state (for forced password change)
@@ -25,7 +26,7 @@ const Login = () => {
   const [tempUserId, setTempUserId] = useState(null);
   const [newPass, setNewPass] = useState('');
   const [confirmNewPass, setConfirmNewPass] = useState('');
-  const [changeError, setChangeError] = useState('');
+  const [changeError, setChangeError] = useNotificationMessage('error');
   const [changeSuccess, setChangeSuccess] = useState('');
 
   const handleLoginSubmit = async (e) => {
@@ -95,6 +96,7 @@ const Login = () => {
       }
 
       setChangeSuccess('Contraseña actualizada con éxito');
+      notify.success('Contraseña actualizada con éxito.');
 
       // Update the user session in AuthContext to mark changePassword as done
       updatePasswordState({ cambioClave: false });
@@ -245,23 +247,6 @@ const Login = () => {
               }}>
                 <AlertCircle size={16} />
                 <span>{changeError}</span>
-              </div>
-            )}
-
-            {changeSuccess && (
-              <div className="badge badge-success" style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                width: '100%',
-                padding: '12px',
-                borderRadius: '8px',
-                textTransform: 'none',
-                marginBottom: '20px',
-                fontSize: '0.85rem'
-              }}>
-                <AlertCircle size={16} />
-                <span>{changeSuccess}</span>
               </div>
             )}
 

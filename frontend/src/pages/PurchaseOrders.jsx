@@ -1,5 +1,6 @@
 import { ClipboardCheck, Download, Eye, FileSpreadsheet, LoaderCircle, PackageCheck, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import { Link } from 'react-router-dom';
 import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +20,7 @@ const PurchaseOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingExcelId, setDownloadingExcelId] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     document.title = `Órdenes de compra - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;

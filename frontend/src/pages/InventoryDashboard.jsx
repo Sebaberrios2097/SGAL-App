@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowDownToLine, Boxes, Package, Search, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import PageHeader from '../components/PageHeader';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import { useOrganization } from '../context/OrganizationContext';
 
 const number = value => Number(value || 0).toLocaleString('es-CL', { maximumFractionDigits: 3 });
@@ -18,7 +19,7 @@ const InventoryDashboard = () => {
   const [tab, setTab] = useState(() => materialsEnabled ? 'materials' : 'products');
   const [status, setStatus] = useState('attention');
   const [search, setSearch] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     document.title = `Control de inventario - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;

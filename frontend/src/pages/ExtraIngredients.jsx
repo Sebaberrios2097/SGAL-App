@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import SearchableSelect from '../components/SearchableSelect';
 import DataTable from '../components/DataTable';
 import { useAuth } from '../context/AuthContext';
+import { confirmDialog, useNotificationMessage } from '../components/NotificationCenter';
 
 const emptyForm = {
   idMateriaPrima: '',
@@ -33,8 +34,8 @@ const ExtraIngredients = () => {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [message, setMessage] = useNotificationMessage('success');
 
   const loadItems = async () => {
     const data = await readResponse(await fetch('/api/extra-ingredient'));
@@ -134,7 +135,7 @@ const ExtraIngredients = () => {
   };
 
   const remove = async item => {
-    if (!window.confirm(`¿Quitar "${item.nombreMateriaPrima}" del catálogo de ingredientes extra? Dejará de ofrecerse en la venta.`)) return;
+    if (!await confirmDialog({ title: 'Quitar ingrediente extra', message: `“${item.nombreMateriaPrima}” dejará de ofrecerse en la venta.`, confirmText: 'Quitar', tone: 'danger' })) return;
     setSaving(true);
     setError('');
     setMessage('');
@@ -207,11 +208,11 @@ const ExtraIngredients = () => {
                   <span className="input-label">Materia prima *</span>
                   {editing
                     ? <input className="input-field" value={editing.nombreMateriaPrima} disabled />
-                    : <SearchableSelect options={availableMaterials.map(m => ({ value: m.idMateriaPrima, label: m.nombreMaterial }))} value={form.idMateriaPrima} onChange={handleMaterialChange} placeholder="Seleccione la materia prima" />}
+                    : <SearchableSelect options={availableMaterials.map(m => ({ value: m.idMateriaPrima, label: m.nombreMaterial }))} value={form.idMateriaPrima} onChange={handleMaterialChange} />}
                 </div>
-                <label className="input-group"><span className="input-label">Cantidad {selectedMaterial?.noDescuentaInventario ? '(Ref.)' : '*'}</span><input className="input-field" type="number" min="0" step="0.001" required={!selectedMaterial?.noDescuentaInventario} value={form.cantidadRequerida} onChange={event => setForm(current => ({ ...current, cantidadRequerida: event.target.value }))} placeholder={selectedMaterial?.noDescuentaInventario ? 'Opcional' : 'Ej: 30'} /></label>
-                <div className="input-group"><span className="input-label">Unidad *</span><SearchableSelect options={compatibleUnits.map(u => ({ value: u.idUnidadMedida, label: `${u.nombreUnidadMedida} (${u.abreviacion})` }))} value={form.idUnidadMedida} onChange={value => setForm(current => ({ ...current, idUnidadMedida: value }))} placeholder={selectedMaterial ? 'Seleccione unidad' : 'Elija primero la materia prima'} />{selectedMaterial && compatibleUnits.length === 0 && <small style={{ color: '#b91c1c', fontSize: '0.75rem' }}>No hay unidades para la magnitud {selectedMaterial.tipoMagnitud}.</small>}</div>
-                <label className="input-group"><span className="input-label">Precio (recargo) *</span><input className="input-field" type="number" min="0" step="1" required value={form.precio} onChange={event => setForm(current => ({ ...current, precio: event.target.value }))} placeholder="Ej: 700" /></label>
+                <label className="input-group"><span className="input-label">Cantidad {selectedMaterial?.noDescuentaInventario ? '(Ref.)' : '*'}</span><input className="input-field" type="number" min="0" step="0.001" required={!selectedMaterial?.noDescuentaInventario} value={form.cantidadRequerida} onChange={event => setForm(current => ({ ...current, cantidadRequerida: event.target.value }))} /></label>
+                <div className="input-group"><span className="input-label">Unidad *</span><SearchableSelect options={compatibleUnits.map(u => ({ value: u.idUnidadMedida, label: `${u.nombreUnidadMedida} (${u.abreviacion})` }))} value={form.idUnidadMedida} onChange={value => setForm(current => ({ ...current, idUnidadMedida: value }))} />{selectedMaterial && compatibleUnits.length === 0 && <small style={{ color: '#b91c1c', fontSize: '0.75rem' }}>No hay unidades para la magnitud {selectedMaterial.tipoMagnitud}.</small>}</div>
+                <label className="input-group"><span className="input-label">Precio (recargo) *</span><input className="input-field" type="number" min="0" step="1" required value={form.precio} onChange={event => setForm(current => ({ ...current, precio: event.target.value }))} /></label>
               </div>
               <div className="purchase-modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>

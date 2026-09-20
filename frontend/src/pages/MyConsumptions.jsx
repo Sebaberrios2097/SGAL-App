@@ -1,5 +1,6 @@
 import { Gift, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import DataTable from '../components/DataTable';
 import PageHeader from '../components/PageHeader';
 
@@ -11,7 +12,7 @@ const MyConsumptions = () => {
   const [data, setData] = useState(null);
   const [startDate, setStartDate] = useState(initialStart);
   const [endDate, setEndDate] = useState(() => localDate(new Date()));
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     document.title = `Mis consumos - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;

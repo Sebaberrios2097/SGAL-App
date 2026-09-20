@@ -214,15 +214,25 @@ namespace SgalApp.Api.Controllers
         {
             var policy = await _context.InvConfiguracionCortesia.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.IdConfiguracion == 1);
-            return Ok(new { limiteDiarioGlobal = policy?.LimiteDiarioGlobal ?? 2 });
+            return Ok(new
+            {
+                modo = policy?.Modo ?? CourtesyModes.Products,
+                limiteDiarioGlobal = policy?.LimiteDiarioGlobal ?? 2,
+                montoDiarioGlobal = policy?.MontoDiarioGlobal ?? 0
+            });
         }
 
         [HttpPut("courtesy-policy")]
         [Permission(Permissions.CourtesyPolicyEdit)]
         public async Task<IActionResult> UpdateCourtesyPolicy([FromBody] CourtesyPolicyDto dto)
         {
-            if (dto.LimiteDiarioGlobal <= 0)
+            var modo = (dto.Modo ?? string.Empty).Trim().ToUpperInvariant();
+            if (!CourtesyModes.IsValid(modo))
+                return BadRequest(new { mensaje = "El modo de cortesía debe ser 'PRODUCTOS' o 'MONTO'." });
+            if (modo == CourtesyModes.Products && dto.LimiteDiarioGlobal <= 0)
                 return BadRequest(new { mensaje = "El límite diario global debe ser mayor que cero." });
+            if (modo == CourtesyModes.Money && dto.MontoDiarioGlobal <= 0)
+                return BadRequest(new { mensaje = "El monto diario de cortesía debe ser mayor que cero." });
 
             var policy = await _context.InvConfiguracionCortesia.FindAsync(1);
             if (policy == null)
@@ -230,10 +240,94 @@ namespace SgalApp.Api.Controllers
                 policy = new InvConfiguracionCortesia { IdConfiguracion = 1 };
                 _context.InvConfiguracionCortesia.Add(policy);
             }
-            policy.LimiteDiarioGlobal = dto.LimiteDiarioGlobal;
+            policy.Modo = modo;
+            // Cada modo conserva su propio cupo. La tabla exige Limite_Diario_Global > 0 (restricción
+            // CK_Inv_Configuracion_Cortesia_Limite) aun en modo MONTO, por lo que siempre se persiste
+            // un valor válido para el cupo por cantidad: el enviado si es positivo, o el actual, o 1.
+            if (modo == CourtesyModes.Products)
+                policy.LimiteDiarioGlobal = dto.LimiteDiarioGlobal;
+            else
+                policy.MontoDiarioGlobal = dto.MontoDiarioGlobal;
+            if (policy.LimiteDiarioGlobal <= 0)
+                policy.LimiteDiarioGlobal = dto.LimiteDiarioGlobal > 0 ? dto.LimiteDiarioGlobal : 1;
             policy.FechaModificacion = DateTime.Now;
             await _context.SaveChangesAsync();
-            return Ok(new { mensaje = "Límite diario global actualizado.", policy.LimiteDiarioGlobal });
+            return Ok(new { mensaje = "Política de cortesía actualizada.", policy.Modo, policy.LimiteDiarioGlobal, policy.MontoDiarioGlobal });
+        }
+
+        // Categorías de producto disponibles para elegir como cortesía por monto. Se expone bajo el
+        // permiso de cortesía para no acoplar la pantalla al permiso de categorías de producto.
+        [HttpGet("courtesy-available-categories")]
+        [Permission(Permissions.CourtesyView)]
+        public async Task<IActionResult> GetCourtesyAvailableCategories()
+        {
+            return Ok(await _context.InvCategoriaProductos.AsNoTracking()
+                .Where(c => c.Activo)
+                .OrderBy(c => c.NombreCategoriaProducto)
+                .Select(c => new { c.IdCategoriaProducto, c.NombreCategoriaProducto })
+                .ToListAsync());
+        }
+
+        [HttpGet("courtesy-categories")]
+        [Permission(Permissions.CourtesyView)]
+        public async Task<IActionResult> GetCourtesyCategories()
+        {
+            return Ok(await _context.InvCategoriasCortesia.AsNoTracking()
+                .OrderBy(x => x.IdCategoriaProductoNavigation.NombreCategoriaProducto)
+                .Select(x => new
+                {
+                    x.IdCategoriaCortesia,
+                    x.IdCategoriaProducto,
+                    x.IdCategoriaProductoNavigation.NombreCategoriaProducto,
+                    Activo = x.Activo == 1,
+                    x.FechaCreacion,
+                    x.FechaModificacion
+                }).ToListAsync());
+        }
+
+        [HttpPost("courtesy-categories")]
+        [Permission(Permissions.CourtesyCreate)]
+        public async Task<IActionResult> CreateCourtesyCategory([FromBody] CourtesyCategoryDto dto)
+        {
+            if (!await _context.InvCategoriaProductos.AnyAsync(x => x.IdCategoriaProducto == dto.IdCategoriaProducto && x.Activo))
+                return BadRequest(new { mensaje = "La categoría no es válida o está inactiva." });
+            if (await _context.InvCategoriasCortesia.AnyAsync(x => x.IdCategoriaProducto == dto.IdCategoriaProducto))
+                return Conflict(new { mensaje = "La categoría ya está configurada como cortesía." });
+
+            var now = DateTime.Now;
+            var entity = new InvCategoriasCortesia
+            {
+                IdCategoriaProducto = dto.IdCategoriaProducto,
+                Activo = 1,
+                FechaCreacion = now,
+                FechaModificacion = now
+            };
+            _context.InvCategoriasCortesia.Add(entity);
+            await _context.SaveChangesAsync();
+            return Ok(new { entity.IdCategoriaCortesia });
+        }
+
+        [HttpPut("courtesy-categories/{id:int}/status")]
+        [Permission(Permissions.CourtesyStatusEdit)]
+        public async Task<IActionResult> ToggleCourtesyCategory(int id)
+        {
+            var entity = await _context.InvCategoriasCortesia.FindAsync(id);
+            if (entity == null) return NotFound(new { mensaje = "Categoría de cortesía no encontrada." });
+            entity.Activo = entity.Activo == 1 ? 0 : 1;
+            entity.FechaModificacion = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return Ok(new { activo = entity.Activo == 1 });
+        }
+
+        [HttpDelete("courtesy-categories/{id:int}")]
+        [Permission(Permissions.CourtesyEdit)]
+        public async Task<IActionResult> DeleteCourtesyCategory(int id)
+        {
+            var entity = await _context.InvCategoriasCortesia.FindAsync(id);
+            if (entity == null) return NotFound(new { mensaje = "Categoría de cortesía no encontrada." });
+            _context.InvCategoriasCortesia.Remove(entity);
+            await _context.SaveChangesAsync();
+            return Ok(new { mensaje = "Categoría de cortesía eliminada." });
         }
 
         [HttpPost("courtesy-products")]
@@ -545,6 +639,8 @@ namespace SgalApp.Api.Controllers
         private async Task<string?> ValidateRawMaterial(RawMaterialDto dto, int? idMateriaPrima = null)
         {
             if (string.IsNullOrWhiteSpace(dto.NombreMaterial)) return "El nombre es obligatorio.";
+            if (dto.EsCafeCalibrable && !await CalibrationEnabledAsync())
+                return "Habilite las calibraciones de la bitácora para marcar una materia prima como café calibrable.";
             if (dto.NoDescuentaInventario && dto.EsCafeCalibrable)
                 return "Una materia prima no puede ser café calibrable y a la vez no descontarse del inventario.";
             // Las materias que no se descuentan no llevan existencia: se omiten los chequeos de cantidad.
@@ -573,6 +669,11 @@ namespace SgalApp.Api.Controllers
             catch (FormatException) { return "La imagen no tiene un formato válido."; }
             return null;
         }
+
+        private async Task<bool> CalibrationEnabledAsync() => await _context.OrgConfiguracion.AsNoTracking()
+            .Where(configuration => configuration.IdConfiguracion == 1)
+            .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
+            .FirstOrDefaultAsync() ?? true;
 
         private async Task<string?> ValidatePresentation(RawMaterialPresentationDto dto, int? id = null)
         {

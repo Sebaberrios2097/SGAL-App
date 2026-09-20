@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Edit2, Layers, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import DataTable from '../components/DataTable';
 
@@ -7,12 +8,12 @@ const ProductCategories = () => {
   const { can } = useAuth();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [nombre, setNombre] = useState('');
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useNotificationMessage('error');
 
   const load = async () => {
     try {
@@ -152,7 +153,7 @@ const ProductCategories = () => {
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                 <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Nombre *</label>
-                <input className="input-field" type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Bollería" maxLength={100} required autoFocus />
+                <input className="input-field" type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={100} required autoFocus />
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>{editing ? 'Actualizar' : 'Guardar'}</button>

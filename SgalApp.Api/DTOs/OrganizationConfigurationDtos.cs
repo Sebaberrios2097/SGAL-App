@@ -35,6 +35,8 @@ public sealed class UpdateOrganizationBrandingDto
 public sealed class UpdateOrganizationModulesDto
 {
     public List<string> CodigosHabilitados { get; set; } = [];
+    public bool? TurnosRequierenCuadratura { get; set; }
+    public bool? BitacoraIncluyeCalibracion { get; set; }
 }
 
 public sealed class ModuleCatalogItemDto

@@ -1,6 +1,7 @@
 import { AlertCircle, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NumericKeypadProvider, NumericInput } from './NumericKeypad';
+import { notify, useNotificationMessage } from './NotificationCenter';
 
 // Arqueo y cuadratura de cierre. Se abre desde el menú de inicio del vendedor.
 // El contenido del formulario es el mismo que antes vivía dentro del POS (SalesView);
@@ -14,7 +15,7 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
   const [realTransfer, setRealTransfer] = useState('');
   const [loading, setLoading] = useState(false);
   const [submittingClose, setSubmittingClose] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     if (!open || !turn) return;
@@ -89,6 +90,7 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
       }
 
       window.dispatchEvent(new CustomEvent('turn-status-changed'));
+      notify.success(data.mensaje || 'Turno cerrado correctamente.');
       onClosed?.(data);
       onClose();
     } catch (err) {
@@ -163,7 +165,6 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
                         <NumericInput
                           ariaLabel={`Cantidad ${d.descripcion}`}
                           fieldId={`cierre-${d.idDenominacion}`}
-                          placeholder="0"
                           disabled={submittingClose}
                           value={closingQuantities[d.idDenominacion] || ''}
                           onValueChange={(val) => setClosingQuantities(prev => ({ ...prev, [d.idDenominacion]: val }))}
@@ -242,7 +243,6 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
                     <NumericInput
                       ariaLabel="Monto real Débito"
                       fieldId="cierre-debito"
-                      placeholder="Monto real Débito"
                       disabled={submittingClose}
                       value={realDebit}
                       onValueChange={setRealDebit}
@@ -276,7 +276,6 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
                     <NumericInput
                       ariaLabel="Monto real Crédito"
                       fieldId="cierre-credito"
-                      placeholder="Monto real Crédito"
                       disabled={submittingClose}
                       value={realCredit}
                       onValueChange={setRealCredit}
@@ -310,7 +309,6 @@ const TurnClosingModal = ({ open, turn, onClose, onClosed }) => {
                     <NumericInput
                       ariaLabel="Monto real Transferencia"
                       fieldId="cierre-transferencia"
-                      placeholder="Monto real Transferencia"
                       disabled={submittingClose}
                       value={realTransfer}
                       onValueChange={setRealTransfer}

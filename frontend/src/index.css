@@ -57,6 +57,40 @@ body {
   overflow-x: hidden;
 }
 
+.sidebar-module-group { overflow: hidden; border: 1px solid transparent; border-radius: 12px; }
+.sidebar-module-group.is-active { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.055); }
+.sidebar-module-toggle { width: 100%; min-height: 44px; padding: 9px 10px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; border: 0; border-radius: 11px; color: rgba(255,255,255,.9); background: transparent; font: inherit; font-size: .79rem; font-weight: 750; text-align: left; cursor: pointer; }
+.sidebar-module-toggle:hover { background: rgba(255,255,255,.09); }
+.sidebar-module-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #fff; background: rgba(255,255,255,.12); }
+.sidebar-module-toggle > svg { opacity: .65; transition: transform .2s ease; }
+.sidebar-module-toggle > svg.is-expanded { transform: rotate(180deg); }
+.sidebar-module-items { display: grid; gap: 4px; padding: 1px 6px 7px 13px; border-left: 1px solid rgba(255,255,255,.17); margin-left: 23px; }
+.sidebar-module-items > a { padding: 9px 11px !important; font-size: .82rem !important; }
+
+/* Global operation feedback */
+.notification-stack { position: fixed; top: 18px; right: 18px; z-index: 3000; width: min(390px, calc(100vw - 28px)); display: grid; gap: 11px; pointer-events: none; }
+.app-toast { --toast-color: #2563eb; --toast-soft: #eff6ff; overflow: hidden; position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 11px; align-items: start; padding: 15px 14px; border: 1px solid color-mix(in srgb, var(--toast-color) 28%, white); border-radius: 15px; background: rgba(255,255,255,.98); box-shadow: 0 18px 45px -18px rgba(15,23,42,.55); pointer-events: auto; animation: toast-in .24s ease-out; }
+.app-toast.is-success { --toast-color: #059669; --toast-soft: #ecfdf5; }
+.app-toast.is-error { --toast-color: #dc2626; --toast-soft: #fef2f2; }
+.app-toast.is-warning { --toast-color: #d97706; --toast-soft: #fffbeb; }
+.app-toast-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: var(--toast-color); background: var(--toast-soft); }
+.app-toast strong { display: block; color: var(--text-main); font-size: .86rem; }
+.app-toast p { margin-top: 2px; color: var(--text-muted); font-size: .78rem; line-height: 1.4; white-space: pre-line; }
+.app-toast > button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; cursor: pointer; }
+.app-toast > button:hover { background: #f1f5f9; }
+.app-toast-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--toast-color); transform-origin: left; animation: toast-progress linear forwards; }
+.app-confirm-backdrop { position: fixed; inset: 0; z-index: 3100; display: grid; place-items: center; padding: 20px; background: rgba(15,23,42,.58); backdrop-filter: blur(5px); }
+.app-confirm { width: min(430px, 100%); padding: 28px; border-radius: 20px; background: #fff; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.3); animation: confirm-in .2s ease-out; }
+.app-confirm-icon { width: 62px; height: 62px; margin: 0 auto 15px; display: grid; place-items: center; border-radius: 50%; color: #d97706; background: #fffbeb; }
+.app-confirm.is-danger .app-confirm-icon { color: #dc2626; background: #fef2f2; }
+.app-confirm h2 { font-size: 1.25rem; }
+.app-confirm p { margin: 9px auto 22px; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
+.app-confirm-actions { display: flex; justify-content: center; gap: 10px; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } }
+@keyframes toast-progress { to { transform: scaleX(0); } }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+@media (max-width: 520px) { .notification-stack { top: 10px; right: 10px; width: calc(100vw - 20px); } .app-confirm-actions { flex-direction: column-reverse; } .app-confirm-actions .btn { width: 100%; } }
+
 /* Module catalog and first-run setup */
 .module-catalog { display: grid; gap: 30px; }
 .module-group { display: grid; gap: 15px; }
@@ -82,6 +116,12 @@ body {
 .module-option-card h4 { margin-top: 12px; font-size: 1rem; }
 .module-option-card > p { margin-top: 5px; color: var(--text-muted); font-size: .79rem; line-height: 1.45; }
 .module-dependencies { margin-top: 10px; padding: 7px 9px; border-radius: 8px; color: #805b10; background: #fffbeb; font-size: .7rem; font-weight: 600; }
+.module-inline-configuration { margin-top: 13px; padding: 11px; display: grid; gap: 10px; border: 1px solid rgba(var(--primary-rgb), .18); border-radius: 10px; background: rgba(var(--primary-rgb), .035); }
+.module-inline-configuration-title { color: var(--primary-color); font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.module-inline-option { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.module-inline-option input { width: 16px; height: 16px; margin-top: 1px; flex: 0 0 auto; accent-color: var(--primary-color); }
+.module-inline-option span { display: grid; gap: 2px; color: var(--text-main); font-size: .76rem; line-height: 1.3; }
+.module-inline-option small { color: var(--text-muted); font-size: .68rem; line-height: 1.35; }
 .module-detail-button { margin-top: auto; padding-top: 13px; display: flex; align-items: center; gap: 4px; align-self: flex-start; border: 0; background: none; color: var(--primary-color); font: inherit; font-size: .78rem; font-weight: 750; cursor: pointer; }
 .module-save-bar { position: sticky; bottom: 16px; z-index: 20; margin-top: 24px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 18px; border: 1px solid rgba(var(--primary-rgb), .2); border-radius: 15px; background: rgba(255,255,255,.95); box-shadow: 0 14px 35px -18px rgba(15,23,42,.55); backdrop-filter: blur(12px); }
 .module-save-bar > div { display: flex; flex-direction: column; }

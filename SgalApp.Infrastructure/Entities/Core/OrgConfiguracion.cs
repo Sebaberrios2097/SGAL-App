@@ -37,6 +37,12 @@ public class OrgConfiguracion
     [Column("Color_Fondo"), StringLength(7)]
     public string ColorFondo { get; set; } = "#F8FAFC";
 
+    [Column("Turnos_Requieren_Cuadratura")]
+    public bool TurnosRequierenCuadratura { get; set; } = true;
+
+    [Column("Bitacora_Incluye_Calibracion")]
+    public bool BitacoraIncluyeCalibracion { get; set; } = true;
+
     [Column("Logo_Contenido")]
     public byte[]? LogoContenido { get; set; }
 

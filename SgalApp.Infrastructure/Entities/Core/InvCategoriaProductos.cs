@@ -33,4 +33,7 @@ public partial class InvCategoriaProductos
 
     [InverseProperty("IdCategoriaProductoNavigation")]
     public virtual ICollection<InvProductos> InvProductos { get; set; } = new List<InvProductos>();
+
+    [InverseProperty("IdCategoriaProductoNavigation")]
+    public virtual ICollection<InvCategoriasCortesia> InvCategoriasCortesia { get; set; } = new List<InvCategoriasCortesia>();
 }

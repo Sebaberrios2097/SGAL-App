@@ -110,15 +110,16 @@ namespace SgalApp.Api.Controllers
                     v.IdTurno,
                     v.FechaVenta,
                     v.PagadoPorEmpleado,
-                    MontoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
-                    MontoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                    MontoAdeudado = v.VenDetalleVenta.Sum(d => (int?)(d.Subtotal - d.MontoCortesia)) ?? 0,
+                    MontoCortesia = v.VenDetalleVenta.Sum(d => (int?)d.MontoCortesia) ?? 0,
                     Items = v.VenDetalleVenta.OrderBy(d => d.IdDetalleVenta).Select(d => new
                     {
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
                         d.Subtotal,
-                        d.EsCortesia
+                        d.EsCortesia,
+                        d.MontoCortesia
                     }).ToList()
                 })
                 .ToListAsync();
@@ -340,8 +341,13 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.TurnsOpen)]
         public async Task<IActionResult> OpenTurn([FromBody] TurnOpenDto dto)
         {
+            if (dto == null)
+            {
+                return BadRequest(new { Mensaje = "El usuario es obligatorio" });
+            }
+
             dto.IdUsuario = User.GetUserId();
-            if (dto == null || dto.IdUsuario <= 0)
+            if (dto.IdUsuario <= 0)
             {
                 return BadRequest(new { Mensaje = "El usuario es obligatorio" });
             }
@@ -359,6 +365,7 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { Mensaje = "Ya existe un turno activo en la caja. Debe ser cerrado antes de iniciar uno nuevo." });
             }
 
+            var requiresReconciliation = await TurnsRequireReconciliationAsync();
             await using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -378,7 +385,7 @@ namespace SgalApp.Api.Controllers
                     FechaCreacion = DateTime.Now
                 });
 
-                if (dto.Desglose != null)
+                if (requiresReconciliation && dto.Desglose != null)
                 {
                     foreach (var item in dto.Desglose.Where(item => item.Cantidad > 0))
                     {
@@ -484,6 +491,23 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = "El turno ya se encuentra cerrado o inactivo." });
             }
 
+            if (!await TurnsRequireReconciliationAsync())
+            {
+                turn.FechaCierre = DateTime.Now;
+                turn.DiferenciaTotal = null;
+                turn.ObservacionCierre = dto.ObservacionCierre;
+                turn.IdEstadoTurno = 2;
+                await _context.SaveChangesAsync();
+                return Ok(new
+                {
+                    mensaje = "Turno cerrado con éxito",
+                    idTurno = turn.IdTurno,
+                    diferenciaTotal = (int?)null,
+                    idEstadoTurno = turn.IdEstadoTurno,
+                    cuadraturaRealizada = false
+                });
+            }
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -586,5 +610,10 @@ namespace SgalApp.Api.Controllers
                 return StatusCode(500, new { mensaje = "Error interno al procesar el cierre del turno.", detalle = ex.Message });
             }
         }
+
+        private async Task<bool> TurnsRequireReconciliationAsync() => await _context.OrgConfiguracion.AsNoTracking()
+            .Where(configuration => configuration.IdConfiguracion == 1)
+            .Select(configuration => (bool?)configuration.TurnosRequierenCuadratura)
+            .FirstOrDefaultAsync() ?? true;
     }
 }

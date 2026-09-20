@@ -421,7 +421,7 @@ namespace SgalApp.Api.Controllers
             .AnyAsync(x => x.IdVenta == idVenta && x.IdUsuario == User.GetUserId());
 
         private Task<bool> AreTurnsEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
-            module.Codigo == "turnos" && module.Activo
+            module.Codigo == "ventas" && module.Activo
             && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
                 && module.ConfiguracionOrganizacion.Habilitado)));
     }

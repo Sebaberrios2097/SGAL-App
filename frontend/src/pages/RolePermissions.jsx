@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import {
   AlertCircle,
   ArrowLeft,
@@ -52,8 +53,8 @@ const RolePermissions = () => {
   const [initialLimits, setInitialLimits] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [success, setSuccess] = useNotificationMessage('success');
 
   useEffect(() => {
     document.title = `Permisos del rol - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;

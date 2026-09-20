@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { backgroundImageUrl } from '../utils/backgroundStyle';
+import { confirmDialog, notify, useNotificationMessage } from '../components/NotificationCenter';
 
 const colorFields = [
   ['colorPrimario', 'Color primario'],
@@ -14,11 +15,11 @@ const colorFields = [
 
 // Zona → etiqueta y dimensiones exactas requeridas (ancho x alto).
 const backgroundZones = [
-  ['login', 'Inicio de sesión', 1920, 1080, null],
-  ['sidebar', 'Menú lateral', 600, 2024, null],
-  ['ventas', 'Ventas', 1920, 1080, 'ventas'],
-  ['comandas', 'Comandas', 1920, 1080, 'ventas'],
-  ['carta', 'Carta de productos', 1920, 1080, 'ventas']
+  { code: 'login', label: 'Inicio de sesión', width: 1920, height: 1080, module: 'configuracion_sistema' },
+  { code: 'sidebar', label: 'Menú lateral', width: 600, height: 2024, module: 'configuracion_sistema' },
+  { code: 'ventas', label: 'Ventas', width: 1920, height: 1080, module: 'ventas' },
+  { code: 'comandas', label: 'Comandas', width: 1920, height: 1080, module: 'comandas' },
+  { code: 'carta', label: 'Carta de productos', width: 1920, height: 1080, module: 'ventas' }
 ];
 
 const logoLocationModules = {
@@ -40,18 +41,18 @@ const BrandingSettings = () => {
   const [logos, setLogos] = useState([]);
   const [locations, setLocations] = useState([]);
   const [newLogoName, setNewLogoName] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useNotificationMessage('success');
+  const [error, setError] = useNotificationMessage('error');
   const [saving, setSaving] = useState(false);
-  const [bgErrors, setBgErrors] = useState({});
+  const bgErrors = {};
   const [previewZone, setPreviewZone] = useState(null);
   const canEdit = can('configuracion_sistema.marca.editar');
   const visibleLocations = locations.filter(location => {
     const requiredModule = logoLocationModules[location.codigo];
     return !requiredModule || enabledModules.includes(requiredModule);
   });
-  const visibleBackgroundZones = backgroundZones.filter(([, , , , requiredModule]) =>
-    !requiredModule || enabledModules.includes(requiredModule));
+  const enabledModuleCodes = new Set(enabledModules.map(code => code.toLowerCase()));
+  const visibleBackgroundZones = backgroundZones.filter(zone => enabledModuleCodes.has(zone.module));
   useDocumentTitle('Identidad de la organización');
 
   const loadLogos = useCallback(async () => {
@@ -120,7 +121,7 @@ const BrandingSettings = () => {
     if (response.status === 409 && !confirmReplacement) {
       const data = await response.json().catch(() => ({}));
       const details = (data.conflictos || []).map(conflict => `${conflict.nombreUbicacion}: ${conflict.nombreLogo}`).join('\n');
-      const confirmed = window.confirm(`${data.mensaje || 'La ubicación ya utiliza otro logo.'}${details ? `\n\n${details}` : ''}\n\n¿Deseas reemplazarlo?`);
+      const confirmed = await confirmDialog({ title: 'Reemplazar logo', message: `${data.mensaje || 'La ubicación ya utiliza otro logo.'}${details ? `\n\n${details}` : ''}`, confirmText: 'Reemplazar' });
       if (!confirmed) return false;
       return persistLocations(logo, nextLocations, true);
     }
@@ -141,7 +142,7 @@ const BrandingSettings = () => {
       const currentOwner = logos.find(item => item.idLogo !== logo.idLogo && item.ubicaciones.includes(locationCode));
       if (currentOwner) {
         const locationName = locations.find(item => item.codigo === locationCode)?.nombre || locationCode;
-        confirmed = window.confirm(`“${locationName}” ya utiliza el logo “${currentOwner.nombre}”.\n\n¿Deseas reemplazarlo por “${logo.nombre}”?`);
+        confirmed = await confirmDialog({ title: 'Reemplazar logo', message: `“${locationName}” ya utiliza el logo “${currentOwner.nombre}”.\n\n¿Deseas reemplazarlo por “${logo.nombre}”?`, confirmText: 'Reemplazar' });
         if (!confirmed) return;
       }
     }
@@ -161,7 +162,7 @@ const BrandingSettings = () => {
   };
 
   const deleteLogo = async (logo) => {
-    if (!window.confirm(`¿Eliminar el logo “${logo.nombre}”? También dejará de mostrarse en sus ubicaciones asignadas.`)) return;
+    if (!await confirmDialog({ title: 'Eliminar logo', message: `El logo “${logo.nombre}” también dejará de mostrarse en sus ubicaciones asignadas.`, confirmText: 'Eliminar', tone: 'danger' })) return;
     setSaving(true); setMessage(''); setError('');
     try {
       const response = await fetch(`/api/organization-configuration/branding/logos/${logo.idLogo}`, { method: 'DELETE' });
@@ -172,7 +173,7 @@ const BrandingSettings = () => {
     finally { setSaving(false); }
   };
 
-  const setZoneError = (zona, mensaje) => setBgErrors(prev => ({ ...prev, [zona]: mensaje }));
+  const setZoneError = (_zona, mensaje) => { if (mensaje) notify.error(mensaje); };
 
   const uploadBackground = async (zona, event) => {
     const file = event.target.files?.[0];
@@ -212,7 +213,7 @@ const BrandingSettings = () => {
   };
 
   const removeBackground = async (zona, label) => {
-    if (!window.confirm(`¿Quitar la imagen de fondo de “${label}”?`)) return;
+    if (!await confirmDialog({ title: 'Quitar imagen de fondo', message: `Se quitará la imagen configurada para “${label}”.`, confirmText: 'Quitar', tone: 'danger' })) return;
     setSaving(true); setMessage(''); setZoneError(zona, '');
     try {
       const response = await fetch(`/api/organization-configuration/backgrounds/${zona}`, { method: 'DELETE' });
@@ -255,7 +256,7 @@ const BrandingSettings = () => {
       {!logos.length ? <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--panel-border)', borderRadius: 12 }}>Todavía no hay logos cargados.</div> :
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 16 }}>
           {logos.map(logo => <article key={logo.idLogo} style={{ border: '1px solid var(--panel-border)', borderRadius: 14, padding: 16, background: 'var(--bg-color)' }}>
-            <div style={{ minHeight: 125, display: 'grid', placeItems: 'center', background: '#fff', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ minHeight: 125, display: 'grid', placeItems: 'center', background: 'var(--primary-color)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
               <img src={`/api/organization-configuration/branding/logos/${logo.idLogo}/content?v=${encodeURIComponent(logo.fechaActualizacion)}`} alt={logo.nombre} style={{ maxWidth: '100%', maxHeight: 100, objectFit: 'contain' }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', marginBottom: 12 }}>
@@ -277,7 +278,7 @@ const BrandingSettings = () => {
         <h3 style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LayoutIcon size={19} /> Fondos personalizados</h3>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-        {visibleBackgroundZones.map(([zona, label, ancho, alto]) => {
+        {visibleBackgroundZones.map(({ code: zona, label, width: ancho, height: alto }) => {
           const config = backgrounds[zona] || {};
           const tieneImagen = Boolean(config.tieneImagen);
           return (
@@ -320,7 +321,10 @@ const BrandingSettings = () => {
     </section>
 
     {previewZone && (() => {
-      const [, plabel, pancho, palto] = visibleBackgroundZones.find(([z]) => z === previewZone) || [];
+      const preview = visibleBackgroundZones.find(zone => zone.code === previewZone);
+      const plabel = preview?.label;
+      const pancho = preview?.width;
+      const palto = preview?.height;
       const pconfig = backgrounds[previewZone] || {};
       return (
         <div onClick={() => setPreviewZone(null)} style={{

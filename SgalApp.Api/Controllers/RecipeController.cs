@@ -243,7 +243,11 @@ namespace SgalApp.Api.Controllers
 
             // El café calibrable toma sus gramos de la última extracción del turno, así que en la
             // receta debe expresarse en gramos (g) y no puede heredar la medida de otra materia.
-            foreach (var material in materials.Where(x => rawMaterials[x.IdMateriaPrima].EsCafeCalibrable))
+            var calibrationEnabled = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(configuration => configuration.IdConfiguracion == 1)
+                .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
+                .FirstOrDefaultAsync() ?? true;
+            foreach (var material in materials.Where(x => calibrationEnabled && rawMaterials[x.IdMateriaPrima].EsCafeCalibrable))
             {
                 if (units[material.IdUnidadMedida].Abreviacion.Trim().ToLowerInvariant() != "g")
                     return (null, $"{rawMaterials[material.IdMateriaPrima].NombreMaterial} es café calibrable: debe configurarse en gramos (g).");

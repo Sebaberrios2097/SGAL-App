@@ -26,8 +26,8 @@ Los módulos nucleares no se pueden deshabilitar. Inventario y Compras y proveed
 | Código | Nombre comercial | Funcionalidad incluida | Depende de |
 |---|---|---|---|
 | `recetas` | Recetas y materiales | Materias primas, recetas, unidades, presentaciones, marcas, ingredientes extra y consumo de materiales. | `inventario` |
-| `turnos` | Turnos | Apertura, cierre, arqueo, cortesías, bitácora, consumos, extracciones, historial y registros administrativos. | `usuarios` |
-| `ventas` | Ventas | Punto de venta, descuentos, medios de pago, comandas, anulaciones, comprobantes y panel administrativo. Exige un turno abierto únicamente cuando el módulo Turnos está habilitado. | `inventario` |
+| `ventas` | Operación de caja | Punto de venta, turnos, cuadratura configurable, bitácora, consumos de empleados, descuentos, comprobantes, ventas por turno y panel administrativo. | `inventario` |
+| `comandas` | Comandas | Preparación y seguimiento de pedidos con el detalle de sus recetas. | `ventas` (Operación de caja), `recetas` |
 
 El módulo de Integraciones se retiró temporalmente del catálogo. Sus permisos quedaron inactivos hasta definir un apartado exclusivo para el rol Desarrollador y su modelo de operación.
 
@@ -40,12 +40,12 @@ Los códigos de permisos se conservan para no romper roles, endpoints ni instala
 | `roles` | `usuarios` | Roles y permisos son parte del control de acceso de usuarios. |
 | `configuracion_inventario`, `ingredientes_extra` | `recetas` | Forman la capa avanzada de composición y consumo de materiales. |
 | `proveedores` | `ordenes_compra` | El maestro de proveedores forma parte del ciclo de compras. |
-| `bitacora`, `registros_turnos` | `turnos` | Solo existen en el contexto operacional o histórico de un turno. |
+| `turnos`, `bitacora`, `registros_turnos` | `ventas` (Operación de caja) | La venta siempre ocurre dentro de un turno y conserva su bitácora, consumos y trazabilidad administrativa. |
 | `inicio` | `ventas` | El panel administrativo resume la operación comercial y de turnos. |
 
 En particular, los permisos `inventario.descuentos.*` aparecen dentro de **Ventas**, mientras que `inventario.productos.*` e `inventario.categorias.*` permanecen en **Inventario**.
 
-Ventas puede funcionar de manera autónoma. Con **Turnos** habilitado, cada venta exige un turno abierto y participa en la cuadratura; sin **Turnos**, la venta se registra directamente a nombre del usuario y el panel omite indicadores de apertura, cierre y diferencia de caja.
+**Operación de caja** siempre exige un turno abierto para vender. La instalación decide si la apertura y el cierre requieren cuadratura y si la bitácora incluye calibraciones de café. Sin calibraciones, no se muestran extracciones ni la opción “café calibrable”, y las ventas descuentan las cantidades fijas definidas en las recetas.
 
 Esta separación permite que comercios de reventa —por ejemplo, una botillería— utilicen productos con stock unitario sin habilitar recetas ni materias primas. Cafeterías, cocinas u otros negocios que transforman insumos pueden habilitar adicionalmente **Recetas y materiales**.
 

@@ -2,12 +2,15 @@ import { AlertCircle, ArrowLeft, BookOpen, Coffee, History, Lock, MessageSquareT
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import { confirmDialog, useNotificationMessage } from '../components/NotificationCenter';
 
 const emptyExtraction = () => ({ gramos: '', segundos: '', mililitros: '', observaciones: '' });
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 
 const LogbookView = () => {
   const { user, can } = useAuth();
+  const { logbookIncludesCalibration } = useOrganization();
   const { idTurno } = useParams();
   const [logbook, setLogbook] = useState(null);
   const [rows, setRows] = useState([emptyExtraction()]);
@@ -17,11 +20,11 @@ const LogbookView = () => {
   const [saving, setSaving] = useState(false);
   const [savingObservation, setSavingObservation] = useState(false);
   const [observation, setObservation] = useState('');
-  const [error, setError] = useState('');
-  const [observationError, setObservationError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [observationSuccess, setObservationSuccess] = useState('');
-  const [extractionActionError, setExtractionActionError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [observationError, setObservationError] = useNotificationMessage('error');
+  const [success, setSuccess] = useNotificationMessage('success');
+  const [observationSuccess, setObservationSuccess] = useNotificationMessage('success');
+  const [extractionActionError, setExtractionActionError] = useNotificationMessage('error');
 
   const loadLogbook = useCallback(async () => {
     setLoading(true);
@@ -110,7 +113,7 @@ const LogbookView = () => {
   };
 
   const deleteExtraction = async extraction => {
-    if (!window.confirm('¿Eliminar esta extracción? El café descontado será repuesto al inventario.')) return;
+    if (!await confirmDialog({ title: 'Eliminar extracción', message: 'El café descontado será repuesto al inventario.', confirmText: 'Eliminar', tone: 'danger' })) return;
     setExtractionActionError('');
     try {
       const response = await fetch(`/api/logbook/extractions/${extraction.idExtraccion}`, { method: 'DELETE' });
@@ -206,7 +209,9 @@ const LogbookView = () => {
           <section className="card" style={{ padding: '22px', marginBottom: '22px', order: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}><Coffee size={20} /> Consumos del turno</h3>
-              <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#f0fdf4', color: '#166534', textAlign: 'center', minWidth: '150px' }}><div style={{ fontSize: '0.72rem', fontWeight: 700 }}>CORTESÍAS DISPONIBLES HOY</div><strong style={{ fontSize: '1.35rem' }}>{logbook.cortesia.restanteHoy} / {logbook.cortesia.limiteDiarioGlobal}</strong></div>
+              <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#f0fdf4', color: '#166534', textAlign: 'center', minWidth: '150px' }}><div style={{ fontSize: '0.72rem', fontWeight: 700 }}>{logbook.cortesia.modo === 'MONTO' ? 'CORTESÍA DISPONIBLE HOY' : 'CORTESÍAS DISPONIBLES HOY'}</div><strong style={{ fontSize: '1.35rem' }}>{logbook.cortesia.modo === 'MONTO'
+                ? `${money(logbook.cortesia.restanteHoy)} / ${money(logbook.cortesia.limiteDiarioGlobal)}`
+                : `${logbook.cortesia.restanteHoy} / ${logbook.cortesia.limiteDiarioGlobal}`}</strong></div>
             </div>
 
             {consumos.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Aún no hay consumos registrados en este turno.</p> : (
@@ -246,7 +251,7 @@ const LogbookView = () => {
             )}
           </section>
 
-          {logbook.esEditable && can('bitacora.extracciones.crear') && (
+          {logbookIncludesCalibration && logbook.esEditable && can('bitacora.extracciones.crear') && (
             <form onSubmit={handleSubmit} className="card" style={{ padding: '22px', marginBottom: '22px', order: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
                 <h3 style={{ margin: 0 }}>Registrar extracciones</h3>
@@ -324,7 +329,7 @@ const LogbookView = () => {
             </form>
           )}
 
-          <section className="card" style={{ padding: '22px', marginBottom: '22px', order: 2 }}>
+          {logbookIncludesCalibration && <section className="card" style={{ padding: '22px', marginBottom: '22px', order: 2 }}>
             <h3 style={{ marginBottom: '16px' }}>Extracciones registradas ({logbook.extracciones.length})</h3>
             {extractionActionError && <div style={{ color: '#b91c1c', marginBottom: '10px' }}><AlertCircle size={15} /> {extractionActionError}</div>}
             {logbook.extracciones.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Aún no hay extracciones en esta bitácora.</p> : (
@@ -336,7 +341,7 @@ const LogbookView = () => {
                 </tr>)}</tbody>
               </table></div></div>
             )}
-          </section>
+          </section>}
           </div>
         </>
       )}

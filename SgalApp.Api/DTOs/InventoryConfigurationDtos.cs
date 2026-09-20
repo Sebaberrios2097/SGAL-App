@@ -22,7 +22,15 @@ namespace SgalApp.Api.DTOs
 
     public class CourtesyPolicyDto
     {
+        /// <summary>"PRODUCTOS" (cupo por cantidad de productos) o "MONTO" (cupo en dinero por categorías).</summary>
+        public string Modo { get; set; } = "PRODUCTOS";
         public int LimiteDiarioGlobal { get; set; }
+        public int MontoDiarioGlobal { get; set; }
+    }
+
+    public class CourtesyCategoryDto
+    {
+        public int IdCategoriaProducto { get; set; }
     }
 
     public class RawMaterialDto

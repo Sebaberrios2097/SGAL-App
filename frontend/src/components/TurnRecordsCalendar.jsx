@@ -2,6 +2,7 @@ import { ArrowLeft, BookOpen, CalendarDays, ChevronLeft, ChevronRight, Clock, Co
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from './PageHeader';
+import { useNotificationMessage } from './NotificationCenter';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const localMonth = () => {
@@ -12,7 +13,7 @@ const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).pad
 
 const LogbookDetail = ({ id, buildLogbookUrl, onClose }) => {
   const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
   useEffect(() => {
     fetch(buildLogbookUrl(id))
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.mensaje); return result; })
@@ -35,7 +36,7 @@ const LogbookDetail = ({ id, buildLogbookUrl, onClose }) => {
 const TurnSalesList = ({ idTurno }) => {
   const [open, setOpen] = useState(false);
   const [sales, setSales] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   const toggle = () => {
     const next = !open;
@@ -97,7 +98,7 @@ const TurnRecordsCalendar = ({ buildCalendarUrl, buildDayUrl, buildLogbookUrl, s
   const [logbookId, setLogbookId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dayLoading, setDayLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
   const [year, monthNumber] = month.split('-').map(Number);
 
   useEffect(() => {

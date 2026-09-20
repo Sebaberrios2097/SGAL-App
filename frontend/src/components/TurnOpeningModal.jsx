@@ -2,6 +2,7 @@ import { AlertCircle, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { NumericKeypadProvider, NumericInput } from './NumericKeypad';
+import { notify, useNotificationMessage } from './NotificationCenter';
 
 const TurnOpeningModal = ({ open, onClose, onOpened }) => {
   const { user } = useAuth();
@@ -9,7 +10,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
   const [quantities, setQuantities] = useState({});
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +65,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
       if (!response.ok) throw new Error(data.mensaje || 'No fue posible iniciar el turno.');
 
       window.dispatchEvent(new CustomEvent('turn-status-changed', { detail: data }));
+      notify.success('Turno iniciado correctamente.');
       onOpened?.(data);
       onClose();
     } catch (err) {

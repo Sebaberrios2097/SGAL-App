@@ -1,6 +1,7 @@
 import { ArrowLeft, Check, ClipboardList, Coffee, Droplet, Plus, Save, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useNotificationMessage } from '../components/NotificationCenter';
 
 const RecipeManagement = () => {
   const params = useParams();
@@ -20,8 +21,8 @@ const RecipeManagement = () => {
   const [materialSearch, setMaterialSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useNotificationMessage('success');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     const applyRecipe = (receta) => {
@@ -440,7 +441,7 @@ const RecipeManagement = () => {
 
             <div style={{ position: 'relative', marginBottom: '12px' }}>
               <Search size={17} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input className="input-field" style={{ paddingLeft: '39px' }} value={materialSearch} onChange={event => setMaterialSearch(event.target.value)} placeholder="Buscar ingrediente, marca o categoría…" autoFocus />
+              <input className="input-field" style={{ paddingLeft: '39px' }} value={materialSearch} onChange={event => setMaterialSearch(event.target.value)} autoFocus />
             </div>
 
             <div style={{ display: 'flex', gap: '7px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '4px' }}>

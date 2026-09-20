@@ -88,6 +88,8 @@ export const OrganizationProvider = ({ children }) => {
       ? `/api/organization-configuration/logo/${location}?v=${encodeURIComponent(logoVersions[location])}`
       : null,
     isModuleEnabled: (code) => enabledModules.includes(code),
+    turnsRequireReconciliation: branding.turnosRequierenCuadratura ?? true,
+    logbookIncludesCalibration: branding.bitacoraIncluyeCalibracion ?? true,
     getBackgroundStyle,
     refreshConfiguration: loadConfiguration
   }), [branding, displayName, hasConfiguredIdentity, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);

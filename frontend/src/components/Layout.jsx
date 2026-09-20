@@ -3,6 +3,7 @@ import {
     BookOpen,
     Boxes,
     CalendarDays,
+    ChevronDown,
     ChevronRight,
     ClipboardCheck,
     ClipboardList,
@@ -27,11 +28,23 @@ import {
     Users,
     X
 } from 'lucide-react';
+import { notify } from './NotificationCenter';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import BrandLogo from './BrandLogo';
+
+const sidebarGroupForPath = (pathname) => {
+  if (pathname === '/turn' || pathname === '/sales' || pathname.startsWith('/logbook/')) return 'rapido';
+  if (pathname === '/dashboard' || pathname.startsWith('/turn-') || pathname.startsWith('/turn/') || pathname.startsWith('/admin/turn')) return 'operacion';
+  if (pathname === '/inventory' || pathname === '/inventory/control' || pathname === '/settings/product-categories') return 'inventario';
+  if (pathname.startsWith('/recipes') || pathname.startsWith('/inventory/products/') || ['/settings/raw-materials', '/settings/extra-ingredients', '/settings/units', '/settings/material-categories', '/settings/brands'].some(path => pathname.startsWith(path))) return 'recetas';
+  if (pathname.startsWith('/purchase-orders') || pathname.startsWith('/providers')) return 'compras';
+  if (pathname.startsWith('/employees') || pathname.startsWith('/roles')) return 'accesos';
+  if (pathname.startsWith('/settings/organization') || pathname.startsWith('/settings/modules')) return 'sistema';
+  return 'operacion';
+};
 
 const Layout = () => {
   const { user, logout, can, canAny } = useAuth();
@@ -40,25 +53,43 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const turnsEnabled = isModuleEnabled('turnos');
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    const initialGroup = sidebarGroupForPath(location.pathname);
+    return initialGroup === 'rapido' ? {} : { [initialGroup]: true };
+  });
   const salesEnabled = isModuleEnabled('ventas');
+  const turnsEnabled = salesEnabled;
   const materialsEnabled = isModuleEnabled('recetas');
+  const logbookEnabled = salesEnabled;
   const canOperateTurns = turnsEnabled && (
-    canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'bitacora.propia.ver')
+    canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar')
+    || (logbookEnabled && can('bitacora.propia.ver'))
     || (salesEnabled && can('ventas.operar')));
   const hasAdministrativePanel = salesEnabled;
-  const hasTurnNavigation = turnsEnabled && (canOperateTurns || can('configuracion_inventario.cortesia.ver'));
-  const hasManagementNavigation = (hasAdministrativePanel && can('inicio.dashboard.ver'))
-    || canAny('usuarios.ver', 'inventario.productos.ver', 'ordenes_compra.ver', 'ordenes_compra.recibir', 'proveedores.ver')
-    || (materialsEnabled && canAny('recetas.ver', 'ingredientes_extra.ver', 'configuracion_inventario.materias_primas.ver', 'configuracion_inventario.presentaciones.ver'))
-    || (turnsEnabled && canAny('registros_turnos.ver', 'registros_turnos.dashboard.ver'));
-  const hasConfigurationNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar', 'roles.ver', 'inventario.categorias.ver')
-    || (materialsEnabled && canAny('configuracion_inventario.unidades.ver', 'configuracion_inventario.categorias_materia.ver', 'configuracion_inventario.marcas.ver'));
+  const hasQuickNavigation = canOperateTurns;
+  const hasOperationNavigation = salesEnabled && canAny(
+    'turnos.propios.ver', 'bitacora.propia.ver', 'configuracion_inventario.cortesia.ver',
+    'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver'
+  );
+  const hasInventoryNavigation = canAny('inventario.productos.ver', 'inventario.categorias.ver')
+    || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'));
+  const hasRecipesNavigation = materialsEnabled && canAny(
+    'recetas.ver', 'ingredientes_extra.ver', 'configuracion_inventario.materias_primas.ver',
+    'configuracion_inventario.presentaciones.ver', 'configuracion_inventario.unidades.ver',
+    'configuracion_inventario.categorias_materia.ver', 'configuracion_inventario.marcas.ver'
+  );
+  const hasPurchasesNavigation = canAny('ordenes_compra.ver', 'ordenes_compra.recibir', 'proveedores.ver');
+  const hasAccessNavigation = canAny('usuarios.ver', 'roles.ver');
+  const hasSystemNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar');
+  const hasModuleGroups = hasOperationNavigation || hasInventoryNavigation || hasRecipesNavigation
+    || hasPurchasesNavigation || hasAccessNavigation || hasSystemNavigation;
 
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    const activeGroup = sidebarGroupForPath(location.pathname);
+    if (activeGroup !== 'rapido') setExpandedGroups(current => ({ ...current, [activeGroup]: true }));
   }, [location.pathname]);
 
   useEffect(() => {
@@ -107,7 +138,7 @@ const Layout = () => {
 
   const handleLogout = async () => {
     if (isLogoutBlocked) {
-      alert('No puede cerrar sesión mientras tenga un turno abierto. Por favor, finalice su turno en la pantalla de ventas.');
+      notify.warning('No puede cerrar sesión mientras tenga un turno abierto. Por favor, finalice su turno en la pantalla de ventas.');
       return;
     }
     await logout();
@@ -228,6 +259,27 @@ const Layout = () => {
     );
   };
 
+  const renderNavGroup = ({ id, label, icon: Icon, visible, children }) => {
+    if (!visible) return null;
+    const expanded = Boolean(expandedGroups[id]);
+    const active = sidebarGroupForPath(location.pathname) === id;
+    return (
+      <section className={`sidebar-module-group ${active ? 'is-active' : ''}`} key={id}>
+        <button
+          type="button"
+          className="sidebar-module-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpandedGroups(current => ({ ...current, [id]: !current[id] }))}
+        >
+          <span className="sidebar-module-icon"><Icon size={17} /></span>
+          <span>{label}</span>
+          <ChevronDown size={15} className={expanded ? 'is-expanded' : ''} />
+        </button>
+        {expanded && <div className="sidebar-module-items">{children}</div>}
+      </section>
+    );
+  };
+
   return (
     <div className="app-container">
       <button
@@ -286,16 +338,14 @@ const Layout = () => {
 
         {/* Navigation */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-          {/* Turno */}
-          {hasTurnNavigation && (
-            <>
-              {renderSectionTitle('Turno')}
+          {hasQuickNavigation && <>
+            {renderSectionTitle('Acceso rápido')}
               {canOperateTurns && renderNavItem({ label: 'Turno', path: '/turn', icon: Clock, exact: true })}
               {activeTurnInfo.hasActiveTurn && (
                 activeTurnInfo.belongsToCurrentUser ? (
                   <>
                     {salesEnabled && can('ventas.operar') && renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
-                    {can('bitacora.propia.ver') && renderNavItem({ label: 'Bitácora', path: `/logbook/${activeTurnInfo.activeTurn?.idTurno}`, icon: BookOpen })}
+                    {logbookEnabled && can('bitacora.propia.ver') && renderNavItem({ label: 'Bitácora', path: `/logbook/${activeTurnInfo.activeTurn?.idTurno}`, icon: BookOpen })}
                   </>
                 ) : (
                   <div
@@ -320,51 +370,49 @@ const Layout = () => {
                   </div>
                 )
               )}
+          </>}
+
+          {hasModuleGroups && renderSectionTitle('Módulos')}
+
+          {renderNavGroup({ id: 'operacion', label: 'Operación de caja', icon: ShoppingBag, visible: hasOperationNavigation, children: <>
+              {hasAdministrativePanel && can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
               {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
               {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Gift })}
-              {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Productos de cortesía', path: '/turn/courtesy', icon: Gift })}
-            </>
-          )}
+              {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Cortesía', path: '/turn/courtesy', icon: Gift })}
+              {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
+              {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
+            </> })}
 
-          {!turnsEnabled && salesEnabled && can('ventas.operar') && (
-            <>
-              {renderSectionTitle('Ventas')}
-              {renderNavItem({ label: 'Ventas', path: '/sales', icon: ShoppingBag })}
-            </>
-          )}
-
-          {/* Gestión */}
-          {hasManagementNavigation && (
-            <>
-              {renderSectionTitle('Gestión')}
-              {hasAdministrativePanel && can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
-              {can('usuarios.ver') && renderNavItem(navItemsModule1[0])}
+          {renderNavGroup({ id: 'inventario', label: 'Inventario', icon: Boxes, visible: hasInventoryNavigation, children: <>
               {can('inventario.productos.ver') && renderNavItem(navItemsModule2[0])}
               {(can('inventario.productos.ver') || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'))) && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
+              {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
+            </> })}
+
+          {renderNavGroup({ id: 'recetas', label: 'Recetas y materiales', icon: ClipboardList, visible: hasRecipesNavigation, children: <>
               {materialsEnabled && can('recetas.ver') && renderNavItem(navItemsModule2[1])}
               {materialsEnabled && canAny('configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver') && renderNavItem({ label: <>Materiales/<br />Ingredientes</>, path: '/settings/raw-materials', icon: Boxes })}
               {materialsEnabled && can('ingredientes_extra.ver') && renderNavItem({ label: 'Ingredientes extra', path: '/settings/extra-ingredients', icon: Sparkles })}
-              {can('ordenes_compra.ver') && renderNavItem(navItemsModule2[2])}
-              {can('ordenes_compra.recibir') && renderNavItem(navItemsModule2[3])}
-              {can('proveedores.ver') && renderNavItem(navItemsModule2[4])}
-              {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
-              {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
-            </>
-          )}
-
-          {/* Configuración */}
-          {hasConfigurationNavigation && (
-            <>
-              {renderSectionTitle('Configuración')}
-              {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
-              {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
-              {can('roles.ver') && renderNavItem({ label: 'Roles', path: '/roles', icon: ShieldAlert })}
-              {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
               {materialsEnabled && can('configuracion_inventario.unidades.ver') && renderNavItem({ label: 'Unidades de medida', path: '/settings/units', icon: Ruler })}
               {materialsEnabled && can('configuracion_inventario.categorias_materia.ver') && renderNavItem({ label: 'Categorías de materia', path: '/settings/material-categories', icon: Tags })}
               {materialsEnabled && can('configuracion_inventario.marcas.ver') && renderNavItem({ label: 'Marcas', path: '/settings/brands', icon: Stamp })}
-            </>
-          )}
+            </> })}
+
+          {renderNavGroup({ id: 'compras', label: 'Compras y proveedores', icon: Truck, visible: hasPurchasesNavigation, children: <>
+              {can('ordenes_compra.ver') && renderNavItem(navItemsModule2[2])}
+              {can('ordenes_compra.recibir') && renderNavItem(navItemsModule2[3])}
+              {can('proveedores.ver') && renderNavItem(navItemsModule2[4])}
+            </> })}
+
+          {renderNavGroup({ id: 'accesos', label: 'Usuarios y accesos', icon: Users, visible: hasAccessNavigation, children: <>
+              {can('usuarios.ver') && renderNavItem(navItemsModule1[0])}
+              {can('roles.ver') && renderNavItem({ label: 'Roles', path: '/roles', icon: ShieldAlert })}
+            </> })}
+
+          {renderNavGroup({ id: 'sistema', label: 'Configuración del sistema', icon: Puzzle, visible: hasSystemNavigation, children: <>
+              {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
+              {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
+            </> })}
         </nav>
       </div>
 

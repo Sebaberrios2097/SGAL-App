@@ -4,7 +4,7 @@ namespace SgalApp.Api.DTOs
     {
         public int IdCategoriaProducto { get; set; }
 
-        /// <summary>Código opcional del producto. Puede quedar vacío.</summary>
+        /// <summary>Código SKU opcional del producto. Puede quedar vacío.</summary>
         public string? CodigoProducto { get; set; }
         public string NombreProducto { get; set; } = null!;
         public string? DescripcionProducto { get; set; }

@@ -3,6 +3,7 @@ import {
   ShoppingBag, TrendingDown, TrendingUp, Users, Wallet
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
@@ -58,7 +59,7 @@ const AdminDashboard = () => {
   const [granularity, setGranularity] = useState('day');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   // Toggles por gráfico
   const [flowType, setFlowType] = useState('area');

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 import ModuleCatalog from '../components/ModuleCatalog';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -30,7 +31,7 @@ const Setup = () => {
   const [step, setStep] = useState(1);
   const [modules, setModules] = useState([]);
   const [modulesLoading, setModulesLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

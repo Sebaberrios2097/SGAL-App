@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import DataTable from '../components/DataTable';
+import { useNotificationMessage } from '../components/NotificationCenter';
 
 const groupMaterials = materials => materials
   .filter(material => !material.idMateriaPrimaReemplazada)
@@ -16,12 +17,12 @@ const RecipeList = () => {
   const navigate = useNavigate();
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   const [showCreate, setShowCreate] = useState(false);
   const [pending, setPending] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(false);
-  const [pendingError, setPendingError] = useState('');
+  const [pendingError, setPendingError] = useNotificationMessage('error');
   const [selectedProduct, setSelectedProduct] = useState('');
 
   useEffect(() => {

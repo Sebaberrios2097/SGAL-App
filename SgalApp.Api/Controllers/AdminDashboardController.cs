@@ -402,14 +402,15 @@ public class AdminDashboardController : ControllerBase
                 usuario = v.IdUsuarioNavigation.NombreUsuario,
                 empleado = v.IdUsuarioNavigation.EmpEmpleados
                     .Where(e => e.Activo).Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault(),
-                montoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
-                montoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                montoAdeudado = v.VenDetalleVenta.Sum(d => (int?)(d.Subtotal - d.MontoCortesia)) ?? 0,
+                montoCortesia = v.VenDetalleVenta.Sum(d => (int?)d.MontoCortesia) ?? 0,
                 items = v.VenDetalleVenta.Select(d => new
                 {
                     d.IdProducto,
                     NombreProducto = d.IdProductoNavigation.NombreProducto,
                     d.Cantidad,
                     d.EsCortesia,
+                    d.MontoCortesia,
                     d.Subtotal
                 }).ToList()
             })

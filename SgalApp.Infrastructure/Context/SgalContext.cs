@@ -44,6 +44,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<InvConfiguracionCortesia> InvConfiguracionCortesia { get; set; }
 
+    public virtual DbSet<InvCategoriasCortesia> InvCategoriasCortesia { get; set; }
+
     public virtual DbSet<InvCategoriasMateria> InvCategoriasMateria { get; set; }
 
     public virtual DbSet<InvDescuentosProductos> InvDescuentosProductos { get; set; }
@@ -361,6 +363,15 @@ public partial class SgalContext : DbContext
             entity.HasOne(d => d.IdProductoNavigation).WithMany(p => p.InvProductosCortesia)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Productos_Cortesia_Inv_Productos");
+        });
+
+        modelBuilder.Entity<InvCategoriasCortesia>(entity =>
+        {
+            entity.ToTable("Inv_Categorias_Cortesia", tb => tb.HasComment("Categorías de producto elegibles para la cortesía cuando la política está en modo MONTO."));
+
+            entity.HasOne(d => d.IdCategoriaProductoNavigation).WithMany(p => p.InvCategoriasCortesia)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Inv_Categorias_Cortesia_Inv_Categoria_Productos");
         });
 
         modelBuilder.Entity<InvRecetas>(entity =>

@@ -32,9 +32,15 @@ public partial class VenDetalleVenta
     [Column("Ind_Exento")]
     public bool? IndExento { get; set; }
 
-    /// <summary>La línea (o porción) es cortesía: su valor no se cobra al empleado.</summary>
+    /// <summary>La línea tiene cortesía (total o parcial): parte de su valor no se cobra al empleado.
+    /// Equivale a <see cref="MontoCortesia"/> &gt; 0 y se conserva por conveniencia de lectura.</summary>
     [Column("Es_Cortesia")]
     public bool EsCortesia { get; set; }
+
+    /// <summary>Porción del subtotal cubierta como cortesía (0..Subtotal). Permite cortesía parcial
+    /// por monto sin dividir la línea. El monto adeudado de la línea es Subtotal - Monto_Cortesia.</summary>
+    [Column("Monto_Cortesia")]
+    public int MontoCortesia { get; set; }
 
     [ForeignKey("IdProducto")]
     [InverseProperty("VenDetalleVenta")]

@@ -74,37 +74,69 @@ namespace SgalApp.Api.Services
                 module.Codigo == "recetas" && module.Activo
                 && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)),
                 cancellationToken);
+            var calibrationEnabled = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(configuration => configuration.IdConfiguracion == 1)
+                .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
+                .FirstOrDefaultAsync(cancellationToken) ?? true;
 
-            // Cupos de cortesía del usuario para hoy (solo para consumos de empleado). Se marca la
-            // línea completa como cortesía si su cantidad cabe en el cupo global y en el del producto.
+            // Cupos de cortesía del usuario para hoy (solo para consumos de empleado). La política es
+            // configurable: modo PRODUCTOS (cupo por cantidad de productos específicos, línea completa)
+            // o modo MONTO (cupo diario en dinero por categorías, con cobertura parcial de la línea).
+            string cortesiaModo = CourtesyModes.Products;
+            // Modo PRODUCTOS
             var cortesiaProductos = new Dictionary<int, int>();   // idProducto -> límite diario del producto
             int cortesiaRestanteGlobal = 0;
             var cortesiaRestantePorProducto = new Dictionary<int, int>(); // idProducto -> restante hoy
+            // Modo MONTO
+            var cortesiaCategorias = new HashSet<int>();          // categorías elegibles
+            int cortesiaMontoRestante = 0;                        // saldo diario en dinero disponible
             if (aplicarCortesia)
             {
                 var dayStart = DateTime.Today;
                 var dayEnd = dayStart.AddDays(1);
-                var limiteGlobal = await _context.InvConfiguracionCortesia
+                var policy = await _context.InvConfiguracionCortesia.AsNoTracking()
                     .Where(x => x.IdConfiguracion == 1)
-                    .Select(x => (int?)x.LimiteDiarioGlobal).FirstOrDefaultAsync(cancellationToken) ?? 2;
-                cortesiaProductos = await _context.InvProductosCortesia.AsNoTracking()
-                    .Where(x => x.Activo == 1 && x.IdProductoNavigation.Activo)
-                    .ToDictionaryAsync(x => x.IdProducto, x => x.CantidadDiaria, cancellationToken);
-                // Cortesías ya consumidas hoy por el usuario (líneas de cortesía de ventas de consumo).
-                var consumidasHoy = await _context.VenDetalleVenta.AsNoTracking()
-                    .Where(d => d.EsCortesia
-                        && d.IdVentaNavigation.IdBitacora != null
-                        && d.IdVentaNavigation.IdUsuario == idUsuario
-                        && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
-                    .GroupBy(d => d.IdProducto)
-                    .Select(g => new { IdProducto = g.Key, Cantidad = g.Sum(x => x.Cantidad) })
-                    .ToListAsync(cancellationToken);
-                var totalConsumidasHoy = consumidasHoy.Sum(x => x.Cantidad);
-                cortesiaRestanteGlobal = Math.Max(0, limiteGlobal - totalConsumidasHoy);
-                foreach (var kv in cortesiaProductos)
+                    .Select(x => new { x.Modo, x.LimiteDiarioGlobal, x.MontoDiarioGlobal })
+                    .FirstOrDefaultAsync(cancellationToken);
+                cortesiaModo = policy?.Modo == CourtesyModes.Money ? CourtesyModes.Money : CourtesyModes.Products;
+
+                if (cortesiaModo == CourtesyModes.Money)
                 {
-                    var usadas = consumidasHoy.FirstOrDefault(x => x.IdProducto == kv.Key)?.Cantidad ?? 0;
-                    cortesiaRestantePorProducto[kv.Key] = Math.Max(0, kv.Value - usadas);
+                    var montoDiario = policy?.MontoDiarioGlobal ?? 0;
+                    cortesiaCategorias = (await _context.InvCategoriasCortesia.AsNoTracking()
+                        .Where(x => x.Activo == 1 && x.IdCategoriaProductoNavigation.Activo)
+                        .Select(x => x.IdCategoriaProducto)
+                        .ToListAsync(cancellationToken)).ToHashSet();
+                    // Dinero de cortesía ya consumido hoy por el usuario (en cualquier producto/categoría).
+                    var montoConsumidoHoy = await _context.VenDetalleVenta.AsNoTracking()
+                        .Where(d => d.IdVentaNavigation.IdBitacora != null
+                            && d.IdVentaNavigation.IdUsuario == idUsuario
+                            && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                        .SumAsync(d => (int?)d.MontoCortesia, cancellationToken) ?? 0;
+                    cortesiaMontoRestante = Math.Max(0, montoDiario - montoConsumidoHoy);
+                }
+                else
+                {
+                    var limiteGlobal = policy?.LimiteDiarioGlobal ?? 2;
+                    cortesiaProductos = await _context.InvProductosCortesia.AsNoTracking()
+                        .Where(x => x.Activo == 1 && x.IdProductoNavigation.Activo)
+                        .ToDictionaryAsync(x => x.IdProducto, x => x.CantidadDiaria, cancellationToken);
+                    // Cortesías ya consumidas hoy por el usuario (líneas de cortesía de ventas de consumo).
+                    var consumidasHoy = await _context.VenDetalleVenta.AsNoTracking()
+                        .Where(d => d.EsCortesia
+                            && d.IdVentaNavigation.IdBitacora != null
+                            && d.IdVentaNavigation.IdUsuario == idUsuario
+                            && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                        .GroupBy(d => d.IdProducto)
+                        .Select(g => new { IdProducto = g.Key, Cantidad = g.Sum(x => x.Cantidad) })
+                        .ToListAsync(cancellationToken);
+                    var totalConsumidasHoy = consumidasHoy.Sum(x => x.Cantidad);
+                    cortesiaRestanteGlobal = Math.Max(0, limiteGlobal - totalConsumidasHoy);
+                    foreach (var kv in cortesiaProductos)
+                    {
+                        var usadas = consumidasHoy.FirstOrDefault(x => x.IdProducto == kv.Key)?.Cantidad ?? 0;
+                        cortesiaRestantePorProducto[kv.Key] = Math.Max(0, kv.Value - usadas);
+                    }
                 }
             }
 
@@ -221,7 +253,7 @@ namespace SgalApp.Api.Services
                         // bloquea la venta. La receta obliga a configurar el café en gramos, por lo
                         // que la conversión a la unidad de stock sigue siendo la misma.
                         decimal cantidadReceta;
-                        if (material.IdMateriaPrimaNavigation.EsCafeCalibrable && idTurno.HasValue)
+                        if (material.IdMateriaPrimaNavigation.EsCafeCalibrable && idTurno.HasValue && calibrationEnabled)
                         {
                             var gramos = await ObtenerGramosCalibracionAsync();
                             if (gramos is not > 0)
@@ -346,25 +378,35 @@ namespace SgalApp.Api.Services
 
                 int subtotal = finalUnitPrice * item.Cantidad;
 
-                // Cortesía automática (consumos de empleado): la línea completa es cortesía si el
-                // producto está habilitado y su cantidad cabe en el cupo global y en el del producto.
-                bool esCortesiaLinea = false;
-                if (aplicarCortesia
+                // Cortesía automática (consumos de empleado). Según el modo configurado:
+                //  - PRODUCTOS: la línea completa es cortesía si el producto está habilitado y su
+                //    cantidad cabe en el cupo global y en el del producto.
+                //  - MONTO: se cubre como cortesía la porción del subtotal que quepa en el saldo
+                //    diario en dinero (cobertura parcial) para productos de categorías elegibles.
+                int montoCortesiaLinea = 0;
+                if (aplicarCortesia && cortesiaModo == CourtesyModes.Money)
+                {
+                    if (cortesiaMontoRestante > 0 && cortesiaCategorias.Contains(prod.IdCategoriaProducto))
+                    {
+                        montoCortesiaLinea = Math.Min(cortesiaMontoRestante, subtotal);
+                        cortesiaMontoRestante -= montoCortesiaLinea;
+                    }
+                }
+                else if (aplicarCortesia
                     && cortesiaProductos.ContainsKey(prod.IdProducto)
                     && item.Cantidad <= cortesiaRestanteGlobal
                     && item.Cantidad <= cortesiaRestantePorProducto.GetValueOrDefault(prod.IdProducto, 0))
                 {
-                    esCortesiaLinea = true;
+                    montoCortesiaLinea = subtotal;
                     cortesiaRestanteGlobal -= item.Cantidad;
                     cortesiaRestantePorProducto[prod.IdProducto] -= item.Cantidad;
-                    montoCortesia += subtotal;
-                }
-                else
-                {
-                    total += subtotal;
                 }
 
-                detail.EsCortesia = esCortesiaLinea;
+                montoCortesia += montoCortesiaLinea;
+                total += subtotal - montoCortesiaLinea;
+
+                detail.EsCortesia = montoCortesiaLinea > 0;
+                detail.MontoCortesia = montoCortesiaLinea;
                 detail.PrecioNormal = prod.Precio + recargoUnitario;
                 detail.PrecioUnitario = finalUnitPrice;
                 detail.Subtotal = subtotal;

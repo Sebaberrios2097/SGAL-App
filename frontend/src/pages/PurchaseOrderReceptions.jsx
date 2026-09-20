@@ -3,13 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DataTable from '../components/DataTable';
 import PageHeader from '../components/PageHeader';
+import { confirmDialog, useNotificationMessage } from '../components/NotificationCenter';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 
 const ReceptionList = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     document.title = `Recepciones - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
@@ -51,7 +52,7 @@ const ReceptionDetail = ({ id }) => {
   const [receipts, setReceipts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   useEffect(() => {
     fetch(`/api/purchase-orders/${id}`).then(async response => {
@@ -79,7 +80,7 @@ const ReceptionDetail = ({ id }) => {
   const update = (detailId, field, value) => setReceipts(current => ({ ...current, [detailId]: { ...current[detailId], [field]: value } }));
 
   const receive = async () => {
-    if (!window.confirm('¿Confirmar la recepción y actualizar el inventario?')) return;
+    if (!await confirmDialog({ title: 'Confirmar recepción', message: 'La recepción actualizará las existencias del inventario.', confirmText: 'Recibir productos' })) return;
     setSaving(true); setError('');
     try {
       const items = order.items.map(item => ({ idOrdenDetalle: item.idOrdenDetalle, ...receipts[item.idOrdenDetalle], nuevoPrecioVenta: receipts[item.idOrdenDetalle].nuevoPrecioVenta === '' ? null : Number(receipts[item.idOrdenDetalle].nuevoPrecioVenta) }));

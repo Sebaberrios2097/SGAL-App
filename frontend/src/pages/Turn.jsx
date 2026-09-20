@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { notify } from '../components/NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import {
   Clock,
@@ -58,13 +59,15 @@ const TurnAction = ({ icon: Icon, label, tone = 'secondary', enabled, to, onClic
 
 const Turn = () => {
   const { user, can } = useAuth();
-  const { isModuleEnabled } = useOrganization();
+  const { isModuleEnabled, turnsRequireReconciliation } = useOrganization();
   const salesEnabled = isModuleEnabled('ventas');
+  const logbookEnabled = salesEnabled;
   const [lastTurn, setLastTurn] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
   const [showOpening, setShowOpening] = useState(false);
   const [showClosing, setShowClosing] = useState(false);
+  const [directAction, setDirectAction] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
 
   const employeeName = user?.empleado
@@ -72,7 +75,7 @@ const Turn = () => {
     : user?.nombreUsuario || 'Usuario';
 
   const canOperateTurns = user?.permissions?.some(p =>
-    p.startsWith('turnos.') || p.startsWith('bitacora.') || (salesEnabled && p.startsWith('ventas.')));
+    p.startsWith('turnos.') || (logbookEnabled && p.startsWith('bitacora.')) || (salesEnabled && p.startsWith('ventas.')));
 
   useEffect(() => {
     document.title = `Turno - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
@@ -119,6 +122,29 @@ const Turn = () => {
   const startReason = cajaOcupada ? 'La caja está ocupada por otro usuario.' : 'Ya tienes un turno activo.';
   const openReason = cajaOcupada ? 'La caja está ocupada por otro usuario.' : 'Inicia tu turno para usar esta opción.';
 
+  const runTurnActionWithoutReconciliation = async (action) => {
+    if (directAction) return;
+    setDirectAction(true);
+    try {
+      const response = await fetch(`/api/turn/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action === 'open'
+          ? { idUsuario: user.idUsuario, desglose: [] }
+          : { idTurno: activeTurnInfo.activeTurn.idTurno, desgloseEfectivo: [], desgloseOtrosMetodos: [] })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.mensaje || `No fue posible ${action === 'open' ? 'iniciar' : 'cerrar'} el turno.`);
+      window.dispatchEvent(new CustomEvent('turn-status-changed', { detail: data }));
+      notify.success(action === 'open' ? 'Turno iniciado correctamente.' : 'Turno cerrado correctamente.');
+      setRefreshToken(value => value + 1);
+    } catch (error) {
+      notify.error(error.message);
+    } finally {
+      setDirectAction(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in" style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Compact header + actions */}
@@ -147,13 +173,13 @@ const Turn = () => {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', borderTop: '1px solid var(--panel-border)', paddingTop: '18px' }}>
             {can('turnos.abrir') && (
               <TurnAction icon={PlayCircle} label="Iniciar turno" tone="primary"
-                enabled={sinTurno} onClick={() => setShowOpening(true)} reason={startReason} />
+                enabled={sinTurno && !directAction} onClick={() => turnsRequireReconciliation ? setShowOpening(true) : runTurnActionWithoutReconciliation('open')} reason={startReason} />
             )}
             {salesEnabled && can('ventas.operar') && (
               <TurnAction icon={ShoppingBag} label="Ir a Ventas" tone={belongsToUser ? 'primary' : 'secondary'}
                 enabled={belongsToUser} to="/sales" reason={openReason} />
             )}
-            {can('bitacora.propia.ver') && (
+            {logbookEnabled && can('bitacora.propia.ver') && (
               <TurnAction icon={BookOpen} label="Bitácora" tone="secondary"
                 enabled={belongsToUser} to={`/logbook/${activeTurnInfo.activeTurn?.idTurno}`} reason={openReason} />
             )}
@@ -163,7 +189,7 @@ const Turn = () => {
             )}
             {can('turnos.cerrar') && (
               <TurnAction icon={StopCircle} label="Cerrar turno" tone="danger"
-                enabled={belongsToUser} onClick={() => setShowClosing(true)} reason="No tienes un turno abierto para cerrar." />
+                enabled={belongsToUser && !directAction} onClick={() => turnsRequireReconciliation ? setShowClosing(true) : runTurnActionWithoutReconciliation('close')} reason="No tienes un turno abierto para cerrar." />
             )}
           </div>
         )}
@@ -253,7 +279,7 @@ const Turn = () => {
                     color: '#1a73e8',
                     border: '1.5px solid #d2e3fc'
                   }}>
-                    ✓ Cerrado y Cuadrado
+                    {lastTurn.diferenciaTotal === null ? '✓ Cerrado sin cuadratura' : '✓ Cerrado y cuadrado'}
                   </span>
                 )}
                 {lastTurn.idEstadoTurno === 3 && (
@@ -327,7 +353,7 @@ const Turn = () => {
                     <strong>{lastTurn.salesCount}</strong> ventas registradas
                   </div>
 
-                  {lastTurn.idEstadoTurno !== 1 && (
+                  {lastTurn.idEstadoTurno !== 1 && lastTurn.diferenciaTotal !== null && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem' }}>
                       <CheckCircle2 size={16} color={lastTurn.diferenciaTotal === 0 ? '#137333' : lastTurn.diferenciaTotal > 0 ? '#1a73e8' : '#c5221f'} />
                       <span>

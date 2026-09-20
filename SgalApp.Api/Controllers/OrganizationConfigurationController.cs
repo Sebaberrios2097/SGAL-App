@@ -32,13 +32,13 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         LogoLocations.Select(x => x.Codigo).ToHashSet(StringComparer.OrdinalIgnoreCase);
     private const long MaxBackgroundBytes = 6 * 1024 * 1024;
     // Zonas con fondo personalizable y sus dimensiones exactas obligatorias (ancho x alto).
-    private static readonly Dictionary<string, (int Ancho, int Alto)> BackgroundZones = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, BackgroundZoneDefinition> BackgroundZones = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["login"] = (1920, 1080),
-        ["sidebar"] = (600, 2024),
-        ["ventas"] = (1920, 1080),
-        ["comandas"] = (1920, 1080),
-        ["carta"] = (1920, 1080)
+        ["login"] = new(1920, 1080, "configuracion_sistema"),
+        ["sidebar"] = new(600, 2024, "configuracion_sistema"),
+        ["ventas"] = new(1920, 1080, "ventas"),
+        ["comandas"] = new(1920, 1080, "comandas"),
+        ["carta"] = new(1920, 1080, "ventas")
     };
 
     [AllowAnonymous]
@@ -57,7 +57,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.ColorPrimario,
                 x.ColorSecundario,
                 x.ColorAcento,
-                x.ColorFondo
+                x.ColorFondo,
+                x.TurnosRequierenCuadratura,
+                x.BitacoraIncluyeCalibracion
             })
             .FirstOrDefaultAsync();
 
@@ -424,6 +426,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
 
     private async Task<List<object>> BuildBackgroundsAsync()
     {
+        var enabledModules = await EnabledModuleCodes().ToHashSetAsync();
         var fondos = await context.OrgFondos.AsNoTracking()
             .Select(x => new
             {
@@ -437,7 +440,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             })
             .ToListAsync();
 
-        return BackgroundZones.Select(zone =>
+        return BackgroundZones
+            .Where(zone => enabledModules.Contains(zone.Value.ModuloRequerido))
+            .Select(zone =>
         {
             var fondo = fondos.FirstOrDefault(x => x.Zona == zone.Key);
             return (object)new
@@ -496,7 +501,18 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
     [HttpGet("modules")]
     [Permission(Permissions.SystemModulesManage)]
     public async Task<IActionResult> GetModules()
-        => Ok(await BuildModuleCatalogAsync());
+        => Ok(new
+        {
+            Modulos = await BuildModuleCatalogAsync(),
+            TurnosRequierenCuadratura = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.TurnosRequierenCuadratura)
+                .FirstOrDefaultAsync() ?? true,
+            BitacoraIncluyeCalibracion = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.BitacoraIncluyeCalibracion)
+                .FirstOrDefaultAsync() ?? true
+        });
 
     /// <summary>
     /// Catálogo disponible para el primer paso de una instalación nueva. Deja de
@@ -595,17 +611,24 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         if (moduleCode == "turnos")
         {
             if (permissionCode.StartsWith("registros_turnos.")) return "Registros administrativos";
-            if (permissionCode.StartsWith("bitacora.")) return "Bitácora";
+            if (permissionCode.StartsWith("bitacora.consumos.")) return "Consumos de usuarios";
             if (permissionCode.Contains(".cortesia.")) return "Cortesías";
             return "Operación de turnos";
         }
 
+        if (moduleCode == "bitacora") return "Bitácora";
+        if (moduleCode == "comandas") return "Comandas";
+
         if (moduleCode == "ventas")
         {
             if (permissionCode == "inicio.dashboard.ver") return "Panel administrativo";
+            if (permissionCode.StartsWith("turnos.")) return "Operación de turnos";
+            if (permissionCode.StartsWith("registros_turnos.")) return "Registros administrativos";
+            if (permissionCode.StartsWith("bitacora.consumos.")) return "Consumos de usuarios";
+            if (permissionCode.StartsWith("bitacora.")) return "Bitácora";
+            if (permissionCode.Contains(".cortesia.")) return "Cortesías";
             if (permissionCode.StartsWith("inventario.descuentos.") || permissionCode == "ventas.descuento.aplicar") return "Descuentos";
             if (permissionCode.StartsWith("ingredientes_extra.")) return "Ingredientes extra";
-            if (permissionCode.StartsWith("ventas.comandas.")) return "Comandas";
             if (permissionCode.StartsWith("ventas.documentos.")) return "Comprobantes";
             return "Punto de venta";
         }
@@ -658,6 +681,43 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             }
         }
 
+        if (!selected.Contains("recetas"))
+        {
+            await context.InvProductos
+                .Where(product => product.Stock == null || product.RequiereReceta == true || product.AceptaIngredientesExtra)
+                .ExecuteUpdateAsync(update => update
+                    .SetProperty(product => product.Stock, product => product.Stock ?? 0)
+                    .SetProperty(product => product.RequiereReceta, false)
+                    .SetProperty(product => product.AceptaIngredientesExtra, false)
+                    .SetProperty(product => product.FechaModificacion, DateTime.Now));
+            await context.InvRecetas.Where(recipe => recipe.Estado)
+                .ExecuteUpdateAsync(update => update
+                    .SetProperty(recipe => recipe.Estado, false)
+                    .SetProperty(recipe => recipe.FechaModificacion, DateTime.Now));
+        }
+
+        if (dto.TurnosRequierenCuadratura.HasValue)
+        {
+            var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
+            if (configuration != null)
+            {
+                configuration.TurnosRequierenCuadratura = dto.TurnosRequierenCuadratura.Value;
+                configuration.FechaActualizacion = DateTime.UtcNow;
+            }
+        }
+        if (dto.BitacoraIncluyeCalibracion.HasValue)
+        {
+            var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
+            if (configuration != null)
+            {
+                configuration.BitacoraIncluyeCalibracion = dto.BitacoraIncluyeCalibracion.Value;
+                configuration.FechaActualizacion = DateTime.UtcNow;
+            }
+            if (!dto.BitacoraIncluyeCalibracion.Value)
+                await context.InvMateriaPrima.Where(material => material.EsCafeCalibrable)
+                    .ExecuteUpdateAsync(update => update.SetProperty(material => material.EsCafeCalibrable, false));
+        }
+
         await context.SaveChangesAsync();
         return Ok(new { ModulosHabilitados = await EnabledModuleCodes().ToListAsync() });
     }
@@ -690,8 +750,11 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         ColorPrimario = "#1F4E5F",
         ColorSecundario = "#163A47",
         ColorAcento = "#D97706",
-        ColorFondo = "#F8FAFC"
+        ColorFondo = "#F8FAFC",
+        TurnosRequierenCuadratura = true,
+        BitacoraIncluyeCalibracion = true
     };
 
     private sealed record LogoLocationDefinition(string Codigo, string Nombre, string Descripcion);
+    private sealed record BackgroundZoneDefinition(int Ancho, int Alto, string ModuloRequerido);
 }

@@ -116,22 +116,15 @@ const ModuleRoute = ({ required, children }) => {
     : <Navigate to="/welcome" replace />;
 };
 
-// Si Turnos está habilitado, Ventas exige que el usuario sea dueño del turno abierto.
-// Sin Turnos, el punto de venta funciona directamente con la identidad autenticada.
+// Operación de caja siempre exige que el usuario sea dueño de un turno abierto.
 const ActiveTurnRoute = ({ children }) => {
   const { user } = useAuth();
-  const { isModuleEnabled, loading: organizationLoading } = useOrganization();
-  const turnsEnabled = isModuleEnabled('turnos');
+  const { loading: organizationLoading } = useOrganization();
   const [checking, setChecking] = React.useState(true);
   const [allowed, setAllowed] = React.useState(false);
 
   React.useEffect(() => {
     if (organizationLoading) return undefined;
-    if (!turnsEnabled) {
-      setAllowed(true);
-      setChecking(false);
-      return undefined;
-    }
     let active = true;
     fetch(`/api/turn/active?idUsuario=${user.idUsuario}`)
       .then(response => response.ok ? response.json() : Promise.reject())
@@ -145,7 +138,7 @@ const ActiveTurnRoute = ({ children }) => {
         if (active) setChecking(false);
       });
     return () => { active = false; };
-  }, [user.idUsuario, turnsEnabled, organizationLoading]);
+  }, [user.idUsuario, organizationLoading]);
 
   if (organizationLoading || checking) return <div style={{ padding: '40px', textAlign: 'center' }}>Verificando acceso…</div>;
   return allowed ? children : <Navigate to="/" replace />;
@@ -196,11 +189,6 @@ const LandingRoute = () => {
   if (loading) return null;
   const salesEnabled = enabledModules.includes('ventas');
   const hasAdministrativePanel = salesEnabled;
-  const canOperateTurns = enabledModules.includes('turnos') && (
-    TURN_PERMISSIONS.filter(code => code !== 'ventas.operar').some(code => user?.permissions?.includes(code))
-    || (enabledModules.includes('ventas') && user?.permissions?.includes('ventas.operar')));
-  if (canOperateTurns) return <Navigate to="/turn" replace />;
-  if (salesEnabled && user?.permissions?.includes('ventas.operar')) return <Navigate to="/sales" replace />;
   if (hasAdministrativePanel && user?.permissions?.includes('inicio.dashboard.ver')) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -244,11 +232,11 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* Destino inicial: turno, panel administrativo o bienvenida neutra. */}
+            {/* El panel es siempre el inicio cuando está disponible; la bienvenida es el fallback neutro. */}
             <Route index element={<LandingRoute />} />
             <Route path="welcome" element={<Welcome />} />
             <Route path="dashboard" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="inicio.dashboard.ver"><AdminDashboard /></PermissionRoute></ModuleRoute>} />
-            <Route path="turn" element={<ModuleRoute required={['turnos']}><PermissionRoute anyOf={TURN_PERMISSIONS}><Turn /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn" element={<ModuleRoute required={['ventas']}><PermissionRoute anyOf={TURN_PERMISSIONS}><Turn /></PermissionRoute></ModuleRoute>} />
             <Route path="employees" element={<PermissionRoute permission="usuarios.ver"><EmployeeManagement /></PermissionRoute>} />
             <Route path="employees/:id/edit" element={<PermissionRoute anyOf={['usuarios.empleado.editar','usuarios.cuenta.editar','usuarios.password.restablecer']}><EmployeeEdit /></PermissionRoute>} />
             <Route path="users" element={<Navigate to="/employees" replace />} />
@@ -266,9 +254,9 @@ function App() {
             <Route path="purchase-orders/receptions/:id" element={<PermissionRoute permission="ordenes_compra.recibir"><PurchaseOrderReceptions /></PermissionRoute>} />
             <Route path="purchase-orders/:id" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrderDetail /></PermissionRoute>} />
             <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
-            <Route path="admin/turn-records" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute></ModuleRoute>} />
-            <Route path="admin/turns-dashboard" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute></ModuleRoute>} />
-            <Route path="turn/courtesy" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
+            <Route path="admin/turn-records" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute></ModuleRoute>} />
+            <Route path="admin/turns-dashboard" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn/courtesy" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/courtesy" element={<Navigate to="/turn/courtesy" replace />} />
             <Route path="settings/raw-materials" element={<ModuleRoute required={['recetas']}><PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/units" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.unidades.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
@@ -276,9 +264,9 @@ function App() {
             <Route path="settings/brands" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
-            <Route path="turn-history" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
-            <Route path="turn/consumptions" element={<ModuleRoute required={['turnos']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />
-            <Route path="logbook/:idTurno" element={<ModuleRoute required={['turnos']}><PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn-history" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
+            <Route path="turn/consumptions" element={<ModuleRoute required={['ventas']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />
+            <Route path="logbook/:idTurno" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute></ModuleRoute>} />
           </Route>
 
           {/* Standalone Sales View */}

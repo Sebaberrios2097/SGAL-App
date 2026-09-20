@@ -3,6 +3,7 @@ import {
   ShoppingBag, TrendingUp, Users, Wallet
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
@@ -72,7 +73,7 @@ const TurnsDashboard = () => {
   const [customTo, setCustomTo] = useState(iso(today));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   const [flowType, setFlowType] = useState('bars');
   const [expandedBaristas, setExpandedBaristas] = useState([]);

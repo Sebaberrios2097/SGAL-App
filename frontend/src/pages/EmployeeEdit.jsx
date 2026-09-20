@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNotificationMessage } from '../components/NotificationCenter';
 import { Link, useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -35,8 +36,8 @@ const EmployeeEdit = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [success, setSuccess] = useNotificationMessage('success');
   const [fieldErrors, setFieldErrors] = useState({});
 
   const canEditEmployee = can('usuarios.empleado.editar');

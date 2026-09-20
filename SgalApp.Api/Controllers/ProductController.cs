@@ -22,6 +22,10 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> GetProducts()
         {
+            var calibrationEnabled = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(configuration => configuration.IdConfiguracion == 1)
+                .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
+                .FirstOrDefaultAsync() ?? true;
             // Receta activa de cada producto con sus materiales (materia base de cada alternativa y
             // si es café calibrable). Cada producto con receta tiene la suya propia e independiente.
             var recetas = await _context.InvRecetas.AsNoTracking()
@@ -76,7 +80,7 @@ namespace SgalApp.Api.Controllers
                 {
                     foreach (var m in receta.Materiales)
                     {
-                        if (m.EsCafeCalibrable) requiereCalibracion = true;
+                        if (calibrationEnabled && m.EsCafeCalibrable) requiereCalibracion = true;
                         if (m.IdMateriaPrimaReemplazada.HasValue)
                             alternativas.Add(new
                             {
@@ -122,7 +126,8 @@ namespace SgalApp.Api.Controllers
             {
                 return BadRequest(new { Mensaje = "El nombre del producto es obligatorio" });
             }
-            if ((dto.RequiereReceta || dto.AceptaIngredientesExtra) && !await IsMaterialsModuleEnabledAsync())
+            var materialsEnabled = await IsMaterialsModuleEnabledAsync();
+            if ((dto.RequiereReceta || dto.AceptaIngredientesExtra) && !materialsEnabled)
                 return BadRequest(new { Mensaje = "Habilite el módulo Recetas y materiales para configurar composición o ingredientes extra." });
 
             // El código es opcional: si viene vacío se guarda como null.
@@ -169,7 +174,7 @@ namespace SgalApp.Api.Controllers
                 NombreProducto = dto.NombreProducto,
                 DescripcionProducto = dto.DescripcionProducto,
                 Precio = dto.Precio,
-                Stock = dto.RequiereReceta ? null : dto.Stock,
+                Stock = dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? null : 0)),
                 RequiereReceta = dto.RequiereReceta,
                 AceptaIngredientesExtra = dto.AceptaIngredientesExtra,
                 FechaIngreso = DateTime.Now,
@@ -218,7 +223,8 @@ namespace SgalApp.Api.Controllers
             {
                 return NotFound(new { Mensaje = "Producto no encontrado" });
             }
-            if (!await IsMaterialsModuleEnabledAsync()
+            var materialsEnabled = await IsMaterialsModuleEnabledAsync();
+            if (!materialsEnabled
                 && (dto.RequiereReceta != (product.RequiereReceta ?? false)
                     || dto.AceptaIngredientesExtra != product.AceptaIngredientesExtra))
                 return BadRequest(new { Mensaje = "Habilite el módulo Recetas y materiales para modificar la composición del producto." });
@@ -263,7 +269,7 @@ namespace SgalApp.Api.Controllers
             product.NombreProducto = dto.NombreProducto;
             product.DescripcionProducto = dto.DescripcionProducto;
             product.Precio = dto.Precio;
-            product.Stock = dto.RequiereReceta ? null : dto.Stock;
+            product.Stock = dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? product.Stock : 0));
             product.RequiereReceta = dto.RequiereReceta;
             product.AceptaIngredientesExtra = dto.AceptaIngredientesExtra;
             product.FechaModificacion = DateTime.Now;

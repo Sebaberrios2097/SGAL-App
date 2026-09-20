@@ -87,7 +87,7 @@ namespace SgalApp.Api.Services
             }
 
             var turnsEnabled = await _context.SegModulos.AsNoTracking().AnyAsync(module =>
-                module.Codigo == "turnos" && module.Activo
+                module.Codigo == "ventas" && module.Activo
                 && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
                     && module.ConfiguracionOrganizacion.Habilitado)), cancellationToken);
             TurTurno? turn = null;

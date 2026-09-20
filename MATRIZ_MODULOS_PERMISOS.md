@@ -25,8 +25,8 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | `inventario` | Inventario | `/inventory`, `/settings/product-categories` | Permisos de productos y categorías; stock simple por unidades |
 | `recetas` | Recetas y materiales | `/recipes`, `/settings/raw-materials` y catálogos de materiales | Permisos `recetas.*`, `ingredientes_extra.*` y `configuracion_inventario.*`, salvo cortesías |
 | `ordenes_compra` | Compras y proveedores | `/purchase-orders`, `/providers` | Permisos `ordenes_compra.*` y `proveedores.*` |
-| `turnos` | Turnos | `/turn`, `/turn-history`, `/logbook/:idTurno`, `/admin/turn-records` | Permisos `turnos.*`, `bitacora.*`, `registros_turnos.*` y cortesías |
-| `ventas` | Ventas | `/sales`, `/dashboard` y descuentos | Permisos `ventas.*`, `inventario.descuentos.*` e `inicio.dashboard.ver`; el turno solo es obligatorio si el módulo Turnos está habilitado |
+| `ventas` | Operación de caja | `/sales`, `/turn`, `/logbook/:idTurno`, `/turn-history`, `/turn/consumptions`, `/dashboard` y registros administrativos | Permisos `ventas.*`, `turnos.*`, `bitacora.*`, `registros_turnos.*`, cortesías, descuentos y panel; toda venta exige un turno abierto |
+| `comandas` | Comandas | Sección Comandas de `/sales` | Permiso `ventas.comandas.gestionar`; depende de Operación de caja y Recetas |
 | `sesion` | Inicio de sesión y contraseña | `/login` | Público / usuario identificado por la solicitud |
 
 `inventario` y `ordenes_compra` son nucleares y siempre están habilitados. Integraciones no forma parte del catálogo activo: sus permisos están desactivados hasta que se diseñe un apartado exclusivo para el rol Desarrollador.
@@ -59,7 +59,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
-| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` (módulo Ventas) | `GET /api/admin-dashboard/monthly-summary` |
+| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` (módulo Operación de caja) | `GET /api/admin-dashboard/monthly-summary` |
 | Ver panel de turnos (dashboard analítico) | `registros_turnos.dashboard.ver` | `GET /api/admin-dashboard/turns-overview` |
 | Ver calendario administrativo de turnos | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/calendar` |
 | Ver turnos de un día | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/day` |
@@ -100,7 +100,7 @@ La edición separa los permisos sobre datos personales, cuenta de acceso y contr
 
 | Recurso | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|---|
-| Productos | Listar y ver stock/configuración (el código es opcional y no se muestra en la lista) | `inventario.productos.ver` | `GET /api/product` |
+| Productos | Listar y ver stock/configuración y código SKU opcional | `inventario.productos.ver` | `GET /api/product` |
 | Productos | Crear | `inventario.productos.crear` | `POST /api/product` |
 | Productos | Editar | `inventario.productos.editar` | `PUT /api/product/{id}` |
 | Productos | Activar o desactivar | `inventario.productos.estado.modificar` | `PUT /api/product/{id}/status` |

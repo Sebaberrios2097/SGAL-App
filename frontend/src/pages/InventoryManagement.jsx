@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirmDialog, useNotificationMessage } from '../components/NotificationCenter';
 import { 
   Plus, 
   Edit2, 
@@ -33,8 +34,8 @@ const InventoryManagement = () => {
   const [discounts, setDiscounts] = useState([]);
   
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [success, setSuccess] = useNotificationMessage('success');
 
   // Modals state
   const [showProductModal, setShowProductModal] = useState(false);
@@ -43,7 +44,7 @@ const InventoryManagement = () => {
   // Quick Category add state (inline inside product modal)
   const [showQuickCategory, setShowQuickCategory] = useState(false);
   const [quickCategoryName, setQuickCategoryName] = useState('');
-  const [quickCategoryError, setQuickCategoryError] = useState('');
+  const [quickCategoryError, setQuickCategoryError] = useNotificationMessage('error');
 
   // Editing items state
   const [editingProduct, setEditingProduct] = useState(null);
@@ -398,7 +399,7 @@ const InventoryManagement = () => {
   };
 
   const handleDeleteDiscount = async (disc) => {
-    if (!window.confirm('¿Está seguro de eliminar esta oferta permanentemente?')) return;
+    if (!await confirmDialog({ title: 'Eliminar oferta', message: 'Esta oferta se eliminará permanentemente.', confirmText: 'Eliminar', tone: 'danger' })) return;
     try {
       const res = await fetch(`/api/discount/${disc.idDescuentoProducto}`, {
         method: 'DELETE'
@@ -553,6 +554,7 @@ const InventoryManagement = () => {
                 {prod.descripcionProducto && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>{prod.descripcionProducto}</div>}
               </>
             ) },
+            { key: 'sku', header: 'Código SKU', sortValue: p => p.codigoProducto || '', cell: prod => prod.codigoProducto || '—' },
             { key: 'categoria', header: 'Categoría', sortValue: p => p.nombreCategoriaProducto, cell: prod => <span className="badge" style={{ fontSize: '0.75rem', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>{prod.nombreCategoriaProducto}</span> },
             { key: 'precio', header: 'Precio Original', sortValue: p => p.precio, cell: prod => <span style={{ fontWeight: 600 }}>${prod.precio.toLocaleString('es-CL')}</span> },
             materialsEnabled && { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
@@ -633,7 +635,6 @@ const InventoryManagement = () => {
                     value={productForm.nombreProducto}
                     onChange={(e) => setProductForm(prev => ({ ...prev, nombreProducto: e.target.value }))}
                     style={inputStyle}
-                    placeholder="Ej. Café Espresso Doble"
                     maxLength={150}
                     required
                   />
@@ -646,7 +647,6 @@ const InventoryManagement = () => {
                     options={categories.filter(c => c.activo).map(c => ({ value: c.idCategoriaProducto, label: c.nombreCategoriaProducto }))}
                     value={productForm.idCategoriaProducto}
                     onChange={(val) => setProductForm(prev => ({ ...prev, idCategoriaProducto: val }))}
-                    placeholder="Buscar y seleccionar categoría..."
                     noOptionsMessage="No hay categorías con ese nombre"
                     customActionButton={can('inventario.categorias.crear') ? (
                       <button
@@ -662,15 +662,14 @@ const InventoryManagement = () => {
                   />
                 </div>
 
-                {/* Código (opcional): no se muestra en la lista de productos */}
+                {/* Código SKU opcional del producto */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Código del Producto <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(opcional)</span></label>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Código SKU <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(opcional)</span></label>
                   <input
                     type="text"
                     value={productForm.codigoProducto}
                     onChange={(e) => setProductForm(prev => ({ ...prev, codigoProducto: e.target.value.toUpperCase() }))}
                     style={inputStyle}
-                    placeholder="Ej. BEB-ESP-DOBLE"
                     maxLength={50}
                   />
                 </div>
@@ -686,7 +685,6 @@ const InventoryManagement = () => {
                         value={productForm.precio}
                         onChange={(e) => setProductForm(prev => ({ ...prev, precio: e.target.value }))}
                         style={{ ...inputStyle, paddingLeft: '28px' }}
-                        placeholder="Ej. 2500"
                         min={1}
                         required
                       />
@@ -694,13 +692,12 @@ const InventoryManagement = () => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Stock Inicial (Opcional)</label>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Stock inicial <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(por defecto 0)</span></label>
                     <input
                       type="number"
                       value={productForm.stock}
                       onChange={(e) => setProductForm(prev => ({ ...prev, stock: e.target.value }))}
                       style={inputStyle}
-                      placeholder={materialsEnabled ? 'Ej. 50 (Vacío si usa receta)' : 'Ej. 50'}
                       min={0}
                       disabled={materialsEnabled && productForm.requiereReceta}
                     />
@@ -803,7 +800,6 @@ const InventoryManagement = () => {
                     value={productForm.descripcionProducto}
                     onChange={(e) => setProductForm(prev => ({ ...prev, descripcionProducto: e.target.value }))}
                     style={{ ...inputStyle, minHeight: '80px', height: 'auto', resize: 'vertical', padding: '10px 14px' }}
-                    placeholder="Breve descripción del producto (ingredientes, tamaño)..."
                     maxLength={300}
                   />
                 </div>
@@ -866,7 +862,6 @@ const InventoryManagement = () => {
                         value={quickCategoryName}
                         onChange={(e) => setQuickCategoryName(e.target.value)}
                         style={inputStyle}
-                        placeholder="Ej. Café en Grano, Bollería..."
                         maxLength={100}
                         autoFocus
                         required
@@ -931,7 +926,6 @@ const InventoryManagement = () => {
                     options={products.filter(p => p.activo).map(p => ({ value: p.idProducto, label: `${p.nombreProducto} ($${p.precio.toLocaleString('es-CL')})` }))}
                     value={discountForm.idProducto}
                     onChange={(val) => setDiscountForm(prev => ({ ...prev, idProducto: val }))}
-                    placeholder="Buscar y seleccionar producto..."
                     noOptionsMessage="No hay productos disponibles con ese nombre"
                   />
                 </div>
@@ -945,7 +939,6 @@ const InventoryManagement = () => {
                       value={discountForm.porcentajeDescuento}
                       onChange={(e) => setDiscountForm(prev => ({ ...prev, porcentajeDescuento: e.target.value }))}
                       style={{ ...inputStyle, paddingLeft: '28px' }}
-                      placeholder="Ej. 15"
                       min={1}
                       max={100}
                       required

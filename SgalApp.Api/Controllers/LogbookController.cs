@@ -44,33 +44,61 @@ namespace SgalApp.Api.Controllers
             var dayStart = DateTime.Today;
             var dayEnd = dayStart.AddDays(1);
 
-            // Cortesías consumidas hoy por el usuario: líneas de cortesía de sus ventas de consumo.
-            var courtesyConsumedToday = await _context.VenDetalleVenta.AsNoTracking()
-                .Where(d => d.EsCortesia
-                    && d.IdVentaNavigation.IdBitacora != null
-                    && d.IdVentaNavigation.IdUsuario == idUsuario
-                    && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
-                .SumAsync(d => (int?)d.Cantidad) ?? 0;
-            var courtesyLimit = await _context.InvConfiguracionCortesia
+            // La política de cortesía es configurable: modo PRODUCTOS (cupo por cantidad de productos)
+            // o modo MONTO (cupo diario en dinero por categorías). El cupo disponible se expresa en la
+            // unidad del modo activo: unidades para PRODUCTOS, dinero para MONTO.
+            var courtesyPolicy = await _context.InvConfiguracionCortesia.AsNoTracking()
                 .Where(x => x.IdConfiguracion == 1)
-                .Select(x => (int?)x.LimiteDiarioGlobal)
-                .FirstOrDefaultAsync() ?? 2;
+                .Select(x => new { x.Modo, x.LimiteDiarioGlobal, x.MontoDiarioGlobal })
+                .FirstOrDefaultAsync();
+            var courtesyMode = courtesyPolicy?.Modo == CourtesyModes.Money ? CourtesyModes.Money : CourtesyModes.Products;
 
-            var courtesyProducts = await _context.InvProductosCortesia.AsNoTracking()
-                .Where(x => x.Activo == 1 && x.IdProductoNavigation.Activo)
-                .OrderBy(x => x.IdProductoNavigation.NombreProducto)
-                .Select(x => new
-                {
-                    x.IdProducto,
-                    x.IdProductoNavigation.NombreProducto,
-                    x.CantidadDiaria,
-                    ConsumidoHoy = _context.VenDetalleVenta
-                        .Where(d => d.EsCortesia && d.IdProducto == x.IdProducto
-                            && d.IdVentaNavigation.IdBitacora != null
-                            && d.IdVentaNavigation.IdUsuario == idUsuario
-                            && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
-                        .Sum(d => (int?)d.Cantidad) ?? 0
-                }).ToListAsync();
+            int courtesyLimit;
+            int courtesyConsumedToday;
+            object courtesyProducts = Array.Empty<object>();
+            object courtesyCategories = Array.Empty<object>();
+
+            if (courtesyMode == CourtesyModes.Money)
+            {
+                courtesyLimit = courtesyPolicy?.MontoDiarioGlobal ?? 0;
+                // Dinero de cortesía ya consumido hoy por el usuario (en cualquier producto/categoría).
+                courtesyConsumedToday = await _context.VenDetalleVenta.AsNoTracking()
+                    .Where(d => d.IdVentaNavigation.IdBitacora != null
+                        && d.IdVentaNavigation.IdUsuario == idUsuario
+                        && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                    .SumAsync(d => (int?)d.MontoCortesia) ?? 0;
+                courtesyCategories = await _context.InvCategoriasCortesia.AsNoTracking()
+                    .Where(x => x.Activo == 1 && x.IdCategoriaProductoNavigation.Activo)
+                    .OrderBy(x => x.IdCategoriaProductoNavigation.NombreCategoriaProducto)
+                    .Select(x => new { x.IdCategoriaProducto, x.IdCategoriaProductoNavigation.NombreCategoriaProducto })
+                    .ToListAsync();
+            }
+            else
+            {
+                courtesyLimit = courtesyPolicy?.LimiteDiarioGlobal ?? 2;
+                // Cortesías (unidades) consumidas hoy por el usuario: líneas de cortesía de sus ventas.
+                courtesyConsumedToday = await _context.VenDetalleVenta.AsNoTracking()
+                    .Where(d => d.EsCortesia
+                        && d.IdVentaNavigation.IdBitacora != null
+                        && d.IdVentaNavigation.IdUsuario == idUsuario
+                        && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                    .SumAsync(d => (int?)d.Cantidad) ?? 0;
+                courtesyProducts = await _context.InvProductosCortesia.AsNoTracking()
+                    .Where(x => x.Activo == 1 && x.IdProductoNavigation.Activo)
+                    .OrderBy(x => x.IdProductoNavigation.NombreProducto)
+                    .Select(x => new
+                    {
+                        x.IdProducto,
+                        x.IdProductoNavigation.NombreProducto,
+                        x.CantidadDiaria,
+                        ConsumidoHoy = _context.VenDetalleVenta
+                            .Where(d => d.EsCortesia && d.IdProducto == x.IdProducto
+                                && d.IdVentaNavigation.IdBitacora != null
+                                && d.IdVentaNavigation.IdUsuario == idUsuario
+                                && d.IdVentaNavigation.FechaVenta >= dayStart && d.IdVentaNavigation.FechaVenta < dayEnd)
+                            .Sum(d => (int?)d.Cantidad) ?? 0
+                    }).ToListAsync();
+            }
 
             // Consumos del turno: ventas de consumo asociadas a la bitácora, con su detalle.
             var consumos = logbook == null
@@ -83,8 +111,8 @@ namespace SgalApp.Api.Controllers
                         v.IdVenta,
                         v.FechaVenta,
                         v.PagadoPorEmpleado,
-                        MontoAdeudado = v.VenDetalleVenta.Where(d => !d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
-                        MontoCortesia = v.VenDetalleVenta.Where(d => d.EsCortesia).Sum(d => (int?)d.Subtotal) ?? 0,
+                        MontoAdeudado = v.VenDetalleVenta.Sum(d => (int?)(d.Subtotal - d.MontoCortesia)) ?? 0,
+                        MontoCortesia = v.VenDetalleVenta.Sum(d => (int?)d.MontoCortesia) ?? 0,
                         Items = v.VenDetalleVenta.Select(d => new
                         {
                             d.IdProducto,
@@ -92,11 +120,29 @@ namespace SgalApp.Api.Controllers
                             d.Cantidad,
                             d.Subtotal,
                             d.EsCortesia,
+                            d.MontoCortesia,
                             Extras = d.VenDetalleVentaIngrediente.Select(x => new { Nombre = x.IdMateriaPrimaNavigation.NombreMaterial, x.Precio })
                         }).ToList()
                     }).ToListAsync();
 
-            var calibracion = await GetCalibrationMaterialsAsync();
+            var calibrationEnabled = await CalibrationEnabledAsync();
+            var calibracion = calibrationEnabled
+                ? await GetCalibrationMaterialsAsync()
+                : (IdMateriaDefault: (int?)null, Materias: (object)Array.Empty<object>());
+            var extracciones = logbook?.TurExtracciones
+                .OrderBy(e => e.IdExtraccion)
+                .Select(e => new
+                {
+                    e.IdExtraccion,
+                    e.Gramos,
+                    e.Segundos,
+                    e.Mililitros,
+                    e.Observaciones,
+                    e.IdMateriaPrima,
+                    Materia = e.IdMateriaPrimaNavigation != null ? e.IdMateriaPrimaNavigation.NombreMaterial : null,
+                    e.CantidadDescontada
+                }).ToList() ?? [];
+            if (!calibrationEnabled) extracciones.Clear();
 
             return Ok(new
             {
@@ -112,24 +158,14 @@ namespace SgalApp.Api.Controllers
                 Consumos = consumos,
                 Cortesia = new
                 {
+                    Modo = courtesyMode,
                     LimiteDiarioGlobal = courtesyLimit,
                     ConsumidoHoy = courtesyConsumedToday,
                     RestanteHoy = Math.Max(0, courtesyLimit - courtesyConsumedToday),
-                    Productos = courtesyProducts
+                    Productos = courtesyProducts,
+                    Categorias = courtesyCategories
                 },
-                Extracciones = logbook?.TurExtracciones
-                    .OrderBy(e => e.IdExtraccion)
-                    .Select(e => new
-                    {
-                        e.IdExtraccion,
-                        e.Gramos,
-                        e.Segundos,
-                        e.Mililitros,
-                        e.Observaciones,
-                        e.IdMateriaPrima,
-                        Materia = e.IdMateriaPrimaNavigation != null ? e.IdMateriaPrimaNavigation.NombreMaterial : null,
-                        e.CantidadDescontada
-                    }) ?? [],
+                Extracciones = extracciones,
                 Calibracion = new
                 {
                     IdMateriaDefault = calibracion.IdMateriaDefault,
@@ -172,6 +208,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.OwnLogbookView + "|" + Permissions.SalesOperate)]
         public async Task<IActionResult> GetLastCalibration(int idTurno)
         {
+            if (!await CalibrationEnabledAsync())
+                return Ok(new { TieneCalibracion = false, Gramos = (double?)null, Habilitada = false });
             var idUsuario = User.GetUserId();
             if (!await _context.TurTurno.AnyAsync(t => t.IdTurno == idTurno && t.IdUsuario == idUsuario))
                 return NotFound(new { mensaje = "Turno no encontrado para el usuario." });
@@ -237,6 +275,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.LogbookExtractionsCreate)]
         public async Task<IActionResult> AddExtractions([FromBody] ExtractionBatchCreateDto dto)
         {
+            if (!await CalibrationEnabledAsync())
+                return BadRequest(new { mensaje = "Las calibraciones no están habilitadas para esta instalación." });
             dto.IdUsuario = User.GetUserId();
             if (dto.IdUsuario <= 0 || dto.IdTurno <= 0)
             {
@@ -369,6 +409,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.LogbookExtractionsCreate + "|" + Permissions.OwnLogbookView)]
         public async Task<IActionResult> GetPreviousTurnExtraction(int idTurno)
         {
+            if (!await CalibrationEnabledAsync())
+                return NotFound(new { mensaje = "Las calibraciones no están habilitadas para esta instalación." });
             var idUsuario = User.GetUserId();
             if (!await _context.TurTurno.AnyAsync(t => t.IdTurno == idTurno && t.IdUsuario == idUsuario))
                 return NotFound(new { mensaje = "Turno no encontrado para el usuario." });
@@ -402,6 +444,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.LogbookExtractionsCreate)]
         public async Task<IActionResult> DeleteExtraction(int id)
         {
+            if (!await CalibrationEnabledAsync())
+                return BadRequest(new { mensaje = "Las calibraciones no están habilitadas para esta instalación." });
             var idUsuario = User.GetUserId();
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
@@ -424,5 +468,10 @@ namespace SgalApp.Api.Controllers
             await transaction.CommitAsync();
             return Ok(new { mensaje = "Extracción eliminada y café repuesto." });
         }
+
+        private async Task<bool> CalibrationEnabledAsync() => await _context.OrgConfiguracion.AsNoTracking()
+            .Where(configuration => configuration.IdConfiguracion == 1)
+            .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
+            .FirstOrDefaultAsync() ?? true;
     }
 }

@@ -11,8 +11,10 @@ const LEGACY_FEATURES = {
   inventario: ['Ver productos', 'Crear productos', 'Editar productos', 'Cambiar estado de productos', 'Ver categorías de producto', 'Crear categorías de producto', 'Editar categorías de producto', 'Cambiar estado de categorías'],
   recetas: ['Ver recetas', 'Editar recetas y sus materias primas', 'Ver materias primas', 'Crear materias primas', 'Editar materias primas', 'Eliminar materias primas', 'Ingresar stock', 'Ver presentaciones', 'Crear presentaciones', 'Editar presentaciones', 'Eliminar presentaciones', 'Ver unidades de medida', 'Crear unidades de medida', 'Editar unidades de medida', 'Eliminar unidades de medida', 'Ver categorías de materia prima', 'Crear categorías de materia prima', 'Editar categorías de materia prima', 'Eliminar categorías de materia prima', 'Ver marcas', 'Crear marcas', 'Editar marcas', 'Eliminar marcas', 'Ver ingredientes extra', 'Crear ingredientes extra', 'Editar ingredientes extra y sus recargos', 'Activar o desactivar ingredientes extra'],
   ordenes_compra: ['Ver proveedores', 'Crear proveedores', 'Editar proveedores', 'Cambiar estado de proveedores', 'Ver órdenes de compra', 'Crear órdenes de compra', 'Editar órdenes de compra', 'Emitir órdenes de compra', 'Recibir órdenes y actualizar stock', 'Confirmar precios de venta', 'Cancelar órdenes de compra', 'Exportar órdenes de compra'],
-  turnos: ['Ver turnos propios', 'Ver datos operacionales del turno', 'Abrir turno', 'Cerrar turno', 'Ver configuración de cortesía', 'Editar política de cortesía', 'Crear productos de cortesía', 'Editar productos de cortesía', 'Cambiar estado de productos de cortesía', 'Ver bitácora propia', 'Registrar consumos', 'Anular consumos', 'Editar observaciones', 'Registrar extracciones', 'Ver registros de turnos', 'Ver panel analítico de turnos', 'Ver bitácoras históricas', 'Ver ventas históricas', 'Marcar consumos de empleados como pagados'],
-  ventas: ['Ver panel administrativo', 'Acceder al punto de venta', 'Crear ventas', 'Crear ventas con Point', 'Ver ventas propias', 'Aplicar descuentos', 'Ver descuentos', 'Crear descuentos', 'Cambiar estado de descuentos', 'Eliminar descuentos', 'Gestionar comandas', 'Reimprimir comprobantes de ventas', 'Anular ventas']
+  turnos: ['Ver turnos propios', 'Ver datos operacionales del turno', 'Abrir turno', 'Cerrar turno', 'Ver configuración de cortesía', 'Editar política de cortesía', 'Crear productos de cortesía', 'Editar productos de cortesía', 'Cambiar estado de productos de cortesía', 'Registrar consumos', 'Anular consumos', 'Ver registros de turnos', 'Ver panel analítico de turnos', 'Ver ventas históricas', 'Marcar consumos de empleados como pagados'],
+  ventas: ['Ver panel administrativo', 'Acceder al punto de venta', 'Crear ventas', 'Crear ventas con Point', 'Ver ventas propias', 'Abrir y cerrar turnos', 'Configurar cuadratura', 'Ver bitácora', 'Registrar consumos de empleados', 'Ver registros y ventas por turno', 'Aplicar descuentos', 'Ver descuentos', 'Crear descuentos', 'Cambiar estado de descuentos', 'Eliminar descuentos', 'Reimprimir comprobantes de ventas', 'Anular ventas'],
+  bitacora: ['Ver bitácora propia', 'Editar observaciones', 'Registrar extracciones', 'Ver bitácoras históricas'],
+  comandas: ['Gestionar comandas']
 };
 
 const featuresFor = (module) => {
@@ -32,8 +34,10 @@ const GROUP_ORDER = {
   inventario: ['Productos', 'Categorías de producto', 'Inventario simple'],
   recetas: ['Recetas', 'Materias primas', 'Ingredientes extra', 'Presentaciones', 'Unidades de medida', 'Categorías de materia prima', 'Marcas', 'Existencias', 'Configuración de materiales'],
   ordenes_compra: ['Proveedores', 'Órdenes de compra'],
-  turnos: ['Operación de turnos', 'Cortesías', 'Bitácora', 'Registros administrativos'],
-  ventas: ['Panel administrativo', 'Punto de venta', 'Descuentos', 'Ingredientes extra', 'Comandas', 'Comprobantes']
+  turnos: ['Operación de turnos', 'Cortesías', 'Consumos de usuarios', 'Registros administrativos'],
+  ventas: ['Panel administrativo', 'Punto de venta', 'Operación de turnos', 'Bitácora', 'Consumos de usuarios', 'Cortesías', 'Registros administrativos', 'Descuentos', 'Ingredientes extra', 'Comprobantes'],
+  bitacora: ['Bitácora'],
+  comandas: ['Comandas']
 };
 
 const normalized = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -73,8 +77,15 @@ const fallbackGroupFor = (moduleCode, feature) => {
     if (text.includes('cortesia')) return 'Cortesías';
     return 'Operación de turnos';
   }
+  if (moduleCode === 'bitacora') return 'Bitácora';
+  if (moduleCode === 'comandas') return 'Comandas';
   if (moduleCode === 'ventas') {
     if (text.includes('panel administrativo')) return 'Panel administrativo';
+    if (text.includes('registros_turnos') || text.includes('registro') || text.includes('historica') || text.includes('panel analitico') || text.includes('pagado')) return 'Registros administrativos';
+    if (text.includes('bitacora.consumos') || text.includes('consumo')) return 'Consumos de usuarios';
+    if (text.includes('bitacora') || text.includes('extraccion') || text.includes('observacion')) return 'Bitácora';
+    if (text.includes('turnos.') || text.includes('turno')) return 'Operación de turnos';
+    if (text.includes('cortesia')) return 'Cortesías';
     if (text.includes('descuento')) return 'Descuentos';
     if (text.includes('ingrediente extra')) return 'Ingredientes extra';
     if (text.includes('comanda')) return 'Comandas';
@@ -100,7 +111,7 @@ const groupFeatures = (module, features) => {
   });
 };
 
-const ModuleCatalog = ({ modules, onChange, readOnly = false }) => {
+const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCode = {} }) => {
   const [detail, setDetail] = useState(null);
   const namesByCode = useMemo(
     () => Object.fromEntries(modules.map(module => [module.codigo, module.nombre])),
@@ -174,6 +185,11 @@ const ModuleCatalog = ({ modules, onChange, readOnly = false }) => {
             {module.dependencias?.length > 0 && (
               <div className="module-dependencies">
                 Requiere {module.dependencias.map(code => namesByCode[code] || code).join(', ')}
+              </div>
+            )}
+            {module.habilitado && configurationByCode[module.codigo] && (
+              <div className="module-inline-configuration">
+                {configurationByCode[module.codigo]}
               </div>
             )}
             <button type="button" className="module-detail-button" onClick={() => setDetail(module)}>

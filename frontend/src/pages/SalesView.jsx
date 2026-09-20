@@ -22,6 +22,7 @@ import {
     Trash2,
     User
 } from 'lucide-react';
+import { notify, useNotificationMessage } from '../components/NotificationCenter';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
@@ -34,12 +35,11 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 const METODO_TARJETA = 5;
 const POINT_POLL_MS = 3000;
 
-// Identidad visual de la sección "Comandas". El rosa caracteriza la sección
-// (por ahora como color de fondo; a futuro será una imagen). Los acentos son
-// complementarios al rosa para que las cards resalten y se lean bien.
-const COMANDA_PINK = '#feb7e1';
-const COMANDA_PINK_SOFT = '#ffd9ee';
-const COMANDA_TEXT = '#7a2247';          // plum oscuro, legible sobre rosa
+// Identidad visual de Comandas: el fondo base siempre usa el color de acento
+// configurado por la empresa.
+const COMANDA_BACKGROUND = 'var(--accent-color)';
+const COMANDA_BADGE_BG = 'rgba(255,255,255,0.82)';
+const COMANDA_TEXT = '#ffffff';
 const COMANDA_ACCENT = '#0d9488';         // teal complementario (acción / hecho)
 const COMANDA_ACCENT_DARK = '#0f766e';
 const COMANDA_PENDING = '#f59e0b';        // ámbar para comandas pendientes
@@ -116,14 +116,15 @@ const describirRechazoPoint = (estadoOrden) => {
 
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
-  const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled } = useOrganization();
+  const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled, logbookIncludesCalibration } = useOrganization();
   const materialsEnabled = isModuleEnabled('recetas');
-  const turnsEnabled = isModuleEnabled('turnos');
+  const turnsEnabled = isModuleEnabled('ventas');
+  const commandsEnabled = isModuleEnabled('comandas');
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useNotificationMessage('error');
+  const [success, setSuccess] = useNotificationMessage('success');
 
   // Turn/Shift State
   const [activeTurn, setActiveTurn] = useState(null);
@@ -167,7 +168,7 @@ const SalesView = () => {
   const [viewMode, setViewMode] = useState('venta'); // 'venta' | 'comandas'
   const [comandas, setComandas] = useState([]);
   const [loadingComandas, setLoadingComandas] = useState(false);
-  const [comandasError, setComandasError] = useState('');
+  const [comandasError, setComandasError] = useNotificationMessage('error');
   const [updatingComanda, setUpdatingComanda] = useState(null); // idVenta en curso
   const [showComandaHistory, setShowComandaHistory] = useState(false);
   // Cache de recetas por producto: idProducto -> { status, materiales, nombreBase }.
@@ -206,7 +207,8 @@ const SalesView = () => {
         const data = await res.json();
         if (data.hasActiveTurn && data.belongsToCurrentUser) {
           setActiveTurn(data.activeTurn);
-          fetchCalibracion(data.activeTurn.idTurno);
+          if (logbookIncludesCalibration) fetchCalibracion(data.activeTurn.idTurno);
+          else setCalibracionTurno(null);
         } else {
           setActiveTurn(null);
           setCalibracionTurno(null);
@@ -1071,7 +1073,7 @@ const SalesView = () => {
       const data = await res.json();
       setSaleHistory(data);
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
       setShowHistoryModal(false);
     } finally {
       setLoadingHistory(false);
@@ -1228,7 +1230,7 @@ const SalesView = () => {
     if (existingIndex > -1) {
       const currentQty = cart[existingIndex].quantity;
       if (prod.stock !== null && currentQty >= prod.stock) {
-        alert('No hay suficiente stock disponible');
+        notify.warning('No hay suficiente stock disponible.');
         return;
       }
       const updated = [...cart];
@@ -1277,7 +1279,7 @@ const SalesView = () => {
     if (twinIndex > -1) {
       const combinedQty = updated[twinIndex].quantity + line.quantity;
       if (line.product.stock !== null && combinedQty > line.product.stock) {
-        alert('No hay suficiente stock disponible para combinar estas líneas.');
+        notify.warning('No hay suficiente stock disponible para combinar estas líneas.');
         return;
       }
       updated[twinIndex] = { ...updated[twinIndex], quantity: combinedQty };
@@ -1324,7 +1326,7 @@ const SalesView = () => {
       updated.splice(index, 1);
     } else {
       if (item.product.stock !== null && newQty > item.product.stock) {
-        alert('No hay suficiente stock disponible');
+        notify.warning('No hay suficiente stock disponible.');
         return;
       }
       item.quantity = newQty;
@@ -1567,7 +1569,7 @@ const SalesView = () => {
               {terminada ? <CheckCircle2 size={18} /> : <ClipboardList size={18} />}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: COMANDA_TEXT }}>
+              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 Comanda #{c.idVenta}
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -1593,7 +1595,7 @@ const SalesView = () => {
             }}>
               <span style={{
                 flexShrink: 0, minWidth: '30px', height: '26px', padding: '0 6px',
-                borderRadius: '8px', backgroundColor: COMANDA_PINK_SOFT, color: COMANDA_TEXT,
+                borderRadius: '8px', backgroundColor: COMANDA_BADGE_BG, color: 'var(--accent-color)',
                 fontSize: '0.85rem', fontWeight: 800,
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
@@ -1668,13 +1670,8 @@ const SalesView = () => {
       <div style={{
         height: salesContextReady ? 'calc(100vh - 110px)' : 'calc(100vh - 170px)',
         overflowY: 'auto',
-        // Fondo personalizado de comandas si está habilitado.
-        ...(comandasBackground || {
-          backgroundColor: COMANDA_PINK,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat'
-        }),
+        backgroundColor: COMANDA_BACKGROUND,
+        ...(comandasBackground || {}),
         backgroundAttachment: 'fixed',
         padding: '24px',
         opacity: salesContextReady ? 1 : 0.5,
@@ -1693,7 +1690,7 @@ const SalesView = () => {
             onClick={() => fetchComandas()}
             style={{
               display: 'flex', alignItems: 'center', gap: '7px',
-              backgroundColor: '#ffffff', color: COMANDA_TEXT,
+              backgroundColor: '#ffffff', color: 'var(--accent-color)',
               border: `1px solid ${COMANDA_TEXT}`, borderRadius: '10px',
               padding: '8px 14px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
             }}
@@ -1775,12 +1772,12 @@ const SalesView = () => {
 
   // Falta calibración: hay en el carrito alguna preparación que depende del café por calibración
   // y el turno todavía no tiene ninguna extracción registrada. El backend además lo bloquea.
-  const faltaCalibracion = turnsEnabled && cart.some(item => item.product?.requiereCalibracion)
+  const faltaCalibracion = turnsEnabled && logbookIncludesCalibration && cart.some(item => item.product?.requiereCalibracion)
     && calibracionTurno?.tieneCalibracion === false;
 
   const salesContextReady = !turnsEnabled || Boolean(activeTurn);
-  // Con Turnos activo, las comandas pertenecen al turno abierto; sin Turnos, al usuario.
-  const showViewSwitch = salesContextReady && can('ventas.comandas.gestionar');
+  // Las comandas pertenecen al turno abierto de Operación de caja.
+  const showViewSwitch = commandsEnabled && salesContextReady && can('ventas.comandas.gestionar');
   const enComandas = viewMode === 'comandas';
   // Fondos personalizados por sección (si están habilitados en Identidad).
   const ventasBackground = getBackgroundStyle('ventas');
@@ -1825,7 +1822,7 @@ const SalesView = () => {
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
           paddingLeft: '14px', marginLeft: '-16px',
           clipPath: 'polygon(16px 0, 100% 0, 100% 100%, 0 100%)',
-          backgroundColor: enComandas ? COMANDA_PINK : 'transparent',
+          backgroundColor: enComandas ? COMANDA_BACKGROUND : 'transparent',
           color: enComandas ? COMANDA_TEXT : 'rgba(255,255,255,0.85)',
           transition: 'background-color .2s ease, color .2s ease',
           zIndex: enComandas ? 2 : 1
@@ -2959,7 +2956,6 @@ const SalesView = () => {
                                 <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>$</span>
                                 <input
                                   type="number"
-                                  placeholder="0"
                                   value={cashReceived}
                                   disabled={submittingSale}
                                   onChange={(e) => setCashReceived(e.target.value)}
@@ -3069,7 +3065,6 @@ const SalesView = () => {
                                 <input
                                   type="number"
                                   min="0"
-                                  placeholder="0"
                                   disabled={submittingSale}
                                   value={paymentAllocations[m.id]}
                                   onChange={(e) => {
@@ -3116,7 +3111,6 @@ const SalesView = () => {
                                   <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>$</span>
                                   <input
                                     type="number"
-                                    placeholder="0"
                                     value={cashReceived}
                                     disabled={submittingSale}
                                     onChange={(e) => setCashReceived(e.target.value)}

@@ -9,19 +9,20 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import DataTable from '../components/DataTable';
+import { confirmDialog, notify, useNotificationMessage } from '../components/NotificationCenter';
 
 const RoleManagement = () => {
   const { can } = useAuth();
   const location = useLocation();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useNotificationMessage('error');
 
   // Form states
   const [roleName, setRoleName] = useState('');
   const [editingRole, setEditingRole] = useState(null);
-  const [formError, setFormError] = useState('');
-  const [formSuccess, setFormSuccess] = useState('');
+  const [formError, setFormError] = useNotificationMessage('error');
+  const [formSuccess, setFormSuccess] = useNotificationMessage('success');
   const [roleInputError, setRoleInputError] = useState(false);
 
   useEffect(() => {
@@ -113,7 +114,7 @@ const RoleManagement = () => {
   };
 
   const handleDeleteClick = async (role) => {
-    if (!window.confirm(`¿Está seguro de que desea eliminar el rol "${role.nombreRol}"?`)) {
+    if (!await confirmDialog({ title: 'Eliminar rol', message: `Se eliminará el rol “${role.nombreRol}”.`, confirmText: 'Eliminar', tone: 'danger' })) {
       return;
     }
 
@@ -129,9 +130,9 @@ const RoleManagement = () => {
       }
 
       await fetchRoles();
-      alert('Rol eliminado con éxito');
+      notify.success('Rol eliminado con éxito.');
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     }
   };
 
@@ -181,7 +182,6 @@ const RoleManagement = () => {
               <label className="input-label">Nombre del Rol</label>
               <input
                 type="text"
-                placeholder="Ej: Administrador, Cajero..."
                 className="input-field"
                 value={roleName}
                 onChange={(e) => {
