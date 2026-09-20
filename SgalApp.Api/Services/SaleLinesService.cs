@@ -14,6 +14,13 @@ namespace SgalApp.Api.Services
         public const int PendienteDePago = 4;
     }
 
+    /// <summary>Tipos de turno (columna Tur_Turno.Tipo_Turno).</summary>
+    public static class TiposTurno
+    {
+        public const byte Vendedor = 1;
+        public const byte Caja = 2;
+    }
+
     /// <summary>Identificadores del catálogo Ven_Metodos_Pago.</summary>
     public static class MetodosPago
     {

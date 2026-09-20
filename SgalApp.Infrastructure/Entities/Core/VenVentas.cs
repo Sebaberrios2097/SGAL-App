@@ -16,6 +16,13 @@ public partial class VenVentas
     [Column("Id_Turno")]
     public int? IdTurno { get; set; }
 
+    /// <summary>
+    /// Turno de caja donde se cobró la venta (módulo Caja). NULL mientras el vale está
+    /// pendiente de pago o cuando el cobro ocurre en la misma venta (sin módulo Caja).
+    /// </summary>
+    [Column("Id_Turno_Caja")]
+    public int? IdTurnoCaja { get; set; }
+
     [Column("Id_Usuario")]
     public int IdUsuario { get; set; }
 
@@ -92,6 +99,10 @@ public partial class VenVentas
     [ForeignKey("IdTurno")]
     [InverseProperty("VenVentas")]
     public virtual TurTurno? IdTurnoNavigation { get; set; }
+
+    [ForeignKey("IdTurnoCaja")]
+    [InverseProperty("VenVentasCaja")]
+    public virtual TurTurno? IdTurnoCajaNavigation { get; set; }
 
     [ForeignKey("IdUsuario")]
     [InverseProperty("VenVentas")]

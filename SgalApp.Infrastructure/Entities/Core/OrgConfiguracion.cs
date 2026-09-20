@@ -37,6 +37,15 @@ public class OrgConfiguracion
     [Column("Color_Fondo"), StringLength(7)]
     public string ColorFondo { get; set; } = "#F8FAFC";
 
+    [Column("Boleta_Muestra_Vendedor")]
+    public bool BoletaMuestraVendedor { get; set; } = true;
+
+    [Column("Boleta_Muestra_Pago")]
+    public bool BoletaMuestraPago { get; set; } = true;
+
+    [Column("Boleta_Cola_Personalizada"), StringLength(250)]
+    public string? BoletaColaPersonalizada { get; set; }
+
     [Column("Turnos_Requieren_Cuadratura")]
     public bool TurnosRequierenCuadratura { get; set; } = true;
 

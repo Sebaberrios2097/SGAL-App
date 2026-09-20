@@ -124,6 +124,27 @@ namespace SgalApp.Api.Controllers
 
                 int totalBruto = lines.Total;
 
+                // Con el módulo Caja habilitado, el vendedor solo genera la orden: se emite
+                // un vale pendiente de pago y el cobro (descuento y métodos de pago) ocurre
+                // en caja. Sin Caja, la venta se cobra aquí mismo (flujo original).
+                if (await IsCajaEnabledAsync())
+                {
+                    sale.IdEstadoVenta = EstadosVenta.PendienteDePago;
+                    sale.MontoTotal = totalBruto;
+                    sale.MontoNeto = (int)Math.Round(totalBruto / 1.19);
+                    sale.MontoIva = totalBruto - sale.MontoNeto;
+                    _context.Entry(sale).State = EntityState.Modified;
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return Ok(new
+                    {
+                        mensaje = "Vale generado. Pendiente de cobro en caja.",
+                        idVenta = sale.IdVenta,
+                        montoTotal = totalBruto,
+                        pendiente = true
+                    });
+                }
+
                 // Descuento opcional aplicado al cobro. Se valida contra el % máximo del usuario.
                 decimal porcentajeDescuento = dto.PorcentajeDescuento;
                 int montoDescuento = 0;
@@ -422,6 +443,11 @@ namespace SgalApp.Api.Controllers
 
         private Task<bool> AreTurnsEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
             module.Codigo == "ventas" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                && module.ConfiguracionOrganizacion.Habilitado)));
+
+        private Task<bool> IsCajaEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "caja" && module.Activo
             && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
                 && module.ConfiguracionOrganizacion.Habilitado)));
     }

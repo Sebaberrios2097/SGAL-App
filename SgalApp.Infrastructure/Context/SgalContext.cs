@@ -552,6 +552,11 @@ public partial class SgalContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_Ven_Ventas_Tur_Turno");
 
+            entity.HasOne(d => d.IdTurnoCajaNavigation).WithMany(p => p.VenVentasCaja)
+                .HasForeignKey(d => d.IdTurnoCaja)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Ven_Ventas_Turno_Caja");
+
             entity.HasOne(d => d.IdUsuarioNavigation).WithMany(p => p.VenVentas)
                 .HasForeignKey(d => d.IdUsuario)
                 .OnDelete(DeleteBehavior.NoAction)

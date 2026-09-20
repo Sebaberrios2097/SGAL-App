@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { NumericKeypadProvider, NumericInput } from './NumericKeypad';
 import { notify, useNotificationMessage } from './NotificationCenter';
 
-const TurnOpeningModal = ({ open, onClose, onOpened }) => {
+const TurnOpeningModal = ({ open, onClose, onOpened, tipoTurno = 1, title = 'Iniciar turno' }) => {
   const { user } = useAuth();
   const [denominations, setDenominations] = useState([]);
   const [quantities, setQuantities] = useState({});
@@ -59,7 +59,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
       const response = await fetch('/api/turn/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idUsuario: user.idUsuario, desglose })
+        body: JSON.stringify({ idUsuario: user.idUsuario, tipoTurno, desglose })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.mensaje || 'No fue posible iniciar el turno.');
@@ -91,7 +91,7 @@ const TurnOpeningModal = ({ open, onClose, onOpened }) => {
         </button>
 
         <h3 className="text-solid" style={{ fontSize: '1.3rem', marginBottom: '8px', fontWeight: '700' }}>
-          Iniciar turno
+          {title}
         </h3>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '16px' }}>Ingrese el efectivo inicial.</div>
 

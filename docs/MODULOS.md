@@ -26,8 +26,9 @@ Los módulos nucleares no se pueden deshabilitar. Inventario y Compras y proveed
 | Código | Nombre comercial | Funcionalidad incluida | Depende de |
 |---|---|---|---|
 | `recetas` | Recetas y materiales | Materias primas, recetas, unidades, presentaciones, marcas, ingredientes extra y consumo de materiales. | `inventario` |
-| `ventas` | Operación de caja | Punto de venta, turnos, cuadratura configurable, bitácora, consumos de empleados, descuentos, comprobantes, ventas por turno y panel administrativo. | `inventario` |
-| `comandas` | Comandas | Preparación y seguimiento de pedidos con el detalle de sus recetas. | `ventas` (Operación de caja), `recetas` |
+| `ventas` | Punto de venta | Punto de venta, turnos, cuadratura configurable, bitácora, consumos de empleados, descuentos, comprobantes, ventas por turno y panel administrativo. | `inventario` |
+| `caja` | Caja | Separa la generación de la orden (vendedor) del cobro (cajero): turno de caja, cobro de vales pendientes y emisión de la boleta. | `ventas` (Punto de venta) |
+| `comandas` | Comandas | Preparación y seguimiento de pedidos con el detalle de sus recetas. | `ventas` (Punto de venta), `recetas` |
 
 El módulo de Integraciones se retiró temporalmente del catálogo. Sus permisos quedaron inactivos hasta definir un apartado exclusivo para el rol Desarrollador y su modelo de operación.
 
@@ -40,12 +41,14 @@ Los códigos de permisos se conservan para no romper roles, endpoints ni instala
 | `roles` | `usuarios` | Roles y permisos son parte del control de acceso de usuarios. |
 | `configuracion_inventario`, `ingredientes_extra` | `recetas` | Forman la capa avanzada de composición y consumo de materiales. |
 | `proveedores` | `ordenes_compra` | El maestro de proveedores forma parte del ciclo de compras. |
-| `turnos`, `bitacora`, `registros_turnos` | `ventas` (Operación de caja) | La venta siempre ocurre dentro de un turno y conserva su bitácora, consumos y trazabilidad administrativa. |
+| `turnos`, `bitacora`, `registros_turnos` | `ventas` (Punto de venta) | La venta siempre ocurre dentro de un turno y conserva su bitácora, consumos y trazabilidad administrativa. |
 | `inicio` | `ventas` | El panel administrativo resume la operación comercial y de turnos. |
 
 En particular, los permisos `inventario.descuentos.*` aparecen dentro de **Ventas**, mientras que `inventario.productos.*` e `inventario.categorias.*` permanecen en **Inventario**.
 
-**Operación de caja** siempre exige un turno abierto para vender. La instalación decide si la apertura y el cierre requieren cuadratura y si la bitácora incluye calibraciones de café. Sin calibraciones, no se muestran extracciones ni la opción “café calibrable”, y las ventas descuentan las cantidades fijas definidas en las recetas.
+**Punto de venta** siempre exige un turno abierto para vender. La instalación decide si la apertura y el cierre requieren cuadratura y si la bitácora incluye calibraciones de café. Sin calibraciones, no se muestran extracciones ni la opción “café calibrable”, y las ventas descuentan las cantidades fijas definidas en las recetas.
+
+**Caja** es complementario a Punto de venta. Sin él, el cobro ocurre en la misma venta (el vendedor arma el carrito, elige el medio de pago y emite la boleta). Con él, el vendedor solo genera la orden y emite un **vale de uso interno** (venta en estado *Pendiente de pago*), y el **cajero**, con un turno de caja abierto, cobra ese vale, aplica descuentos, registra el medio de pago y emite la **boleta**. Los turnos se etiquetan por tipo (vendedor/caja) para coexistir; con Caja habilitado el turno de vendedor se simplifica (sin cuadratura de efectivo) y la cuadratura del dinero ocurre en el turno de caja (`Ven_Ventas.Id_Turno_Caja`).
 
 Esta separación permite que comercios de reventa —por ejemplo, una botillería— utilicen productos con stock unitario sin habilitar recetas ni materias primas. Cafeterías, cocinas u otros negocios que transforman insumos pueden habilitar adicionalmente **Recetas y materiales**.
 

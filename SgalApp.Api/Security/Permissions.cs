@@ -104,6 +104,12 @@ public static class Permissions
     public const string SalesVoid = "ventas.anular";
     public const string SalesDiscountApply = "ventas.descuento.aplicar";
     public const string SalesComandasManage = "ventas.comandas.gestionar";
+    public const string CajaOperate = "caja.operar";
+    public const string CajaTurnOpen = "caja.turno.abrir";
+    public const string CajaTurnClose = "caja.turno.cerrar";
+    public const string CajaCollect = "caja.cobrar";
+    public const string CajaSaleModify = "caja.venta.modificar";
+
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";
     public const string LogbookConsumptionsVoid = "bitacora.consumos.anular";

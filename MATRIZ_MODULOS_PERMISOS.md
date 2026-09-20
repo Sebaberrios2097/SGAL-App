@@ -25,8 +25,8 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | `inventario` | Inventario | `/inventory`, `/settings/product-categories` | Permisos de productos y categorías; stock simple por unidades |
 | `recetas` | Recetas y materiales | `/recipes`, `/settings/raw-materials` y catálogos de materiales | Permisos `recetas.*`, `ingredientes_extra.*` y `configuracion_inventario.*`, salvo cortesías |
 | `ordenes_compra` | Compras y proveedores | `/purchase-orders`, `/providers` | Permisos `ordenes_compra.*` y `proveedores.*` |
-| `ventas` | Operación de caja | `/sales`, `/turn`, `/logbook/:idTurno`, `/turn-history`, `/turn/consumptions`, `/dashboard` y registros administrativos | Permisos `ventas.*`, `turnos.*`, `bitacora.*`, `registros_turnos.*`, cortesías, descuentos y panel; toda venta exige un turno abierto |
-| `comandas` | Comandas | Sección Comandas de `/sales` | Permiso `ventas.comandas.gestionar`; depende de Operación de caja y Recetas |
+| `ventas` | Punto de venta | `/sales`, `/turn`, `/logbook/:idTurno`, `/turn-history`, `/turn/consumptions`, `/dashboard` y registros administrativos | Permisos `ventas.*`, `turnos.*`, `bitacora.*`, `registros_turnos.*`, cortesías, descuentos y panel; toda venta exige un turno abierto |
+| `comandas` | Comandas | Sección Comandas de `/sales` | Permiso `ventas.comandas.gestionar`; depende de Punto de venta y Recetas |
 | `sesion` | Inicio de sesión y contraseña | `/login` | Público / usuario identificado por la solicitud |
 
 `inventario` y `ordenes_compra` son nucleares y siempre están habilitados. Integraciones no forma parte del catálogo activo: sus permisos están desactivados hasta que se diseñe un apartado exclusivo para el rol Desarrollador.
@@ -38,7 +38,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 | Leer identidad pública y módulos habilitados | No asignable | `GET /api/organization-configuration/public` |
 | Obtener el logo público de una ubicación | No asignable | `GET /api/organization-configuration/logo/{ubicacion}` |
 | Ver la configuración de identidad | `configuracion_sistema.marca.ver` | `GET /api/organization-configuration/branding` |
-| Editar identidad y colores | `configuracion_sistema.marca.editar` | `PUT /api/organization-configuration/branding` |
+| Editar identidad, colores y personalización del comprobante | `configuracion_sistema.marca.editar` | `PUT /api/organization-configuration/branding` |
 | Ver biblioteca y contenido de logos | `configuracion_sistema.marca.ver` | `GET /api/organization-configuration/branding/logos`, `GET .../logos/{id}/content` |
 | Subir o eliminar logos | `configuracion_sistema.marca.editar` | `POST /api/organization-configuration/branding/logos`, `DELETE .../logos/{id}` |
 | Asignar ubicaciones exclusivas | `configuracion_sistema.marca.editar` | `PUT /api/organization-configuration/branding/logos/{id}/locations` |
@@ -59,7 +59,7 @@ No conviene guardar solamente un nivel genérico `LECTURA/EDICION/TOTAL`, porque
 
 | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|
-| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` (módulo Operación de caja) | `GET /api/admin-dashboard/monthly-summary` |
+| Ver resumen mensual de ventas y turnos | `inicio.dashboard.ver` (módulo Punto de venta) | `GET /api/admin-dashboard/monthly-summary` |
 | Ver panel de turnos (dashboard analítico) | `registros_turnos.dashboard.ver` | `GET /api/admin-dashboard/turns-overview` |
 | Ver calendario administrativo de turnos | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/calendar` |
 | Ver turnos de un día | `registros_turnos.ver` | `GET /api/admin-dashboard/turn-records/day` |
@@ -231,6 +231,10 @@ Los códigos de cortesía conservan el prefijo histórico `configuracion_inventa
 | Anular venta y opcionalmente devolver stock | `ventas.anular` | `POST /api/sale/{idVenta}/anular` | Acción crítica |
 
 El acceso a la pantalla exige actualmente el nombre de rol de barista y que el frontend detecte un turno propio abierto. Esa comprobación de interfaz no reemplaza la autorización en la API.
+
+**Módulo Caja.** El módulo opcional `caja` (dependiente de Punto de venta) separa la generación de la orden del cobro. Con Caja habilitado, `POST /api/sale` de un vendedor deja la venta en estado *Pendiente de pago* (vale de uso interno, sin métodos de pago) y el cobro se realiza en caja. Sus permisos son `caja.operar` (abrir la caja y ver los vales), `caja.turno.abrir`/`caja.turno.cerrar` (turno de caja, tipo 2), `caja.cobrar` (`GET /api/cash-register/pending`, `POST /api/cash-register/{idVenta}/collect`) y `caja.venta.modificar` (reservado para editar el vale antes de cobrar). El cobro fija `Ven_Ventas.Id_Turno_Caja` y la cuadratura del dinero se calcula sobre ese turno; el turno de vendedor no cuadra efectivo cuando Caja está habilitado.
+
+**Personalización del comprobante.** El comprobante impreso (documento no tributario) tiene una base fija —fecha, logo, productos, cantidades y subtotales con descuentos— y tres opciones configurables por la organización (`configuracion_sistema.marca.editar`, persistidas en `Org_Configuracion`): mostrar el nombre de quien atendió (`Boleta_Muestra_Vendedor`), mostrar el detalle del método de pago y el vuelto (`Boleta_Muestra_Pago`) y una cola personalizada propia del comprobante (`Boleta_Cola_Personalizada`), independiente del "Mensaje al pie de documentos" (`Texto_Pie_Documentos`). El constructor de comprobantes (`frontend/src/utils/receiptTemplates.js`) admite además un modo `vale` mínimo, reservado para el futuro módulo Caja (el vendedor emite un vale de uso interno y el cobro/boleta ocurre en caja).
 
 ### 12. Bitácora operacional
 

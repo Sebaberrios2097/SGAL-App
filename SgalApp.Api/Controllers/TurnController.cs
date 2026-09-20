@@ -13,21 +13,24 @@ namespace SgalApp.Api.Controllers
     public class TurnController : ControllerBase
     {
         private readonly SgalContext _context;
+        private readonly IPermissionService _permissions;
 
-        public TurnController(SgalContext context)
+        public TurnController(SgalContext context, IPermissionService permissions)
         {
             _context = context;
+            _permissions = permissions;
         }
 
         [HttpGet("active")]
-        [Permission(Permissions.OwnTurnsView + "|" + Permissions.SalesOperate)]
-        public async Task<IActionResult> GetActiveTurn([FromQuery] int idUsuario)
+        [Permission(Permissions.OwnTurnsView + "|" + Permissions.SalesOperate + "|" + Permissions.CajaOperate)]
+        public async Task<IActionResult> GetActiveTurn([FromQuery] int idUsuario, [FromQuery] byte tipo = TiposTurno.Vendedor)
         {
             idUsuario = User.GetUserId();
-            // Find any active turn in the system
+            if (tipo != TiposTurno.Vendedor && tipo != TiposTurno.Caja) tipo = TiposTurno.Vendedor;
+            // Find the active turn of the requested type (vendedor/caja).
             var activeTurn = await _context.TurTurno
                 .Include(t => t.IdUsuarioNavigation)
-                .FirstOrDefaultAsync(t => t.IdEstadoTurno == 1); // 1 = Abierto
+                .FirstOrDefaultAsync(t => t.IdEstadoTurno == 1 && t.TipoTurno == tipo); // 1 = Abierto
 
             if (activeTurn == null)
             {
@@ -47,7 +50,8 @@ namespace SgalApp.Api.Controllers
                     activeTurn.IdTurno,
                     activeTurn.IdUsuario,
                     NombreUsuario = activeTurn.IdUsuarioNavigation.NombreUsuario,
-                    activeTurn.FechaApertura
+                    activeTurn.FechaApertura,
+                    activeTurn.TipoTurno
                 }
             });
         }
@@ -338,7 +342,7 @@ namespace SgalApp.Api.Controllers
         }
 
         [HttpPost("open")]
-        [Permission(Permissions.TurnsOpen)]
+        [Permission(Permissions.TurnsOpen + "|" + Permissions.CajaTurnOpen)]
         public async Task<IActionResult> OpenTurn([FromBody] TurnOpenDto dto)
         {
             if (dto == null)
@@ -352,20 +356,26 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { Mensaje = "El usuario es obligatorio" });
             }
 
+            var tipo = dto.TipoTurno == TiposTurno.Caja ? TiposTurno.Caja : TiposTurno.Vendedor;
+            // Cada tipo exige su propio permiso; el atributo admite cualquiera de los dos.
+            var requiredPermission = tipo == TiposTurno.Caja ? Permissions.CajaTurnOpen : Permissions.TurnsOpen;
+            if (!await _permissions.HasPermissionAsync(dto.IdUsuario, requiredPermission)) return Forbid();
+
             var userExists = await _context.EmpUsuarios.AnyAsync(u => u.IdUsuario == dto.IdUsuario && u.Activo);
             if (!userExists)
             {
                 return BadRequest(new { Mensaje = "Usuario no válido o inactivo" });
             }
 
-            // Check if there is already any active turn in the system
-            var anyActive = await _context.TurTurno.AnyAsync(t => t.IdEstadoTurno == 1);
+            // Puede coexistir un turno de vendedor y uno de caja: el bloqueo es por tipo.
+            var anyActive = await _context.TurTurno.AnyAsync(t => t.IdEstadoTurno == 1 && t.TipoTurno == tipo);
             if (anyActive)
             {
-                return BadRequest(new { Mensaje = "Ya existe un turno activo en la caja. Debe ser cerrado antes de iniciar uno nuevo." });
+                var etiqueta = tipo == TiposTurno.Caja ? "de caja" : "de vendedor";
+                return BadRequest(new { Mensaje = $"Ya existe un turno {etiqueta} activo. Debe ser cerrado antes de iniciar uno nuevo." });
             }
 
-            var requiresReconciliation = await TurnsRequireReconciliationAsync();
+            var requiresReconciliation = await TurnRequiresReconciliationAsync(tipo);
             await using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -373,6 +383,7 @@ namespace SgalApp.Api.Controllers
                 {
                     IdUsuario = dto.IdUsuario,
                     IdEstadoTurno = 1, // Abierto
+                    TipoTurno = tipo,
                     FechaApertura = DateTime.Now
                 };
 
@@ -407,7 +418,8 @@ namespace SgalApp.Api.Controllers
                     turn.IdTurno,
                     turn.IdUsuario,
                     turn.FechaApertura,
-                    turn.IdEstadoTurno
+                    turn.IdEstadoTurno,
+                    turn.TipoTurno
                 });
             }
             catch
@@ -418,7 +430,7 @@ namespace SgalApp.Api.Controllers
         }
 
         [HttpGet("summary")]
-        [Permission(Permissions.TurnsClose)]
+        [Permission(Permissions.TurnsClose + "|" + Permissions.CajaTurnClose)]
         public async Task<IActionResult> GetTurnSummary([FromQuery] int idTurno)
         {
             var turn = await _context.TurTurno.FindAsync(idTurno);
@@ -427,6 +439,7 @@ namespace SgalApp.Api.Controllers
                 return NotFound(new { mensaje = "Turno no encontrado." });
             }
             if (turn.IdUsuario != User.GetUserId()) return Forbid();
+            if (!await CanCloseTurnAsync(turn)) return Forbid();
 
             // 1. Calculate Expected Cash: Opening Cash + Cash Sales
             var openingCash = await (from e in _context.TurTurnoDesgloseEfectivo
@@ -434,30 +447,11 @@ namespace SgalApp.Api.Controllers
                                      where e.IdTurno == idTurno && e.IdTipoMovimiento == 1 // Apertura
                                      select e.Cantidad * d.Valor).SumAsync();
 
-            // Solo cuentan las ventas terminadas: las pendientes de pago, las canceladas
-            // por un cobro fallido y las anuladas no representan dinero en caja.
-            var cashSales = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 1
-                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
+            var cashSales = await ExpectedByMethodAsync(idTurno, MetodosPago.Efectivo);
             var expectedCash = openingCash + cashSales;
-
-            // 2. Calculate Card & Transfer Sales
-            var expectedDebit = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 2
-                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
-            var expectedCredit = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 3
-                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
-            var expectedTransfer = await _context.VenMetodosPagoVenta
-                .Where(mp => mp.IdVentaNavigation.IdTurno == idTurno && mp.IdMetodoPago == 4
-                          && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                .SumAsync(mp => (int?)mp.Monto) ?? 0;
+            var expectedDebit = await ExpectedByMethodAsync(idTurno, MetodosPago.Debito);
+            var expectedCredit = await ExpectedByMethodAsync(idTurno, MetodosPago.Credito);
+            var expectedTransfer = await ExpectedByMethodAsync(idTurno, MetodosPago.Transferencia);
 
             var summary = new[]
             {
@@ -471,7 +465,7 @@ namespace SgalApp.Api.Controllers
         }
 
         [HttpPost("close")]
-        [Permission(Permissions.TurnsClose)]
+        [Permission(Permissions.TurnsClose + "|" + Permissions.CajaTurnClose)]
         public async Task<IActionResult> CloseTurn([FromBody] TurnCloseDto dto)
         {
             if (dto == null)
@@ -485,13 +479,14 @@ namespace SgalApp.Api.Controllers
                 return NotFound(new { mensaje = "Turno no encontrado." });
             }
             if (turn.IdUsuario != User.GetUserId()) return Forbid();
+            if (!await CanCloseTurnAsync(turn)) return Forbid();
 
             if (turn.IdEstadoTurno != 1) // 1 = Abierto
             {
                 return BadRequest(new { mensaje = "El turno ya se encuentra cerrado o inactivo." });
             }
 
-            if (!await TurnsRequireReconciliationAsync())
+            if (!await TurnRequiresReconciliationAsync(turn.TipoTurno))
             {
                 turn.FechaCierre = DateTime.Now;
                 turn.DiferenciaTotal = null;
@@ -518,27 +513,11 @@ namespace SgalApp.Api.Controllers
                                          select e.Cantidad * d.Valor).SumAsync();
 
                 // Igual que en el resumen: solo las ventas terminadas mueven dinero.
-                var cashSales = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 1
-                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                    .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
+                var cashSales = await ExpectedByMethodAsync(dto.IdTurno, MetodosPago.Efectivo);
                 var expectedCash = openingCash + cashSales;
-
-                var expectedDebit = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 2
-                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                    .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
-                var expectedCredit = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 3
-                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                    .SumAsync(mp => (int?)mp.Monto) ?? 0;
-
-                var expectedTransfer = await _context.VenMetodosPagoVenta
-                    .Where(mp => mp.IdVentaNavigation.IdTurno == dto.IdTurno && mp.IdMetodoPago == 4
-                              && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada)
-                    .SumAsync(mp => (int?)mp.Monto) ?? 0;
+                var expectedDebit = await ExpectedByMethodAsync(dto.IdTurno, MetodosPago.Debito);
+                var expectedCredit = await ExpectedByMethodAsync(dto.IdTurno, MetodosPago.Credito);
+                var expectedTransfer = await ExpectedByMethodAsync(dto.IdTurno, MetodosPago.Transferencia);
 
                 // 2. Save close cash count to Tur_Turno_Desglose_Efectivo
                 int realCash = 0;
@@ -611,9 +590,38 @@ namespace SgalApp.Api.Controllers
             }
         }
 
+        // Un turno "posee" un pago si la venta se cobró en él (Id_Turno_Caja) o, para las
+        // ventas sin módulo Caja, si pertenece al turno del vendedor (Id_Turno). Así el
+        // dinero se cuadra en el turno de caja sin contarse dos veces.
+        private async Task<int> ExpectedByMethodAsync(int idTurno, int idMetodoPago) =>
+            await _context.VenMetodosPagoVenta
+                .Where(mp => mp.IdMetodoPago == idMetodoPago
+                    && mp.IdVentaNavigation.IdEstadoVenta == EstadosVenta.Terminada
+                    && (mp.IdVentaNavigation.IdTurnoCaja == idTurno
+                        || (mp.IdVentaNavigation.IdTurnoCaja == null && mp.IdVentaNavigation.IdTurno == idTurno)))
+                .SumAsync(mp => (int?)mp.Monto) ?? 0;
+
+        private Task<bool> CanCloseTurnAsync(TurTurno turn) => _permissions.HasPermissionAsync(
+            User.GetUserId(),
+            turn.TipoTurno == TiposTurno.Caja ? Permissions.CajaTurnClose : Permissions.TurnsClose);
+
         private async Task<bool> TurnsRequireReconciliationAsync() => await _context.OrgConfiguracion.AsNoTracking()
             .Where(configuration => configuration.IdConfiguracion == 1)
             .Select(configuration => (bool?)configuration.TurnosRequierenCuadratura)
             .FirstOrDefaultAsync() ?? true;
+
+        // Con el módulo Caja habilitado, el efectivo lo maneja solo el cajero: el turno
+        // de vendedor no cuadra dinero; el de caja sí (según la configuración global).
+        private async Task<bool> TurnRequiresReconciliationAsync(byte tipo)
+        {
+            if (!await TurnsRequireReconciliationAsync()) return false;
+            if (tipo == TiposTurno.Caja) return true;
+            return !await IsCajaEnabledAsync();
+        }
+
+        private Task<bool> IsCajaEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "caja" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                && module.ConfiguracionOrganizacion.Habilitado)));
     }
 }

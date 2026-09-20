@@ -12,6 +12,7 @@ import RoleManagement from './pages/RoleManagement';
 import RolePermissions from './pages/RolePermissions';
 import InventoryManagement from './pages/InventoryManagement';
 import SalesView from './pages/SalesView';
+import CashRegister from './pages/CashRegister';
 import LogbookView from './pages/LogbookView';
 import TurnHistory from './pages/TurnHistory';
 import InventorySettings from './pages/InventorySettings';
@@ -116,7 +117,7 @@ const ModuleRoute = ({ required, children }) => {
     : <Navigate to="/welcome" replace />;
 };
 
-// Operación de caja siempre exige que el usuario sea dueño de un turno abierto.
+// Punto de venta siempre exige que el usuario sea dueño de un turno abierto.
 const ActiveTurnRoute = ({ children }) => {
   const { user } = useAuth();
   const { loading: organizationLoading } = useOrganization();
@@ -270,13 +271,27 @@ function App() {
           </Route>
 
           {/* Standalone Sales View */}
-          <Route 
-            path="/sales" 
+          <Route
+            path="/sales"
             element={
               <ProtectedRoute>
                 <ModuleRoute required={['ventas']}>
                   <PermissionRoute permission="ventas.operar">
                     <ActiveTurnRoute><SalesView /></ActiveTurnRoute>
+                  </PermissionRoute>
+                </ModuleRoute>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Standalone Cash Register View (sin sidebar, enfocada en el cobro) */}
+          <Route
+            path="/cash-register"
+            element={
+              <ProtectedRoute>
+                <ModuleRoute required={['ventas', 'caja']}>
+                  <PermissionRoute permission="caja.operar">
+                    <CashRegister />
                   </PermissionRoute>
                 </ModuleRoute>
               </ProtectedRoute>

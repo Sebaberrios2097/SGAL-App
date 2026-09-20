@@ -38,6 +38,15 @@ namespace SgalApp.Api.DTOs
         public int IdMateriaPrimaSeleccionada { get; set; }
     }
 
+    /// <summary>Cobro en caja de un vale pendiente: descuento y métodos de pago.</summary>
+    public class CashCollectDto
+    {
+        public List<SalePaymentMethodDto> MetodosPago { get; set; } = new();
+
+        /// <summary>Porcentaje de descuento aplicado al cobro (0 = sin descuento).</summary>
+        public decimal PorcentajeDescuento { get; set; }
+    }
+
     /// <summary>Marca (o desmarca) una venta de consumo como pagada por el empleado.</summary>
     public class ConsumptionPaidDto
     {

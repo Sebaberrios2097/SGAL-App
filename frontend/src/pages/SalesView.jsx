@@ -29,6 +29,7 @@ import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { buildReceiptHtml } from '../utils/receiptTemplates';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
 // débito o crédito después de que Mercado Pago informa el medio real.
@@ -47,10 +48,6 @@ const COMANDA_PENDING = '#f59e0b';        // ámbar para comandas pendientes
 const COMANDAS_POLL_MS = 12000;
 // Alineado con MercadoPagoPoint:ExpirationTime (PT5M) del backend.
 const POINT_AVISO_DEMORA_MS = 5 * 60 * 1000;
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-}[character]));
-
 const buildAlternativeGroups = (product) => {
   const groups = new Map();
 
@@ -93,18 +90,6 @@ const getExtrasSurcharge = (extras = []) => extras
 const getLineSignature = (selections = [], extras = []) =>
   `${getSelectionSignature(selections)}#${extras.map(extra => extra.idIngredienteExtra).sort((a, b) => a - b).join(',')}`;
 
-const renderPrintedSelections = (selections = [], fontSize = 11) => selections.length === 0
-  ? ''
-  : `<br><small style="color: #444; font-size: ${fontSize}px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">${selections
-      .map(selection => `${selection.nombreMateriaPrima}${selection.recargo > 0 ? ` (+$${selection.recargo.toLocaleString('es-CL')})` : ''}`)
-      .join('<br>')}</small>`;
-
-const renderPrintedExtras = (extras = [], fontSize = 9) => extras.length === 0
-  ? ''
-  : `<br><small style="color: #444; font-size: ${fontSize}px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">${extras
-      .map(extra => `+ ${extra.nombre}${extra.precio > 0 ? ` (+$${extra.precio.toLocaleString('es-CL')})` : ''}`)
-      .join('<br>')}</small>`;
-
 const describirRechazoPoint = (estadoOrden) => {
   switch (estadoOrden) {
     case 'canceled': return 'El cobro fue cancelado en la terminal.';
@@ -116,10 +101,23 @@ const describirRechazoPoint = (estadoOrden) => {
 
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
-  const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled, logbookIncludesCalibration } = useOrganization();
+  const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled, logbookIncludesCalibration,
+    receiptShowSeller, receiptShowPayment, receiptCustomFooter } = useOrganization();
+
+  // Opciones de personalización del comprobante compartidas por ambas impresiones.
+  const receiptOptions = () => ({
+    showSeller: receiptShowSeller,
+    showPayment: receiptShowPayment,
+    customFooter: receiptCustomFooter,
+    defaultFooter: branding.textoPieDocumentos || 'Gracias por su preferencia.',
+    contacto: branding.contactoPublico || null
+  });
+  const boletaLogoUrl = () => (hasLogo('boletas') ? `${window.location.origin}${getLogoUrl('boletas')}` : null);
   const materialsEnabled = isModuleEnabled('recetas');
   const turnsEnabled = isModuleEnabled('ventas');
   const commandsEnabled = isModuleEnabled('comandas');
+  // Con Caja, el vendedor solo genera la orden (vale); el cobro ocurre en la caja.
+  const cajaEnabled = isModuleEnabled('caja');
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
   const [loading, setLoading] = useState(true);
@@ -404,6 +402,72 @@ const SalesView = () => {
     }, 300);
   };
 
+  // Con el módulo Caja: el vendedor genera la orden como vale (sin cobro) y la envía
+  // a caja. Imprime un vale mínimo (fecha, productos, cantidades y subtotal con descuentos).
+  const handleGenerarVale = async () => {
+    if (submittingSale || cart.length === 0 || faltaCalibracion) return;
+    setError('');
+    setSubmittingSale(true);
+
+    const items = cart.map(item => ({
+      idProducto: item.product.idProducto,
+      cantidad: item.quantity,
+      seleccionesMateriales: (item.materialSelections || []).map(selection => ({
+        idMateriaPrimaBase: selection.idMateriaPrimaBase,
+        idMateriaPrimaSeleccionada: selection.idMateriaPrimaSeleccionada
+      })),
+      idsIngredientesExtra: (item.extras || []).map(extra => extra.idIngredienteExtra)
+    }));
+
+    try {
+      const res = await fetch('/api/sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idTurno: activeTurn?.idTurno ?? null, items })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detalle ? `${data.mensaje} (${data.detalle})` : (data.mensaje || 'Error al generar el vale'));
+      }
+
+      const valeItems = cart.map(item => ({
+        nombreProducto: item.product.nombreProducto,
+        quantity: item.quantity,
+        normalPrice: item.normalPrice,
+        finalPrice: item.finalPrice,
+        materialSelections: item.materialSelections,
+        extras: item.extras
+      }));
+      const subtotalBruto = cart.reduce((acc, item) => acc + (item.normalPrice * item.quantity), 0);
+      const html = buildReceiptHtml({
+        mode: 'vale',
+        commercialName: branding.nombreComercial,
+        logoUrl: boletaLogoUrl(),
+        data: {
+          idVenta: data.idVenta,
+          fecha: new Date().toLocaleString('es-CL'),
+          items: valeItems,
+          subtotal: subtotalBruto,
+          total: calculateCartSubtotal(),
+          payments: []
+        },
+        options: { includeComanda: false }
+      });
+
+      setCart([]);
+      setDescuentoPct(0);
+      setCartOpen(false);
+      fetchCatalog();
+      setSuccess('Vale generado. Enviado a caja. Imprimiendo...');
+      setTimeout(() => setSuccess(''), 4000);
+      setTimeout(() => printTicket(html), 300);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmittingSale(false);
+    }
+  };
+
   // Consulta el estado del cobro mientras el cliente paga en la terminal.
   useEffect(() => {
     if (!pointPayment || pointPayment.estado !== 'esperando') return;
@@ -581,483 +645,107 @@ const SalesView = () => {
     }, 500);
   };
 
+  const METHOD_NAMES = { 1: 'Efectivo', 4: 'Transferencia', [METODO_TARJETA]: 'Tarjeta' };
+
   const triggerPrintTicket = (saleData) => {
     if (!saleData) return;
-    const isPromo = saleData.subtotal > saleData.total;
-    const discount = saleData.subtotal - saleData.total;
 
-    // BOLETA ITEMS (Producto, Cant, Total)
-    let boletaItemsHtml = '';
-    saleData.cart.forEach(item => {
-      const itemIsPromo = item.finalPrice < item.normalPrice;
-      const originalSub = item.normalPrice * item.quantity;
-      const finalSub = item.finalPrice * item.quantity;
-      const itemDiscountTotal = originalSub - finalSub;
-      const discountPercent = Math.round(((item.normalPrice - item.finalPrice) / item.normalPrice) * 100);
-
-      boletaItemsHtml += `
-        <tr>
-          <td style="font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top; line-height: 1.2;">
-            ${item.product.nombreProducto}
-            ${renderPrintedSelections(item.materialSelections)}
-            ${renderPrintedExtras(item.extras)}
-            ${itemIsPromo ? `<br><small style="color: #444; font-size: 11px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Descto. ${discountPercent}% (-$${itemDiscountTotal.toLocaleString('es-CL')})</small>` : ''}
-          </td>
-          <td style="text-align: center; width: 40px; font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top;">
-            ${item.quantity}
-          </td>
-          <td style="text-align: right; width: 75px; font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top;">
-            ${itemIsPromo ? `<span style="text-decoration: line-through; font-size: 11px; color: #555;">$${originalSub.toLocaleString('es-CL')}</span><br><strong>$${finalSub.toLocaleString('es-CL')}</strong>` : `$${finalSub.toLocaleString('es-CL')}`}
-          </td>
-        </tr>
-      `;
-    });
-
-    // BOLETA PAYMENTS
-    let paymentsHtml = '';
-    const activeMethodNames = {
-      1: 'Efectivo',
-      4: 'Transferencia',
-      [METODO_TARJETA]: 'Tarjeta'
-    };
+    const items = saleData.cart.map(item => ({
+      nombreProducto: item.product.nombreProducto,
+      quantity: item.quantity,
+      normalPrice: item.normalPrice,
+      finalPrice: item.finalPrice,
+      materialSelections: item.materialSelections,
+      extras: item.extras
+    }));
 
     const payments = Object.keys(saleData.paymentAllocations)
       .map(id => ({
-        id: parseInt(id),
-        name: activeMethodNames[id],
-        amount: parseInt(saleData.paymentAllocations[id]) || 0
+        name: METHOD_NAMES[id],
+        amount: parseInt(saleData.paymentAllocations[id]) || 0,
+        isCash: parseInt(id) === 1
       }))
       .filter(p => p.amount > 0);
 
-    payments.forEach(p => {
-      paymentsHtml += `
-        <p style="margin: 2px 0; display: flex; justify-content: space-between; font-size: 12px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-          <span>- ${p.name}:</span>
-          <strong>$${p.amount.toLocaleString('es-CL')}</strong>
-        </p>
-      `;
-      if (p.id === 1) {
-        const received = parseInt(saleData.cashReceived) || 0;
-        const change = Math.max(0, received - p.amount);
-        paymentsHtml += `
-          <p style="margin: 2px 0 2px 10px; display: flex; justify-content: space-between; font-size: 11px; color: #555; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-            <span>Recibido:</span>
-            <span>$${received.toLocaleString('es-CL')}</span>
-          </p>
-          <p style="margin: 2px 0 2px 10px; display: flex; justify-content: space-between; font-size: 11px; color: #555; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-            <span>Vuelto:</span>
-            <span>$${change.toLocaleString('es-CL')}</span>
-          </p>
-        `;
-      }
+    const html = buildReceiptHtml({
+      mode: 'boleta',
+      commercialName: branding.nombreComercial,
+      logoUrl: boletaLogoUrl(),
+      data: {
+        idVenta: saleData.idVenta,
+        fecha: saleData.fecha,
+        barista: saleData.barista,
+        items,
+        subtotal: saleData.subtotal,
+        total: saleData.total,
+        payments,
+        cashReceived: saleData.cashReceived
+      },
+      options: { ...receiptOptions(), includeComanda: true }
     });
-
-    const discountRow = isPromo ? `
-      <tr>
-        <td style="font-size: 12px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Descuentos:</td>
-        <td></td>
-        <td style="text-align: right; font-size: 12px; padding: 4px 0; color: #d93025; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">-$${discount.toLocaleString('es-CL')}</td>
-      </tr>
-    ` : '';
-
-    // COMANDA ITEMS (Producto first, then Cant)
-    let comandaItemsHtml = '';
-    saleData.cart.forEach(item => {
-      comandaItemsHtml += `
-        <tr>
-          <td style="font-size: 13px; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #eee; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; line-height: 1.3;">${item.product.nombreProducto}${renderPrintedSelections(item.materialSelections, 12)}</td>
-          <td style="width: 50px; text-align: right; font-size: 16px; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #eee; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">${item.quantity}x</td>
-        </tr>
-      `;
-    });
-
-    // COMBINED HTMl WITH PAGE BREAK FOR DUAL SHEET PRINTING
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Impresión ${escapeHtml(branding.nombreComercial)}</title>
-        <style>
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-          body {
-            font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;
-            font-size: 13px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 6px 8px;
-            color: #000;
-            box-sizing: border-box;
-          }
-          /* Térmica = 1 bit (negro/blanco): sin grises ni trazos finos suavizados */
-          * {
-            color: #000 !important;
-            font-weight: bold !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .text-center { text-align: center; }
-          .logo-container {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 4px;
-          }
-          .logo {
-            width: 105px;
-            height: auto;
-            display: block;
-            filter: contrast(160%);
-          }
-          .divider {
-            border-top: 1px dashed #000;
-            margin: 4px 0;
-          }
-          .item-table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          .totals-table {
-            width: 100%;
-            margin-top: 8px;
-          }
-          .footer {
-            font-size: 11px;
-            margin-top: 8px;
-          }
-          .disclaimer {
-            font-size: 11px;
-            font-weight: bold;
-            margin-top: 8px;
-            line-height: 1.3;
-            color: #333;
-          }
-          .page-break {
-            page-break-after: always;
-            break-after: page;
-          }
-          .comanda-section {
-            padding-top: 8px;
-          }
-        </style>
-      </head>
-      <body>
-        <!-- PAGE 1: BOLETA -->
-        <div class="logo-container">
-          ${hasLogo('boletas')
-            ? `<img src="${window.location.origin}${getLogoUrl('boletas')}" class="logo" alt="Logo" />`
-            : `<strong>${escapeHtml(branding.nombreComercial)}</strong>`}
-        </div>
-        <div class="divider"></div>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>Nro. Boleta: #${saleData.idVenta}</strong></p>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Atendido por: ${saleData.barista}</p>
-        <div class="divider"></div>
-        <table class="item-table">
-          <thead>
-            <tr>
-              <th style="text-align: left; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Producto</th>
-              <th style="text-align: center; width: 40px; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Cant</th>
-              <th style="text-align: right; width: 75px; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${boletaItemsHtml}
-          </tbody>
-        </table>
-        <div class="divider"></div>
-        <table class="totals-table">
-          <tr>
-            <td style="font-size: 12px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Subtotal:</td>
-            <td></td>
-            <td style="text-align: right; font-size: 12px; padding: 4px 0; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">$${saleData.subtotal.toLocaleString('es-CL')}</td>
-          </tr>
-          ${discountRow}
-          <tr>
-            <td style="font-size: 13px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>TOTAL:</strong></td>
-            <td></td>
-            <td style="text-align: right; font-size: 14px; padding: 4px 0; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">$${saleData.total.toLocaleString('es-CL')}</td>
-          </tr>
-        </table>
-        <div class="divider"></div>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>Detalle Pago:</strong></p>
-        ${paymentsHtml}
-        <div class="divider"></div>
-        <p class="text-center footer" style="font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; margin-bottom: 10px;">${escapeHtml(branding.textoPieDocumentos || 'Gracias por su preferencia.')}${branding.contactoPublico ? `<br>${escapeHtml(branding.contactoPublico)}` : ''}</p>
-        <div class="text-center disclaimer" style="font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-          *** DOCUMENTO NO VÁLIDO COMO BOLETA ELECTRÓNICA / SIN VALOR TRIBUTARIO (SII) ***
-        </div>
-
-        <!-- BREAK FOR PRINTER CUT -->
-        <div class="page-break"></div>
-
-        <!-- PAGE 2: COMANDA -->
-        <div class="comanda-section">
-          <h2 class="text-center" style="margin: 0; font-size: 18px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">COMANDA DE PREPARACIÓN</h2>
-          <div class="divider"></div>
-          <p style="margin: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>Nro. Boleta: #${saleData.idVenta}</strong></p>
-          <div class="divider"></div>
-          <table class="item-table">
-            <thead>
-              <tr>
-                <th style="text-align: left; font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 4px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Producto</th>
-                <th style="text-align: right; width: 50px; font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 4px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Cant</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${comandaItemsHtml}
-            </tbody>
-          </table>
-          <div class="divider"></div>
-          <p class="text-center" style="font-size: 13px; margin-top: 20px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">-- Fin de Comanda --</p>
-        </div>
-      </body>
-      </html>
-    `;
     printTicket(html);
   };
 
+  // Reimpresión de boleta: acepta una venta del historial (desde BD, `fechaVenta`
+  // presente) o el snapshot recién generado en pantalla. No incluye la comanda.
   const triggerPrintBoleta = (sale) => {
     if (!sale) return;
-
-    // Normalize from DB representation to print layout structure if needed
     const isReprint = !!sale.fechaVenta;
-    
-    const idVenta = sale.idVenta;
-    const fecha = isReprint 
-      ? new Date(sale.fechaVenta).toLocaleString('es-CL') 
-      : sale.fecha;
+
+    const fecha = isReprint ? new Date(sale.fechaVenta).toLocaleString('es-CL') : sale.fecha;
     const barista = sale.barista || (user.empleado ? `${user.empleado.nombres} ${user.empleado.apellido1}` : user.nombreUsuario);
-    
-    const normalizedCart = isReprint 
+
+    const items = isReprint
       ? sale.items.map(item => ({
-          product: {
-            nombreProducto: item.nombreProducto,
-            precio: item.precioNormal || item.precioUnitario
-          },
+          nombreProducto: item.nombreProducto,
           quantity: item.cantidad,
           finalPrice: item.precioUnitario,
           normalPrice: item.precioNormal || item.precioUnitario,
           materialSelections: (item.seleccionesMateriales || []).map(selection => ({
-            idMateriaPrimaSeleccionada: selection.idMateriaPrima,
             nombreMateriaPrima: selection.nombreMateriaPrima,
             recargo: selection.recargo
           })),
           extras: (item.ingredientesExtra || []).map(extra => ({
-            idIngredienteExtra: extra.idIngredienteExtra,
             nombre: extra.nombre,
             precio: extra.precio
           }))
         }))
-      : sale.cart;
+      : sale.cart.map(item => ({
+          nombreProducto: item.product.nombreProducto,
+          quantity: item.quantity,
+          normalPrice: item.normalPrice,
+          finalPrice: item.finalPrice,
+          materialSelections: item.materialSelections,
+          extras: item.extras
+        }));
 
     const subtotal = isReprint
-      ? normalizedCart.reduce((acc, item) => acc + (item.product.precio * item.quantity), 0)
+      ? items.reduce((acc, item) => acc + (item.normalPrice * item.quantity), 0)
       : sale.subtotal;
+    const total = isReprint ? sale.montoTotal : sale.total;
 
-    const total = isReprint
-      ? sale.montoTotal
-      : sale.total;
+    const payments = isReprint
+      ? sale.metodosPago.map(mp => ({ name: mp.nombreMetodoPago, amount: mp.monto, isCash: mp.idMetodoPago === 1 }))
+      : Object.keys(sale.paymentAllocations)
+          .map(id => ({ name: METHOD_NAMES[id], amount: parseInt(sale.paymentAllocations[id]) || 0, isCash: parseInt(id) === 1 }))
+          .filter(p => p.amount > 0);
 
-    const isPromo = subtotal > total;
-    const discount = subtotal - total;
-
-    // BOLETA ITEMS (Producto, Cant, Total)
-    let boletaItemsHtml = '';
-    normalizedCart.forEach(item => {
-      const itemIsPromo = item.finalPrice < item.normalPrice;
-      const originalSub = item.normalPrice * item.quantity;
-      const finalSub = item.finalPrice * item.quantity;
-      const itemDiscountTotal = originalSub - finalSub;
-      const discountPercent = Math.round(((item.normalPrice - item.finalPrice) / item.normalPrice) * 100);
-
-      boletaItemsHtml += `
-        <tr>
-          <td style="font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top; line-height: 1.2;">
-            ${item.product.nombreProducto}
-            ${renderPrintedSelections(item.materialSelections)}
-            ${renderPrintedExtras(item.extras)}
-            ${itemIsPromo ? `<br><small style="color: #444; font-size: 11px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Descto. ${discountPercent}% (-$${itemDiscountTotal.toLocaleString('es-CL')})</small>` : ''}
-          </td>
-          <td style="text-align: center; width: 40px; font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top;">
-            ${item.quantity}
-          </td>
-          <td style="text-align: right; width: 75px; font-size: 12px; padding: 5px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; vertical-align: top;">
-            ${itemIsPromo ? `<span style="text-decoration: line-through; font-size: 11px; color: #555;">$${originalSub.toLocaleString('es-CL')}</span><br><strong>$${finalSub.toLocaleString('es-CL')}</strong>` : `$${finalSub.toLocaleString('es-CL')}`}
-          </td>
-        </tr>
-      `;
+    const html = buildReceiptHtml({
+      mode: 'boleta',
+      commercialName: branding.nombreComercial,
+      logoUrl: boletaLogoUrl(),
+      data: {
+        idVenta: sale.idVenta,
+        fecha,
+        barista,
+        items,
+        subtotal,
+        total,
+        payments,
+        cashReceived: isReprint ? null : sale.cashReceived
+      },
+      options: { ...receiptOptions(), includeComanda: false }
     });
-
-    // BOLETA PAYMENTS
-    let paymentsHtml = '';
-    const activeMethodNames = {
-      1: 'Efectivo',
-      4: 'Transferencia',
-      [METODO_TARJETA]: 'Tarjeta'
-    };
-
-    if (isReprint) {
-      sale.metodosPago.forEach(mp => {
-        paymentsHtml += `
-          <p style="margin: 2px 0; display: flex; justify-content: space-between; font-size: 12px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-            <span>- ${mp.nombreMetodoPago}:</span>
-            <strong>$${mp.monto.toLocaleString('es-CL')}</strong>
-          </p>
-        `;
-      });
-    } else {
-      const payments = Object.keys(sale.paymentAllocations)
-        .map(id => ({
-          id: parseInt(id),
-          name: activeMethodNames[id],
-          amount: parseInt(sale.paymentAllocations[id]) || 0
-        }))
-        .filter(p => p.amount > 0);
-
-      payments.forEach(p => {
-        paymentsHtml += `
-          <p style="margin: 2px 0; display: flex; justify-content: space-between; font-size: 12px; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-            <span>- ${p.name}:</span>
-            <strong>$${p.amount.toLocaleString('es-CL')}</strong>
-          </p>
-        `;
-        if (p.id === 1) {
-          const received = parseInt(sale.cashReceived) || 0;
-          const change = Math.max(0, received - p.amount);
-          paymentsHtml += `
-            <p style="margin: 2px 0 2px 10px; display: flex; justify-content: space-between; font-size: 11px; color: #555; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-              <span>Recibido:</span>
-              <span>$${received.toLocaleString('es-CL')}</span>
-            </p>
-            <p style="margin: 2px 0 2px 10px; display: flex; justify-content: space-between; font-size: 11px; color: #555; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-              <span>Vuelto:</span>
-              <span>$${change.toLocaleString('es-CL')}</span>
-            </p>
-          `;
-        }
-      });
-    }
-
-    const discountRow = isPromo ? `
-      <tr>
-        <td style="font-size: 12px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Descuentos:</td>
-        <td></td>
-        <td style="text-align: right; font-size: 12px; padding: 4px 0; color: #d93025; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">-$${discount.toLocaleString('es-CL')}</td>
-      </tr>
-    ` : '';
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Impresión ${escapeHtml(branding.nombreComercial)}</title>
-        <style>
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-          body {
-            font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;
-            font-size: 13px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 6px 8px;
-            color: #000;
-            box-sizing: border-box;
-          }
-          /* Térmica = 1 bit (negro/blanco): sin grises ni trazos finos suavizados */
-          * {
-            color: #000 !important;
-            font-weight: bold !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .text-center { text-align: center; }
-          .logo-container {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 4px;
-          }
-          .logo {
-            width: 105px;
-            height: auto;
-            display: block;
-            filter: contrast(160%);
-          }
-          .divider {
-            border-top: 1px dashed #000;
-            margin: 4px 0;
-          }
-          .item-table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          .totals-table {
-            width: 100%;
-            margin-top: 8px;
-          }
-          .footer {
-            font-size: 11px;
-            margin-top: 8px;
-          }
-          .disclaimer {
-            font-size: 11px;
-            font-weight: bold;
-            margin-top: 8px;
-            line-height: 1.3;
-            color: #333;
-          }
-        </style>
-      </head>
-      <body>
-        <!-- PAGE 1: BOLETA -->
-        <div class="logo-container">
-          ${hasLogo('boletas')
-            ? `<img src="${window.location.origin}${getLogoUrl('boletas')}" class="logo" alt="Logo" />`
-            : `<strong>${escapeHtml(branding.nombreComercial)}</strong>`}
-        </div>
-        <div class="divider"></div>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>Nro. Boleta: #${idVenta}</strong></p>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Atendido por: ${barista}</p>
-        <div class="divider"></div>
-        <table class="item-table">
-          <thead>
-            <tr>
-              <th style="text-align: left; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Producto</th>
-              <th style="text-align: center; width: 40px; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Cant</th>
-              <th style="text-align: right; width: 75px; font-size: 12px; border-bottom: 1px solid #000; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${boletaItemsHtml}
-          </tbody>
-        </table>
-        <div class="divider"></div>
-        <table class="totals-table">
-          <tr>
-            <td style="font-size: 12px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">Subtotal:</td>
-            <td></td>
-            <td style="text-align: right; font-size: 12px; padding: 4px 0; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">$${subtotal.toLocaleString('es-CL')}</td>
-          </tr>
-          ${discountRow}
-          <tr>
-            <td style="font-size: 13px; padding: 4px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>TOTAL:</strong></td>
-            <td></td>
-            <td style="text-align: right; font-size: 14px; padding: 4px 0; font-weight: bold; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">$${total.toLocaleString('es-CL')}</td>
-          </tr>
-        </table>
-        <div class="divider"></div>
-        <p style="margin: 2px 0; font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;"><strong>Detalle Pago:</strong></p>
-        ${paymentsHtml}
-        <div class="divider"></div>
-        <p class="text-center footer" style="font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace; margin-bottom: 10px;">${escapeHtml(branding.textoPieDocumentos || 'Gracias por su preferencia.')}${branding.contactoPublico ? `<br>${escapeHtml(branding.contactoPublico)}` : ''}</p>
-        <div class="text-center disclaimer" style="font-family: 'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace;">
-          *** DOCUMENTO NO VÁLIDO COMO BOLETA ELECTRÓNICA / SIN VALOR TRIBUTARIO (SII) ***
-        </div>
-      </body>
-      </html>
-    `;
     printTicket(html);
   };
 
@@ -1776,7 +1464,7 @@ const SalesView = () => {
     && calibracionTurno?.tieneCalibracion === false;
 
   const salesContextReady = !turnsEnabled || Boolean(activeTurn);
-  // Las comandas pertenecen al turno abierto de Operación de caja.
+  // Las comandas pertenecen al turno abierto de Punto de venta.
   const showViewSwitch = commandsEnabled && salesContextReady && can('ventas.comandas.gestionar');
   const enComandas = viewMode === 'comandas';
   // Fondos personalizados por sección (si están habilitados en Identidad).
@@ -2254,7 +1942,7 @@ const SalesView = () => {
                 borderTop: '1px solid #e2e8f0',
                 backgroundColor: '#f8fafc'
               }}>
-                {puedeDescontar && (
+                {puedeDescontar && !cajaEnabled && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                       <span>Subtotal:</span>
@@ -2336,9 +2024,14 @@ const SalesView = () => {
                   )}
 
                   {canAny('ventas.crear', 'ventas.crear_point') && <button
-                    disabled={cart.length === 0 || faltaCalibracion}
+                    disabled={cart.length === 0 || faltaCalibracion || (cajaEnabled && submittingSale)}
                     onClick={() => {
                       setError('');
+                      if (cajaEnabled) {
+                        // Con Caja el vendedor no cobra: genera el vale y lo envía a caja.
+                        handleGenerarVale();
+                        return;
+                      }
                       const total = calculateCartTotal();
                       const defaultMethod = can('ventas.crear') ? 1 : METODO_TARJETA;
                       setPaymentAllocations({ 1: defaultMethod === 1 ? total : '', 4: '', [METODO_TARJETA]: defaultMethod === METODO_TARJETA ? total : '' });
@@ -2367,7 +2060,7 @@ const SalesView = () => {
                       if (cart.length > 0 && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
                     }}
                   >
-                    Continuar al Pago
+                    {cajaEnabled ? 'Generar vale' : 'Continuar al Pago'}
                   </button>}
                   {turnsEnabled && can('ventas.crear') && <button
                     type="button"

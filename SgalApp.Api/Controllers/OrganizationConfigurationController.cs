@@ -58,6 +58,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.ColorSecundario,
                 x.ColorAcento,
                 x.ColorFondo,
+                x.BoletaMuestraVendedor,
+                x.BoletaMuestraPago,
+                x.BoletaColaPersonalizada,
                 x.TurnosRequierenCuadratura,
                 x.BitacoraIncluyeCalibracion
             })
@@ -118,6 +121,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.ColorSecundario,
                 x.ColorAcento,
                 x.ColorFondo,
+                x.BoletaMuestraVendedor,
+                x.BoletaMuestraPago,
+                x.BoletaColaPersonalizada,
                 x.FechaActualizacion
             })
             .FirstOrDefaultAsync();
@@ -149,6 +155,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         branding.ColorSecundario = dto.ColorSecundario.ToUpperInvariant();
         branding.ColorAcento = dto.ColorAcento.ToUpperInvariant();
         branding.ColorFondo = dto.ColorFondo.ToUpperInvariant();
+        branding.BoletaMuestraVendedor = dto.BoletaMuestraVendedor;
+        branding.BoletaMuestraPago = dto.BoletaMuestraPago;
+        branding.BoletaColaPersonalizada = Clean(dto.BoletaColaPersonalizada);
         branding.FechaActualizacion = DateTime.UtcNow;
         await context.SaveChangesAsync();
 
@@ -619,6 +628,12 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         if (moduleCode == "bitacora") return "Bitácora";
         if (moduleCode == "comandas") return "Comandas";
 
+        if (moduleCode == "caja")
+        {
+            if (permissionCode.StartsWith("caja.turno.")) return "Turno de caja";
+            return "Cobro";
+        }
+
         if (moduleCode == "ventas")
         {
             if (permissionCode == "inicio.dashboard.ver") return "Panel administrativo";
@@ -751,6 +766,9 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         ColorSecundario = "#163A47",
         ColorAcento = "#D97706",
         ColorFondo = "#F8FAFC",
+        BoletaMuestraVendedor = true,
+        BoletaMuestraPago = true,
+        BoletaColaPersonalizada = (string?)null,
         TurnosRequierenCuadratura = true,
         BitacoraIncluyeCalibracion = true
     };

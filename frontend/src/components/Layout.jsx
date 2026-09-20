@@ -26,6 +26,7 @@ import {
     Tags,
     Truck,
     Users,
+    Wallet,
     X
 } from 'lucide-react';
 import { notify } from './NotificationCenter';
@@ -36,7 +37,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import BrandLogo from './BrandLogo';
 
 const sidebarGroupForPath = (pathname) => {
-  if (pathname === '/turn' || pathname === '/sales' || pathname.startsWith('/logbook/')) return 'rapido';
+  if (pathname === '/turn' || pathname === '/sales' || pathname === '/cash-register' || pathname.startsWith('/logbook/')) return 'rapido';
   if (pathname === '/dashboard' || pathname.startsWith('/turn-') || pathname.startsWith('/turn/') || pathname.startsWith('/admin/turn')) return 'operacion';
   if (pathname === '/inventory' || pathname === '/inventory/control' || pathname === '/settings/product-categories') return 'inventario';
   if (pathname.startsWith('/recipes') || pathname.startsWith('/inventory/products/') || ['/settings/raw-materials', '/settings/extra-ingredients', '/settings/units', '/settings/material-categories', '/settings/brands'].some(path => pathname.startsWith(path))) return 'recetas';
@@ -61,12 +62,14 @@ const Layout = () => {
   const turnsEnabled = salesEnabled;
   const materialsEnabled = isModuleEnabled('recetas');
   const logbookEnabled = salesEnabled;
+  const cajaEnabled = isModuleEnabled('caja');
+  const canOperateCaja = cajaEnabled && can('caja.operar');
   const canOperateTurns = turnsEnabled && (
     canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar')
     || (logbookEnabled && can('bitacora.propia.ver'))
     || (salesEnabled && can('ventas.operar')));
   const hasAdministrativePanel = salesEnabled;
-  const hasQuickNavigation = canOperateTurns;
+  const hasQuickNavigation = canOperateTurns || canOperateCaja;
   const hasOperationNavigation = salesEnabled && canAny(
     'turnos.propios.ver', 'bitacora.propia.ver', 'configuracion_inventario.cortesia.ver',
     'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver'
@@ -341,6 +344,7 @@ const Layout = () => {
           {hasQuickNavigation && <>
             {renderSectionTitle('Acceso rápido')}
               {canOperateTurns && renderNavItem({ label: 'Turno', path: '/turn', icon: Clock, exact: true })}
+              {canOperateCaja && renderNavItem({ label: 'Caja', path: '/cash-register', icon: Wallet })}
               {activeTurnInfo.hasActiveTurn && (
                 activeTurnInfo.belongsToCurrentUser ? (
                   <>
@@ -374,7 +378,7 @@ const Layout = () => {
 
           {hasModuleGroups && renderSectionTitle('Módulos')}
 
-          {renderNavGroup({ id: 'operacion', label: 'Operación de caja', icon: ShoppingBag, visible: hasOperationNavigation, children: <>
+          {renderNavGroup({ id: 'operacion', label: 'Punto de venta', icon: ShoppingBag, visible: hasOperationNavigation, children: <>
               {hasAdministrativePanel && can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
               {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
               {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Gift })}

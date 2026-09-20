@@ -67,6 +67,7 @@ const BrandingSettings = () => {
   useEffect(() => { loadLogos().catch(exception => setError(exception.message)); }, [loadLogos]);
 
   const update = (field) => (event) => setForm(current => ({ ...current, [field]: event.target.value }));
+  const toggle = (field) => (event) => setForm(current => ({ ...current, [field]: event.target.checked }));
 
   const save = async (event) => {
     event.preventDefault();
@@ -241,7 +242,27 @@ const BrandingSettings = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         {colorFields.map(([field, label]) => <label key={field} className="input-group"><span className="input-label">{label}</span><div style={{ display: 'flex', gap: 8 }}><input type="color" disabled={!canEdit} value={form[field] || '#000000'} onChange={update(field)} style={{ width: 48, height: 44, border: 0, background: 'transparent' }} /><input className="input-field" pattern="#[0-9A-Fa-f]{6}" maxLength={7} required disabled={!canEdit} value={form[field] || ''} onChange={update(field)} /></div></label>)}
       </div>
-      {canEdit && <button className="btn btn-primary" disabled={saving} type="submit"><Save size={17} /> {saving ? 'Guardando…' : 'Guardar identidad'}</button>}
+
+      <h3 style={{ margin: '22px 0 6px' }}>Comprobantes</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '.85rem', color: 'var(--text-secondary, #64748b)' }}>
+        El comprobante siempre muestra la fecha, el logo y los productos con sus cantidades y subtotales (con descuentos). Elija qué información adicional incluir.
+      </p>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '.9rem', cursor: canEdit ? 'pointer' : 'default' }}>
+          <input type="checkbox" disabled={!canEdit} checked={form.boletaMuestraVendedor ?? true} onChange={toggle('boletaMuestraVendedor')} />
+          Mostrar el nombre de quien atendió (vendedor/cajero)
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '.9rem', cursor: canEdit ? 'pointer' : 'default' }}>
+          <input type="checkbox" disabled={!canEdit} checked={form.boletaMuestraPago ?? true} onChange={toggle('boletaMuestraPago')} />
+          Mostrar el detalle del método de pago y el vuelto
+        </label>
+        <div className="input-group">
+          <label className="input-label">Cola personalizada del comprobante</label>
+          <input className="input-field" maxLength={250} disabled={!canEdit} placeholder="Texto propio al pie del comprobante (independiente del mensaje al pie de documentos)" value={form.boletaColaPersonalizada || ''} onChange={update('boletaColaPersonalizada')} />
+        </div>
+      </div>
+
+      {canEdit && <button className="btn btn-primary" disabled={saving} type="submit" style={{ marginTop: 18 }}><Save size={17} /> {saving ? 'Guardando…' : 'Guardar identidad'}</button>}
     </form>
 
     <section className="card">

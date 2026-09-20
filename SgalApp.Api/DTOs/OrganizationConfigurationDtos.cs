@@ -30,6 +30,16 @@ public sealed class UpdateOrganizationBrandingDto
 
     [Required, StringLength(7, MinimumLength = 7)]
     public string ColorFondo { get; set; } = "#F8FAFC";
+
+    /// <summary>Mostrar el nombre del vendedor/cajero que atendió en el comprobante.</summary>
+    public bool BoletaMuestraVendedor { get; set; } = true;
+
+    /// <summary>Mostrar el detalle del método de pago y el vuelto en el comprobante.</summary>
+    public bool BoletaMuestraPago { get; set; } = true;
+
+    /// <summary>Cola propia del comprobante, independiente de <see cref="TextoPieDocumentos"/>.</summary>
+    [StringLength(250)]
+    public string? BoletaColaPersonalizada { get; set; }
 }
 
 public sealed class UpdateOrganizationModulesDto

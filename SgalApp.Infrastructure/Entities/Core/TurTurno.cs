@@ -19,6 +19,10 @@ public partial class TurTurno
     [Column("Id_Estado_Turno")]
     public int IdEstadoTurno { get; set; }
 
+    /// <summary>Tipo de turno: 1 = vendedor (genera órdenes), 2 = caja (cobra).</summary>
+    [Column("Tipo_Turno")]
+    public byte TipoTurno { get; set; } = 1;
+
     [Column("Fecha_Apertura", TypeName = "datetime")]
     public DateTime FechaApertura { get; set; }
 
@@ -54,4 +58,8 @@ public partial class TurTurno
 
     [InverseProperty("IdTurnoNavigation")]
     public virtual ICollection<VenVentas> VenVentas { get; set; } = new List<VenVentas>();
+
+    /// <summary>Ventas cobradas en este turno de caja (módulo Caja).</summary>
+    [InverseProperty("IdTurnoCajaNavigation")]
+    public virtual ICollection<VenVentas> VenVentasCaja { get; set; } = new List<VenVentas>();
 }

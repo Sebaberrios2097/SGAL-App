@@ -61,6 +61,8 @@ const Turn = () => {
   const { user, can } = useAuth();
   const { isModuleEnabled, turnsRequireReconciliation } = useOrganization();
   const salesEnabled = isModuleEnabled('ventas');
+  // Con Caja habilitado, el efectivo lo maneja el cajero: el turno de vendedor no cuadra.
+  const vendorReconciliation = turnsRequireReconciliation && !isModuleEnabled('caja');
   const logbookEnabled = salesEnabled;
   const [lastTurn, setLastTurn] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -173,7 +175,7 @@ const Turn = () => {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', borderTop: '1px solid var(--panel-border)', paddingTop: '18px' }}>
             {can('turnos.abrir') && (
               <TurnAction icon={PlayCircle} label="Iniciar turno" tone="primary"
-                enabled={sinTurno && !directAction} onClick={() => turnsRequireReconciliation ? setShowOpening(true) : runTurnActionWithoutReconciliation('open')} reason={startReason} />
+                enabled={sinTurno && !directAction} onClick={() => vendorReconciliation ? setShowOpening(true) : runTurnActionWithoutReconciliation('open')} reason={startReason} />
             )}
             {salesEnabled && can('ventas.operar') && (
               <TurnAction icon={ShoppingBag} label="Ir a Ventas" tone={belongsToUser ? 'primary' : 'secondary'}
@@ -189,7 +191,7 @@ const Turn = () => {
             )}
             {can('turnos.cerrar') && (
               <TurnAction icon={StopCircle} label="Cerrar turno" tone="danger"
-                enabled={belongsToUser && !directAction} onClick={() => turnsRequireReconciliation ? setShowClosing(true) : runTurnActionWithoutReconciliation('close')} reason="No tienes un turno abierto para cerrar." />
+                enabled={belongsToUser && !directAction} onClick={() => vendorReconciliation ? setShowClosing(true) : runTurnActionWithoutReconciliation('close')} reason="No tienes un turno abierto para cerrar." />
             )}
           </div>
         )}

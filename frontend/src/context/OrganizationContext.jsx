@@ -10,7 +10,10 @@ const defaultBranding = {
   colorPrimario: '#1F4E5F',
   colorSecundario: '#163A47',
   colorAcento: '#D97706',
-  colorFondo: '#F8FAFC'
+  colorFondo: '#F8FAFC',
+  boletaMuestraVendedor: true,
+  boletaMuestraPago: true,
+  boletaColaPersonalizada: null
 };
 
 const OrganizationContext = createContext(null);
@@ -90,6 +93,9 @@ export const OrganizationProvider = ({ children }) => {
     isModuleEnabled: (code) => enabledModules.includes(code),
     turnsRequireReconciliation: branding.turnosRequierenCuadratura ?? true,
     logbookIncludesCalibration: branding.bitacoraIncluyeCalibracion ?? true,
+    receiptShowSeller: branding.boletaMuestraVendedor ?? true,
+    receiptShowPayment: branding.boletaMuestraPago ?? true,
+    receiptCustomFooter: branding.boletaColaPersonalizada ?? null,
     getBackgroundStyle,
     refreshConfiguration: loadConfiguration
   }), [branding, displayName, hasConfiguredIdentity, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);
