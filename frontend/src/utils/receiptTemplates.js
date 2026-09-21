@@ -12,6 +12,8 @@
 // La base (fecha, logo, productos, cantidades y subtotales con descuentos) siempre
 // se muestra; el resto es opcional vía `options`.
 
+import { code39Svg } from './barcode';
+
 const MONO = "'Consolas', 'Lucida Console', 'DejaVu Sans Mono', monospace";
 
 // Imprime un HTML de comprobante en un iframe oculto (impresora térmica).
@@ -154,7 +156,7 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
   const {
     showSeller = true, showPayment = true,
     customFooter = null, defaultFooter = 'Gracias por su preferencia.',
-    contacto = null, includeComanda = false
+    contacto = null, includeComanda = false, barcodeValue = null
   } = options;
 
   const isPromo = subtotal > total;
@@ -173,6 +175,12 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
   const title = isVale ? 'Vale' : 'Boleta';
   const paymentsHtml = (!isVale && showPayment) ? buildPaymentsHtml(payments, cashReceived) : '';
   const footerText = (customFooter && customFooter.trim()) ? customFooter : defaultFooter;
+  const barcodeHtml = barcodeValue ? `
+    <div class="divider"></div>
+    <div class="text-center" style="margin: 6px 0;">
+      <div style="display:flex; justify-content:center;">${code39Svg(barcodeValue)}</div>
+      <div style="font-family: ${MONO}; font-size: 11px; letter-spacing: 2px; margin-top: 2px;">${escapeHtml(barcodeValue)}</div>
+    </div>` : '';
 
   return `
     <!DOCTYPE html>
@@ -244,6 +252,7 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
       <div class="text-center disclaimer" style="font-family: ${MONO};">
         *** DOCUMENTO NO VÁLIDO COMO BOLETA ELECTRÓNICA / SIN VALOR TRIBUTARIO (SII) ***
       </div>
+      ${barcodeHtml}
       ${includeComanda ? buildComandaSection(idVenta, items) : ''}
     </body>
     </html>`;

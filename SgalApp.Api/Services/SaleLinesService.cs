@@ -59,6 +59,13 @@ namespace SgalApp.Api.Services
         Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default);
 
         Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Reemplaza por completo las líneas de una venta: repone el stock de las líneas actuales,
+        /// las elimina y reconstruye el detalle con <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int?, CancellationToken)"/>.
+        /// El llamador administra la transacción y actualiza los montos de la cabecera. No aplica cortesía.
+        /// </summary>
+        Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default);
     }
 
     public class SaleLinesService : ISaleLinesService
@@ -439,6 +446,26 @@ namespace SgalApp.Api.Services
         /// <summary>
         /// Devuelve al inventario el stock de una venta que no llegó a concretarse.
         /// </summary>
+        public async Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default)
+        {
+            await RestoreStockAsync(idVenta, cancellationToken);
+
+            var detalles = await _context.VenDetalleVenta
+                .Include(d => d.VenDetalleVentaMateriales)
+                .Include(d => d.VenDetalleVentaIngrediente)
+                .Where(d => d.IdVenta == idVenta)
+                .ToListAsync(cancellationToken);
+            foreach (var detalle in detalles)
+            {
+                _context.VenDetalleVentaMateriales.RemoveRange(detalle.VenDetalleVentaMateriales);
+                _context.VenDetalleVentaIngrediente.RemoveRange(detalle.VenDetalleVentaIngrediente);
+            }
+            _context.VenDetalleVenta.RemoveRange(detalles);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return await BuildAsync(idVenta, items, idTurno, cancellationToken);
+        }
+
         public async Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default)
         {
             var detalles = await _context.VenDetalleVenta

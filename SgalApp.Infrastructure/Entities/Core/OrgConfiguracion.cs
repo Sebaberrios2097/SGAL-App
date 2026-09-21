@@ -46,6 +46,9 @@ public class OrgConfiguracion
     [Column("Boleta_Cola_Personalizada"), StringLength(250)]
     public string? BoletaColaPersonalizada { get; set; }
 
+    [Column("Vale_Incluye_Codigo_Barra")]
+    public bool ValeIncluyeCodigoBarra { get; set; }
+
     [Column("Turnos_Requieren_Cuadratura")]
     public bool TurnosRequierenCuadratura { get; set; } = true;
 

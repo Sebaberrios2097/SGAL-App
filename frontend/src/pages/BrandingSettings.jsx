@@ -256,6 +256,10 @@ const BrandingSettings = () => {
           <input type="checkbox" disabled={!canEdit} checked={form.boletaMuestraPago ?? true} onChange={toggle('boletaMuestraPago')} />
           Mostrar el detalle del método de pago y el vuelto
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '.9rem', cursor: canEdit ? 'pointer' : 'default' }}>
+          <input type="checkbox" disabled={!canEdit} checked={form.valeIncluyeCodigoBarra ?? false} onChange={toggle('valeIncluyeCodigoBarra')} />
+          Imprimir código de barras en el ticket interno (para reescanearlo)
+        </label>
         <div className="input-group">
           <label className="input-label">Cola personalizada del comprobante</label>
           <input className="input-field" maxLength={250} disabled={!canEdit} placeholder="Texto propio al pie del comprobante (independiente del mensaje al pie de documentos)" value={form.boletaColaPersonalizada || ''} onChange={update('boletaColaPersonalizada')} />

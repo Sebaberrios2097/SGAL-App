@@ -1,8 +1,6 @@
 using SgalApp.Infrastructure.Context;
 using SgalApp.Infrastructure.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using SgalApp.Api.Configuration;
 using SgalApp.Api.DTOs.Point;
 
 namespace SgalApp.Api.Services
@@ -47,25 +45,29 @@ namespace SgalApp.Api.Services
         private readonly SgalContext _context;
         private readonly IPointService _pointService;
         private readonly ISaleLinesService _saleLines;
-        private readonly MercadoPagoPointOptions _options;
+        private readonly IPosCredentialProvider _credentials;
         private readonly ILogger<PointSaleService> _logger;
 
         public PointSaleService(
             SgalContext context,
             IPointService pointService,
             ISaleLinesService saleLines,
-            IOptions<MercadoPagoPointOptions> options,
+            IPosCredentialProvider credentials,
             ILogger<PointSaleService> logger)
         {
             _context = context;
             _pointService = pointService;
             _saleLines = saleLines;
-            _options = options.Value;
+            _credentials = credentials;
             _logger = logger;
         }
 
         public async Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, int idUsuario, CancellationToken cancellationToken = default)
         {
+            var schemaError = await PointSchemaGuard.GetConfigurationErrorAsync(_context, cancellationToken);
+            if (schemaError != null)
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(schemaError);
+
             if (dto.Items == null || dto.Items.Count == 0)
             {
                 return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto.");
@@ -162,7 +164,8 @@ namespace SgalApp.Api.Services
             await _context.SaveChangesAsync(cancellationToken);
 
             var referenciaExterna = $"SV{sale.IdVenta}_{DateTime.Now:yyyyMMddHHmmss}";
-            var terminalId = _options.TerminalId;
+            var creds = await _credentials.ResolveMercadoPagoAsync(cancellationToken);
+            var terminalId = creds.TerminalId;
 
             PointOrder order;
             try
@@ -181,7 +184,9 @@ namespace SgalApp.Api.Services
                 _logger.LogError(ex, "No se pudo crear la orden Point para la venta {IdVenta}.", sale.IdVenta);
 
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(
-                    ex is PointApiException pex && pex.ResponseBody != null
+                    ex is InvalidOperationException
+                        ? ex.Message
+                        : ex is PointApiException pex && pex.ResponseBody != null
                         ? $"La terminal rechazó el cobro: {pex.ResponseBody}"
                         : "No se pudo enviar el cobro a la terminal.");
             }
@@ -211,9 +216,11 @@ namespace SgalApp.Api.Services
 
                 // La orden ya está en la terminal pero la venta no se guardó: hay que retirarla.
                 _logger.LogError(ex, "Falló el commit de la venta {IdVenta}. Se intenta cancelar la orden {OrderId}.", sale.IdVenta, order.Id);
+                var orderCanceled = false;
                 try
                 {
                     await _pointService.CancelOrderAsync(order.Id, cancellationToken);
+                    orderCanceled = true;
                 }
                 catch (Exception cancelEx)
                 {
@@ -221,15 +228,17 @@ namespace SgalApp.Api.Services
                         "No se pudo cancelar la orden {OrderId} tras el fallo. Requiere cancelación manual en la terminal.", order.Id);
                 }
 
-                return PointSaleResult<PointSaleStartResultDto>.Fallo("No se pudo registrar la venta. El cobro fue retirado de la terminal.");
+                return PointSaleResult<PointSaleStartResultDto>.Fallo(orderCanceled
+                    ? "No se pudo registrar la venta. La orden fue retirada de la terminal."
+                    : "No se pudo registrar la venta y no fue posible retirar la orden. Espere a que expire o cancélela antes de reintentar.");
             }
 
-            bool usesVirtualTerminal = _options.TerminalId.EndsWith("__SBX0000001", StringComparison.OrdinalIgnoreCase);
-            if (_options.AllowSimulation && _options.AutoSimulate && usesVirtualTerminal)
+            bool usesVirtualTerminal = terminalId.EndsWith("__SBX0000001", StringComparison.OrdinalIgnoreCase);
+            if (creds.AllowSimulation && creds.AutoSimulate && usesVirtualTerminal)
             {
                 try
                 {
-                    var simulation = BuildRandomSimulation();
+                    var simulation = PointSimulationFactory.BuildRandom();
                     await _pointService.SimulateOrderAsync(order.Id, simulation, cancellationToken);
 
                     _logger.LogInformation(
@@ -284,7 +293,9 @@ namespace SgalApp.Api.Services
             registro.MontoPropina = ParseMonto(payment?.TipAmount) ?? registro.MontoPropina;
             registro.FechaActualizacion = DateTime.Now;
 
-            if (registro.IdVenta.HasValue)
+            // Las órdenes de caja se finalizan explícitamente en la caja (registrando el turno de
+            // caja y el pago dividido). Aquí solo se actualiza el registro, sin tocar la venta.
+            if (registro.IdVenta.HasValue && !registro.EsCaja)
             {
                 var venta = await _context.VenVentas.FindAsync([registro.IdVenta.Value], cancellationToken);
 
@@ -407,30 +418,25 @@ namespace SgalApp.Api.Services
                 ? (int)Math.Round(value)
                 : null;
 
-        private static PointSimulationRequest BuildRandomSimulation()
+    }
+
+    /// <summary>Genera desenlaces de prueba compartidos por Ventas y Caja.</summary>
+    public static class PointSimulationFactory
+    {
+        public static PointSimulationRequest BuildRandom()
         {
             var outcome = Random.Shared.Next(100);
-
-            if (outcome >= 95)
-            {
-                return new PointSimulationRequest { Status = "canceled" };
-            }
+            if (outcome >= 95) return new PointSimulationRequest { Status = "canceled" };
 
             bool esCredito = Random.Shared.Next(2) == 0;
-            var simulation = new PointSimulationRequest
+            return new PointSimulationRequest
             {
                 Status = outcome < 80 ? "processed" : "failed",
                 PaymentMethodType = esCredito ? "credit_card" : "debit_card",
                 PaymentMethodId = esCredito ? "visa" : "debvisa",
-                StatusDetail = outcome < 80 ? "accredited" : "insufficient_amount"
+                StatusDetail = outcome < 80 ? "accredited" : "insufficient_amount",
+                Installments = esCredito ? 1 : null
             };
-
-            if (esCredito)
-            {
-                simulation.Installments = 1;
-            }
-
-            return simulation;
         }
     }
 }

@@ -373,3 +373,6 @@ tmp/
 # Despliegue: datos que viven solo en el servidor
 deploy/tenants/
 deploy/reverse-proxy/letsencrypt/
+
+# Claves locales de ASP.NET Data Protection (sesiones y credenciales POS cifradas)
+SgalApp.Api/dp-keys/

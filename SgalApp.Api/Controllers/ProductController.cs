@@ -19,7 +19,7 @@ namespace SgalApp.Api.Controllers
         }
 
         [HttpGet]
-        [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate)]
+        [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate + "|" + Permissions.CajaCollect)]
         public async Task<IActionResult> GetProducts()
         {
             var calibrationEnabled = await _context.OrgConfiguracion.AsNoTracking()

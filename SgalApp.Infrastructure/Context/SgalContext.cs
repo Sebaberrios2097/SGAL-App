@@ -118,6 +118,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<VenVentas> VenVentas { get; set; }
 
+    public virtual DbSet<IntMaquinaPos> IntMaquinasPos { get; set; }
+
     public virtual DbSet<VenDetalleVentaIngrediente> VenDetalleVentaIngrediente { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

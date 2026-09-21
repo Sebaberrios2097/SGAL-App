@@ -40,6 +40,9 @@ public sealed class UpdateOrganizationBrandingDto
     /// <summary>Cola propia del comprobante, independiente de <see cref="TextoPieDocumentos"/>.</summary>
     [StringLength(250)]
     public string? BoletaColaPersonalizada { get; set; }
+
+    /// <summary>Imprimir un código de barras (con el número de venta) en el ticket interno.</summary>
+    public bool ValeIncluyeCodigoBarra { get; set; }
 }
 
 public sealed class UpdateOrganizationModulesDto

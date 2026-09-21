@@ -7,6 +7,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DataProtection__KeysPath: /app/dp-keys
+    volumes:
+      - api-data-protection:/app/dp-keys
     extra_hosts:
       - "host.docker.internal:host-gateway"
     expose:
@@ -36,3 +40,6 @@ services:
 networks:
   sgal:
     driver: bridge
+
+volumes:
+  api-data-protection:

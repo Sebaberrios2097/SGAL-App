@@ -299,6 +299,7 @@ namespace SgalApp.Api.Controllers
                 .Select(rx => rx.IdRolUsuarioNavigation.NombreRol).ToListAsync();
             var permissions = await _permissions.GetEffectivePermissionsAsync(userId);
             var maxDiscountPercent = await _permissions.GetMaxDiscountPercentAsync(userId);
+            var esDesarrollador = await _permissions.IsDeveloperAsync(userId);
 
             return new
             {
@@ -306,6 +307,7 @@ namespace SgalApp.Api.Controllers
                 user.NombreUsuario,
                 CambioClave = cambioClave,
                 MaxDiscountPercent = maxDiscountPercent,
+                EsDesarrollador = esDesarrollador,
                 Empleado = employee == null ? null : new
                 {
                     employee.IdEmpleado, employee.Nombres, employee.Alias, employee.Apellido1,

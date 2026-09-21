@@ -29,6 +29,8 @@ import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { usePointAvailability } from '../hooks/usePointAvailability';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { buildReceiptHtml } from '../utils/receiptTemplates';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
@@ -102,7 +104,7 @@ const describirRechazoPoint = (estadoOrden) => {
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
   const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled, logbookIncludesCalibration,
-    receiptShowSeller, receiptShowPayment, receiptCustomFooter } = useOrganization();
+    receiptShowSeller, receiptShowPayment, receiptCustomFooter, receiptShowBarcode } = useOrganization();
 
   // Opciones de personalización del comprobante compartidas por ambas impresiones.
   const receiptOptions = () => ({
@@ -120,6 +122,7 @@ const SalesView = () => {
   const cajaEnabled = isModuleEnabled('caja');
   const navigate = useNavigate();
   useDocumentTitle('Punto de Venta (POS)');
+  const pointAvailability = usePointAvailability();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useNotificationMessage('error');
   const [success, setSuccess] = useNotificationMessage('success');
@@ -177,6 +180,8 @@ const SalesView = () => {
   const [discounts, setDiscounts] = useState([]);
   const [extrasCatalog, setExtrasCatalog] = useState([]); // ingredientes extra activos (global)
   const [cart, setCart] = useState([]); // { product, quantity, finalPrice }
+  // Si != null, el carrito corresponde a un vale reescaneado que se está modificando.
+  const [editingVentaId, setEditingVentaId] = useState(null);
   const [cartOpen, setCartOpen] = useState(false); // panel de carrito deslizable (móvil)
   const [productToCustomize, setProductToCustomize] = useState(null);
   const [materialChoices, setMaterialChoices] = useState({});
@@ -277,6 +282,11 @@ const SalesView = () => {
     // pertenece al catálogo de la base de datos.
     const montoTarjeta = asignacionesPago.find(m => m.idMetodoPago === METODO_TARJETA)?.monto || 0;
     const metodosPago = asignacionesPago.filter(m => m.idMetodoPago !== METODO_TARJETA);
+    if (montoTarjeta > 0 && !pointAvailability.available) {
+      setError(pointAvailability.message || 'El cobro con tarjeta no está configurado.');
+      setSubmittingSale(false);
+      return;
+    }
     const sumAllocated = asignacionesPago.reduce((acc, curr) => acc + curr.monto, 0);
     if (sumAllocated !== calculateCartTotal()) {
       setError(`La suma de los montos asignados ($${sumAllocated.toLocaleString('es-CL')}) debe ser igual al total a cobrar ($${calculateCartTotal().toLocaleString('es-CL')}).`);
@@ -420,16 +430,19 @@ const SalesView = () => {
     }));
 
     try {
-      const res = await fetch('/api/sale', {
-        method: 'POST',
+      // Vale reescaneado: se actualiza el mismo vale; si no, se crea uno nuevo.
+      const editando = editingVentaId != null;
+      const res = await fetch(editando ? `/api/sale/${editingVentaId}/items` : '/api/sale', {
+        method: editando ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idTurno: activeTurn?.idTurno ?? null, items })
+        body: JSON.stringify(editando ? { items } : { idTurno: activeTurn?.idTurno ?? null, items })
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detalle ? `${data.mensaje} (${data.detalle})` : (data.mensaje || 'Error al generar el vale'));
       }
 
+      const idVenta = editando ? editingVentaId : data.idVenta;
       const valeItems = cart.map(item => ({
         nombreProducto: item.product.nombreProducto,
         quantity: item.quantity,
@@ -444,21 +457,22 @@ const SalesView = () => {
         commercialName: branding.nombreComercial,
         logoUrl: boletaLogoUrl(),
         data: {
-          idVenta: data.idVenta,
+          idVenta,
           fecha: new Date().toLocaleString('es-CL'),
           items: valeItems,
           subtotal: subtotalBruto,
           total: calculateCartSubtotal(),
           payments: []
         },
-        options: { includeComanda: false }
+        options: { includeComanda: false, barcodeValue: receiptShowBarcode ? `VTA${idVenta}` : null }
       });
 
       setCart([]);
       setDescuentoPct(0);
       setCartOpen(false);
+      setEditingVentaId(null);
       fetchCatalog();
-      setSuccess('Vale generado. Enviado a caja. Imprimiendo...');
+      setSuccess(editando ? 'Vale actualizado. Imprimiendo...' : 'Vale generado. Enviado a caja. Imprimiendo...');
       setTimeout(() => setSuccess(''), 4000);
       setTimeout(() => printTicket(html), 300);
     } catch (err) {
@@ -906,6 +920,60 @@ const SalesView = () => {
 
     addConfiguredProductToCart(prod, []);
   };
+
+  // Reescaneo del ticket interno: carga los productos de ese vale al carrito para modificarlo.
+  const loadVentaIntoCart = async (idVenta) => {
+    try {
+      const res = await fetch(`/api/sale/${idVenta}/items`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.mensaje || 'No fue posible recuperar el vale.');
+      const nuevoCarrito = data.items.map(d => {
+        const prod = products.find(p => p.idProducto === d.idProducto)
+          || { idProducto: d.idProducto, nombreProducto: d.nombreProducto, precio: d.precioNormal, stock: null };
+        const materialSelections = (d.seleccionesMateriales || [])
+          .filter(s => s.idMateriaPrimaBase != null)
+          .map(s => ({ idMateriaPrimaBase: s.idMateriaPrimaBase, idMateriaPrimaSeleccionada: s.idMateriaPrima, nombreMateriaPrima: s.nombreMateriaPrima, recargo: s.recargo }));
+        const extras = (d.ingredientesExtra || []).map(x => ({ idIngredienteExtra: x.idIngredienteExtra, nombre: x.nombre, precio: x.precio }));
+        return {
+          product: prod,
+          quantity: d.cantidad,
+          finalPrice: d.precioUnitario,
+          normalPrice: d.precioNormal,
+          materialSelections,
+          extras,
+          selectionSignature: getLineSignature(materialSelections, extras)
+        };
+      });
+      setCart(nuevoCarrito);
+      setEditingVentaId(idVenta);
+      notify.success(`Editando vale #${idVenta}. Modifica y vuelve a generar el vale.`);
+    } catch (err) {
+      notify.error(err.message);
+    }
+  };
+
+  // Lector de código de barras: un ticket interno (patrón VTA<id>) recupera el vale para
+  // modificarlo; cualquier otro código se busca como SKU y se agrega al carrito.
+  const handleBarcodeScan = (code) => {
+    const normalized = code.trim();
+    const ticket = /^VTA(\d+)$/i.exec(normalized);
+    if (ticket) {
+      loadVentaIntoCart(parseInt(ticket[1], 10));
+      return;
+    }
+    const prod = products.find(p => p.activo && (p.codigoProducto || '').trim() === normalized);
+    if (!prod) {
+      notify.warning(`Código no reconocido: ${normalized}`);
+      return;
+    }
+    handleAddToCart(prod);
+  };
+
+  // Activo solo en la vista de venta y sin modales de por medio, para no interferir.
+  const scannerEnabled = viewMode === 'venta' && (!turnsEnabled || Boolean(activeTurn))
+    && !showCheckoutModal && !showConsumoConfirm && !showHistoryModal && !pointPayment
+    && !productToCustomize && !extrasEditor;
+  useBarcodeScanner(handleBarcodeScan, { enabled: scannerEnabled });
 
   const addConfiguredProductToCart = (prod, materialSelections) => {
     const selectionSignature = getLineSignature(materialSelections, []);
@@ -1995,6 +2063,16 @@ const SalesView = () => {
                   </div>
                 )}
 
+                {editingVentaId && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', marginBottom: '10px', borderRadius: '8px', backgroundColor: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.4)', fontSize: '0.82rem', fontWeight: 600, color: '#92400e' }}>
+                    <span>Editando vale #{editingVentaId}</span>
+                    <button type="button" onClick={() => { setCart([]); setEditingVentaId(null); }}
+                      style={{ background: 'none', border: 'none', color: '#92400e', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}>
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
                   {/* Historial: ícono, a la izquierda del botón de confirmar venta */}
                   {salesContextReady && can('ventas.propias.ver') && (
@@ -2060,7 +2138,7 @@ const SalesView = () => {
                       if (cart.length > 0 && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
                     }}
                   >
-                    {cajaEnabled ? 'Generar vale' : 'Continuar al Pago'}
+                    {cajaEnabled ? (editingVentaId ? 'Actualizar vale' : 'Generar vale') : 'Continuar al Pago'}
                   </button>}
                   {turnsEnabled && can('ventas.crear') && <button
                     type="button"
@@ -2516,7 +2594,7 @@ const SalesView = () => {
                       <button
                         key={m.id}
                         type="button"
-                        disabled={submittingSale}
+                        disabled={submittingSale || (m.id === METODO_TARJETA && (pointAvailability.loading || !pointAvailability.available))}
                         onClick={() => toggleMethod(m.id)}
                         style={{
                           padding: '10px 8px',
@@ -2526,7 +2604,8 @@ const SalesView = () => {
                           color: isActive ? 'var(--primary-color)' : 'var(--text-main)',
                           fontWeight: isActive ? '800' : '600',
                           fontSize: '0.85rem',
-                          cursor: submittingSale ? 'not-allowed' : 'pointer',
+                          cursor: submittingSale || (m.id === METODO_TARJETA && !pointAvailability.available) ? 'not-allowed' : 'pointer',
+                          opacity: m.id === METODO_TARJETA && (pointAvailability.loading || !pointAvailability.available) ? 0.5 : 1,
                           transition: 'all 0.2s ease',
                           textAlign: 'center'
                         }}
@@ -2536,6 +2615,12 @@ const SalesView = () => {
                     );
                   })}
                 </div>
+
+                {!pointAvailability.loading && !pointAvailability.available && can('ventas.crear_point') && (
+                  <div className="badge badge-warning" style={{ display: 'block', padding: '8px 10px', borderRadius: 8, textTransform: 'none', fontSize: '.76rem', lineHeight: 1.4, marginBottom: 12 }}>
+                    Tarjeta no disponible: {pointAvailability.message || 'configura una máquina POS activa.'}
+                  </div>
+                )}
 
                 {/* Mode toggle button */}
                 {!isSplitPayment ? (

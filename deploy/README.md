@@ -605,8 +605,10 @@ docker compose up -d
 - Respalda las bases de datos fuera del servidor.
 - Respalda de forma segura `letsencrypt/acme.json`.
 - Revisa disco, logs y contenedores periódicamente.
-- Las advertencias de ASP.NET sobre `DataProtection-Keys` no impiden arrancar,
-  pero indican que las sesiones pueden invalidarse al recrear la API. Conviene
-  persistir esas claves en un volumen protegido.
+- Las claves de ASP.NET Data Protection se persisten en el volumen
+  `api-data-protection`. No elimines ese volumen al actualizar: además de las
+  sesiones, protege las credenciales POS cifradas en la base de datos. Si se
+  pierde, un Desarrollador deberá volver a guardar el Access Token y el Webhook
+  Secret de cada máquina POS.
 - SQL Server oficial para Linux requiere x86-64; en ARM debe ejecutarse en otra
   máquina compatible.

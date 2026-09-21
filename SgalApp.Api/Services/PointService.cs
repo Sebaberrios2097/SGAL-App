@@ -1,7 +1,6 @@
-using Microsoft.Extensions.Options;
-using SgalApp.Api.Configuration;
 using SgalApp.Api.DTOs.Point;
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -18,13 +17,13 @@ namespace SgalApp.Api.Services
         };
 
         private readonly HttpClient _http;
-        private readonly MercadoPagoPointOptions _options;
+        private readonly IPosCredentialProvider _credentials;
         private readonly ILogger<PointService> _logger;
 
-        public PointService(HttpClient http, IOptions<MercadoPagoPointOptions> options, ILogger<PointService> logger)
+        public PointService(HttpClient http, IPosCredentialProvider credentials, ILogger<PointService> logger)
         {
             _http = http;
-            _options = options.Value;
+            _credentials = credentials;
             _logger = logger;
         }
 
@@ -67,7 +66,8 @@ namespace SgalApp.Api.Services
                 throw new ArgumentException("El monto de la orden debe ser mayor a cero.", nameof(dto));
             }
 
-            var terminalId = string.IsNullOrWhiteSpace(dto.TerminalId) ? _options.TerminalId : dto.TerminalId;
+            var creds = await _credentials.ResolveMercadoPagoAsync(cancellationToken);
+            var terminalId = string.IsNullOrWhiteSpace(dto.TerminalId) ? creds.TerminalId : dto.TerminalId;
             if (string.IsNullOrWhiteSpace(terminalId))
             {
                 throw new InvalidOperationException("No hay una terminal Point configurada para procesar el cobro.");
@@ -80,7 +80,7 @@ namespace SgalApp.Api.Services
                     ? BuildExternalReference()
                     : dto.ReferenciaExterna,
                 Description = dto.Descripcion,
-                ExpirationTime = _options.ExpirationTime,
+                ExpirationTime = creds.ExpirationTime,
                 Transactions = new PointTransactionsRequest
                 {
                     // MLC exige el monto como entero, sin decimales.
@@ -94,12 +94,12 @@ namespace SgalApp.Api.Services
                     Point = new PointTerminalConfig
                     {
                         TerminalId = terminalId,
-                        PrintOnTerminal = _options.PrintOnTerminal
+                        PrintOnTerminal = creds.PrintOnTerminal
                     }
                 },
-                Taxes = string.IsNullOrWhiteSpace(_options.PayerCondition)
+                Taxes = string.IsNullOrWhiteSpace(creds.PayerCondition)
                     ? null
-                    : new List<PointTax> { new() { PayerCondition = _options.PayerCondition } }
+                    : new List<PointTax> { new() { PayerCondition = creds.PayerCondition } }
             };
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/orders")
@@ -174,6 +174,13 @@ namespace SgalApp.Api.Services
 
         private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // Las credenciales se resuelven por solicitud: máquina POS activa (BD) o config.
+            var creds = await _credentials.ResolveMercadoPagoAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(creds.AccessToken))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", creds.AccessToken);
+            if (request.RequestUri is { IsAbsoluteUri: false } && !string.IsNullOrWhiteSpace(creds.BaseUrl))
+                request.RequestUri = new Uri(new Uri(creds.BaseUrl), request.RequestUri);
+
             var response = await _http.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)

@@ -13,7 +13,8 @@ const defaultBranding = {
   colorFondo: '#F8FAFC',
   boletaMuestraVendedor: true,
   boletaMuestraPago: true,
-  boletaColaPersonalizada: null
+  boletaColaPersonalizada: null,
+  valeIncluyeCodigoBarra: false
 };
 
 const OrganizationContext = createContext(null);
@@ -96,6 +97,7 @@ export const OrganizationProvider = ({ children }) => {
     receiptShowSeller: branding.boletaMuestraVendedor ?? true,
     receiptShowPayment: branding.boletaMuestraPago ?? true,
     receiptCustomFooter: branding.boletaColaPersonalizada ?? null,
+    receiptShowBarcode: branding.valeIncluyeCodigoBarra ?? false,
     getBackgroundStyle,
     refreshConfiguration: loadConfiguration
   }), [branding, displayName, hasConfiguredIdentity, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);

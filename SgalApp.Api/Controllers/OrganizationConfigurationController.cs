@@ -61,6 +61,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.BoletaMuestraVendedor,
                 x.BoletaMuestraPago,
                 x.BoletaColaPersonalizada,
+                x.ValeIncluyeCodigoBarra,
                 x.TurnosRequierenCuadratura,
                 x.BitacoraIncluyeCalibracion
             })
@@ -124,6 +125,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.BoletaMuestraVendedor,
                 x.BoletaMuestraPago,
                 x.BoletaColaPersonalizada,
+                x.ValeIncluyeCodigoBarra,
                 x.FechaActualizacion
             })
             .FirstOrDefaultAsync();
@@ -158,6 +160,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         branding.BoletaMuestraVendedor = dto.BoletaMuestraVendedor;
         branding.BoletaMuestraPago = dto.BoletaMuestraPago;
         branding.BoletaColaPersonalizada = Clean(dto.BoletaColaPersonalizada);
+        branding.ValeIncluyeCodigoBarra = dto.ValeIncluyeCodigoBarra;
         branding.FechaActualizacion = DateTime.UtcNow;
         await context.SaveChangesAsync();
 
@@ -769,6 +772,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         BoletaMuestraVendedor = true,
         BoletaMuestraPago = true,
         BoletaColaPersonalizada = (string?)null,
+        ValeIncluyeCodigoBarra = false,
         TurnosRequierenCuadratura = true,
         BitacoraIncluyeCalibracion = true
     };

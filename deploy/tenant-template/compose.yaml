@@ -10,6 +10,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DataProtection__KeysPath: /app/dp-keys
+    volumes:
+      - api-data-protection:/app/dp-keys
     extra_hosts:
       # Permite alcanzar un SQL Server instalado en el propio host, si aplica.
       - "host.docker.internal:host-gateway"
@@ -38,3 +42,6 @@ networks:
     # Red privada de este tenant (aislada del resto).
   proxy:
     external: true
+
+volumes:
+  api-data-protection:

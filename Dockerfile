@@ -26,5 +26,6 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 COPY --from=build /app/publish .
+RUN mkdir -p /app/dp-keys && chown -R $APP_UID:$APP_UID /app/dp-keys
 USER $APP_UID
 ENTRYPOINT ["dotnet", "SgalApp.Api.dll"]

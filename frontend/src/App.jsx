@@ -13,6 +13,7 @@ import RolePermissions from './pages/RolePermissions';
 import InventoryManagement from './pages/InventoryManagement';
 import SalesView from './pages/SalesView';
 import CashRegister from './pages/CashRegister';
+import PosMachines from './pages/PosMachines';
 import LogbookView from './pages/LogbookView';
 import TurnHistory from './pages/TurnHistory';
 import InventorySettings from './pages/InventorySettings';
@@ -265,6 +266,7 @@ function App() {
             <Route path="settings/brands" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
+            <Route path="settings/pos-machines" element={<PosMachines />} />
             <Route path="turn-history" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
             <Route path="turn/consumptions" element={<ModuleRoute required={['ventas']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />
             <Route path="logbook/:idTurno" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute></ModuleRoute>} />

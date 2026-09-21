@@ -68,6 +68,10 @@ public partial class VenOrdenesPoint
     [Column("Monto_Propina")]
     public int? MontoPropina { get; set; }
 
+    /// <summary>La orden fue iniciada desde la caja; el vale se cobra explícitamente ahí, no por webhook.</summary>
+    [Column("Es_Caja")]
+    public bool EsCaja { get; set; }
+
     [Column("Fecha_Creacion", TypeName = "datetime")]
     public DateTime FechaCreacion { get; set; }
 

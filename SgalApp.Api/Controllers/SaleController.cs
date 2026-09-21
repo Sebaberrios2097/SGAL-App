@@ -438,6 +438,127 @@ namespace SgalApp.Api.Controllers
             return Ok(new { sale.IdVenta, sale.PagadoPorEmpleado });
         }
 
+        /// <summary>
+        /// Recupera las líneas de un vale pendiente en forma de carrito, para volver a cargarlo
+        /// (al reescanear el ticket) en Ventas o en Caja. Solo vales aún no cobrados.
+        /// </summary>
+        [HttpGet("{idVenta:int}/items")]
+        [Permission(Permissions.SalesCreate + "|" + Permissions.CajaCollect + "|" + Permissions.CajaSaleModify)]
+        public async Task<IActionResult> GetSaleItems(int idVenta)
+        {
+            var sale = await _context.VenVentas
+                .Where(v => v.IdVenta == idVenta)
+                .Select(v => new
+                {
+                    v.IdVenta,
+                    v.MontoTotal,
+                    v.IdEstadoVenta,
+                    v.IdBitacora,
+                    v.IdTurnoCaja,
+                    Items = v.VenDetalleVenta.Select(d => new
+                    {
+                        d.IdProducto,
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.PrecioNormal,
+                        d.PrecioUnitario,
+                        d.Subtotal,
+                        Selecciones = d.VenDetalleVentaMateriales
+                            .Where(m => m.EsEleccionAlternativa)
+                            .Select(m => new { m.IdMateriaPrima, NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial, m.Recargo }).ToList(),
+                        Extras = d.VenDetalleVentaIngrediente
+                            .Select(x => new { IdIngredienteExtra = x.IdMateriaPrima, Nombre = x.IdMateriaPrimaNavigation.NombreMaterial, x.Precio }).ToList()
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
+            if (sale.IdEstadoVenta != EstadosVenta.PendienteDePago || sale.IdBitacora != null || sale.IdTurnoCaja != null)
+                return BadRequest(new { mensaje = "La venta no está disponible: ya fue cobrada o no es un vale pendiente." });
+
+            var productIds = sale.Items.Select(i => i.IdProducto).Distinct().ToList();
+            var alternativas = productIds.Count == 0
+                ? new List<(int Producto, int Alternativa, int Base)>()
+                : (await _context.InvMaterialesReceta.AsNoTracking()
+                    .Where(m => m.IdMateriaPrimaReemplazada != null
+                        && m.IdRecetaNavigation.Estado
+                        && productIds.Contains(m.IdRecetaNavigation.IdProducto))
+                    .Select(m => new { Producto = m.IdRecetaNavigation.IdProducto, Alternativa = m.IdMateriaPrima, Base = m.IdMateriaPrimaReemplazada!.Value })
+                    .ToListAsync())
+                    .Select(x => (x.Producto, x.Alternativa, x.Base)).ToList();
+            var baseByProdAlt = alternativas
+                .GroupBy(x => (x.Producto, x.Alternativa))
+                .ToDictionary(g => g.Key, g => g.First().Base);
+
+            return Ok(new
+            {
+                sale.IdVenta,
+                sale.MontoTotal,
+                Items = sale.Items.Select(i => new
+                {
+                    i.IdProducto,
+                    i.NombreProducto,
+                    i.Cantidad,
+                    i.PrecioNormal,
+                    i.PrecioUnitario,
+                    i.Subtotal,
+                    SeleccionesMateriales = i.Selecciones.Select(s => new
+                    {
+                        s.IdMateriaPrima,
+                        IdMateriaPrimaBase = baseByProdAlt.TryGetValue((i.IdProducto, s.IdMateriaPrima), out var b) ? b : (int?)null,
+                        s.NombreMateriaPrima,
+                        s.Recargo
+                    }),
+                    IngredientesExtra = i.Extras
+                })
+            });
+        }
+
+        /// <summary>
+        /// El vendedor modifica su propio vale pendiente (tras reescanear el ticket): reconstruye
+        /// las líneas conservando el mismo número de venta. Solo si sigue pendiente de pago.
+        /// </summary>
+        [HttpPut("{idVenta:int}/items")]
+        [Permission(Permissions.SalesCreate)]
+        public async Task<IActionResult> UpdateSaleItems(int idVenta, [FromBody] SaleItemsUpdateDto dto)
+        {
+            if (dto?.Items == null || dto.Items.Count == 0)
+                return BadRequest(new { mensaje = "La venta debe contener al menos un producto." });
+
+            var sale = await _context.VenVentas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
+            if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
+            if (sale.IdUsuario != User.GetUserId()) return Forbid();
+            if (sale.IdEstadoVenta != EstadosVenta.PendienteDePago || sale.IdBitacora != null || sale.IdTurnoCaja != null)
+                return BadRequest(new { mensaje = "Solo puede modificar un vale pendiente de cobro." });
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var lines = await _saleLines.ReplaceLinesAsync(idVenta, dto.Items, sale.IdTurno);
+                if (!lines.EsValido)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { mensaje = lines.Error });
+                }
+
+                int totalBruto = lines.Total;
+                sale.MontoTotal = totalBruto;
+                sale.MontoNeto = (int)Math.Round(totalBruto / 1.19);
+                sale.MontoIva = totalBruto - sale.MontoNeto;
+                _context.Entry(sale).State = EntityState.Modified;
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { mensaje = "Vale actualizado.", idVenta = sale.IdVenta, montoTotal = totalBruto });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { mensaje = "Error interno al modificar el vale.", detalle = ex.Message });
+            }
+        }
+
         private Task<bool> SaleBelongsToCurrentUser(int idVenta) => _context.VenVentas
             .AnyAsync(x => x.IdVenta == idVenta && x.IdUsuario == User.GetUserId());
 

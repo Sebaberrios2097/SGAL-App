@@ -38,6 +38,19 @@ namespace SgalApp.Api.DTOs
         public int IdMateriaPrimaSeleccionada { get; set; }
     }
 
+    /// <summary>Nuevo conjunto de líneas para un vale pendiente (edición en caja).</summary>
+    public class SaleItemsUpdateDto
+    {
+        public List<SaleItemDto> Items { get; set; } = new();
+    }
+
+    /// <summary>Inicio de un cobro con tarjeta (Point) en caja: monto de tarjeta y descuento.</summary>
+    public class CashPointStartDto
+    {
+        public int MontoTarjeta { get; set; }
+        public decimal PorcentajeDescuento { get; set; }
+    }
+
     /// <summary>Cobro en caja de un vale pendiente: descuento y métodos de pago.</summary>
     public class CashCollectDto
     {

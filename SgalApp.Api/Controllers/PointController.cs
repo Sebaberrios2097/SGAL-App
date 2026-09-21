@@ -8,6 +8,7 @@ using System.Text.Json;
 using SgalApp.Api.Security;
 using SgalApp.Infrastructure.Context;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SgalApp.Api.Controllers
 {
@@ -17,22 +18,50 @@ namespace SgalApp.Api.Controllers
     {
         private readonly IPointService _pointService;
         private readonly IPointSaleService _pointSales;
-        private readonly MercadoPagoPointOptions _options;
+        private readonly IPosCredentialProvider _credentials;
         private readonly ILogger<PointController> _logger;
         private readonly SgalContext _context;
 
         public PointController(
             IPointService pointService,
             IPointSaleService pointSales,
-            IOptions<MercadoPagoPointOptions> options,
+            IPosCredentialProvider credentials,
             ILogger<PointController> logger,
             SgalContext context)
         {
             _pointService = pointService;
             _pointSales = pointSales;
-            _options = options.Value;
+            _credentials = credentials;
             _logger = logger;
             _context = context;
+        }
+
+        /// <summary>
+        /// Informa si las credenciales activas pueden resolverse. No expone secretos y lo
+        /// consumen tanto Ventas como Caja para presentar la misma disponibilidad.
+        /// </summary>
+        [Authorize]
+        [HttpGet("availability")]
+        public async Task<IActionResult> GetAvailability(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _credentials.ResolveMercadoPagoAsync(cancellationToken);
+                return Ok(new { disponible = true, mensaje = (string?)null });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Ok(new { disponible = false, mensaje = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo validar la configuración de Mercado Pago Point.");
+                return Ok(new
+                {
+                    disponible = false,
+                    mensaje = "No se pudo leer la configuración de la máquina POS. Verifique que la migración de base de datos esté aplicada."
+                });
+            }
         }
 
         /// <summary>Lista las terminals de la cuenta para identificar el id y el modo de operación.</summary>
@@ -162,7 +191,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.PointAdmin)]
         public async Task<IActionResult> SimulateOrder(string orderId, [FromBody] PointSimulationRequest simulation, CancellationToken cancellationToken)
         {
-            if (!_options.AllowSimulation)
+            var credsSim = await _credentials.ResolveMercadoPagoAsync(cancellationToken);
+            if (!credsSim.AllowSimulation)
             {
                 return BadRequest(new { mensaje = "La simulación de órdenes está deshabilitada en esta configuración." });
             }
@@ -204,11 +234,12 @@ namespace SgalApp.Api.Controllers
 
             dataId ??= notification?.Data?.Id;
 
+            var credsHook = await _credentials.ResolveMercadoPagoAsync(cancellationToken);
             var signatureValid = PointWebhookSignature.IsValid(
                 Request.Headers["x-signature"].FirstOrDefault(),
                 Request.Headers["x-request-id"].FirstOrDefault(),
                 dataId,
-                _options.WebhookSecret);
+                credsHook.WebhookSecret);
 
             if (!signatureValid)
             {

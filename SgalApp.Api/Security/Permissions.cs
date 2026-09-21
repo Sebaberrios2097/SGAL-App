@@ -109,6 +109,7 @@ public static class Permissions
     public const string CajaTurnClose = "caja.turno.cerrar";
     public const string CajaCollect = "caja.cobrar";
     public const string CajaSaleModify = "caja.venta.modificar";
+    public const string CajaCashReceivedRequired = "caja.pago.efectivo.ingresar";
 
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";

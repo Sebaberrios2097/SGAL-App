@@ -5,6 +5,7 @@ using SgalApp.Api.Services;
 using SgalApp.Api.Security;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,10 +37,21 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// Data Protection: cifra las credenciales POS guardadas en la BD. La carpeta de llaves
+// debe ser estable (montarla como volumen en producción) para que sobrevivan reinicios.
+var dpKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (string.IsNullOrWhiteSpace(dpKeysPath))
+    dpKeysPath = Path.Combine(builder.Environment.ContentRootPath, "dp-keys");
+Directory.CreateDirectory(dpKeysPath);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath))
+    .SetApplicationName("SGAL");
+
 // Mercado Pago Point
 builder.Services.Configure<MercadoPagoPointOptions>(
     builder.Configuration.GetSection(MercadoPagoPointOptions.SectionName));
 
+builder.Services.AddScoped<IPosCredentialProvider, PosCredentialProvider>();
 builder.Services.AddScoped<ISaleLinesService, SaleLinesService>();
 builder.Services.AddScoped<IPointSaleService, PointSaleService>();
 builder.Services.AddScoped<ISaleVoidService, SaleVoidService>();
