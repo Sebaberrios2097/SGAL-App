@@ -184,7 +184,8 @@ const PosMachines = () => {
           )}
 
           {form && (
-            <div className="card" style={{ padding: 22, marginTop: 8 }}>
+            <div className="modal-overlay">
+             <div className="modal-content" style={{ maxWidth: 640, padding: 26 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <h3 style={{ margin: 0 }}>{form.idMaquina ? `Editar ${form.nombre}` : 'Nueva máquina POS'}</h3>
                 <button type="button" className="btn" onClick={() => setForm(null)} style={{ background: 'none' }}><X size={18} /></button>
@@ -217,6 +218,7 @@ const PosMachines = () => {
               <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
                 <Save size={16} /> {saving ? 'Guardando…' : 'Guardar máquina'}
               </button>
+             </div>
             </div>
           )}
         </>

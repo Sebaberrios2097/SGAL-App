@@ -4,8 +4,9 @@ import {
   Plus, 
   Edit2, 
   Trash2, 
-  Coffee, 
+  Coffee,
   Tag,
+  Tags,
   Calendar,
   AlertCircle, 
   CheckCircle2, 
@@ -17,10 +18,11 @@ import {
 } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
 import DataTable from '../components/DataTable';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import PageHeader from '../components/PageHeader';
+import Promotions from './Promotions';
 
 const InventoryManagement = () => {
   const { can } = useAuth();
@@ -28,7 +30,16 @@ const InventoryManagement = () => {
   const materialsEnabled = isModuleEnabled('recetas');
   const salesEnabled = isModuleEnabled('ventas');
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(() => can('inventario.productos.ver') ? 'products' : 'offers'); // 'products' | 'offers'
+  const location = useLocation();
+  // 'products' | 'offers' | 'promotions'. Respeta ?tab= al entrar (p. ej. desde el menú).
+  const tabInicial = new URLSearchParams(location.search).get('tab');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (tabInicial === 'promotions' && salesEnabled && can('ventas.promociones.ver')) return 'promotions';
+    if (tabInicial === 'offers' && salesEnabled && can('inventario.descuentos.ver')) return 'offers';
+    if (can('inventario.productos.ver')) return 'products';
+    if (salesEnabled && can('inventario.descuentos.ver')) return 'offers';
+    return 'promotions';
+  });
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [discounts, setDiscounts] = useState([]);
@@ -58,7 +69,10 @@ const InventoryManagement = () => {
     precio: '',
     stock: '',
     requiereReceta: false,
-    aceptaIngredientesExtra: false
+    aceptaIngredientesExtra: false,
+    esPack: false,
+    idProductoBase: '',
+    cantidadPack: ''
   });
 
   const [imagePreview, setImagePreview] = useState(null);
@@ -91,9 +105,21 @@ const InventoryManagement = () => {
     fetchData();
   }, []);
 
+  // Cambia de pestaña al navegar con ?tab= (p. ej. el ítem "Promociones" del menú).
   useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    if (t === 'promotions' && salesEnabled && can('ventas.promociones.ver')) setActiveTab('promotions');
+    else if (t === 'offers' && salesEnabled && can('inventario.descuentos.ver')) setActiveTab('offers');
+    else if (t === 'products' && can('inventario.productos.ver')) setActiveTab('products');
+  }, [location.search, salesEnabled, can]);
+
+  useEffect(() => {
+    const puedeProductos = can('inventario.productos.ver');
     if (activeTab === 'offers' && (!salesEnabled || !can('inventario.descuentos.ver'))) {
-      setActiveTab('products');
+      setActiveTab(puedeProductos ? 'products' : 'promotions');
+    }
+    if (activeTab === 'promotions' && (!salesEnabled || !can('ventas.promociones.ver'))) {
+      setActiveTab(puedeProductos ? 'products' : 'offers');
     }
   }, [activeTab, salesEnabled, can]);
 
@@ -175,7 +201,10 @@ const InventoryManagement = () => {
       precio: '',
       stock: '',
       requiereReceta: false,
-      aceptaIngredientesExtra: false
+      aceptaIngredientesExtra: false,
+      esPack: false,
+      idProductoBase: '',
+      cantidadPack: ''
     });
     setImagePreview(null);
     setImageBytes(null);
@@ -194,7 +223,10 @@ const InventoryManagement = () => {
       precio: prod.precio,
       stock: prod.stock !== null && prod.stock !== undefined ? prod.stock : '',
       requiereReceta: Boolean(prod.requiereReceta),
-      aceptaIngredientesExtra: Boolean(prod.aceptaIngredientesExtra)
+      aceptaIngredientesExtra: Boolean(prod.aceptaIngredientesExtra),
+      esPack: Boolean(prod.esPack),
+      idProductoBase: prod.idProductoBase ?? '',
+      cantidadPack: prod.cantidadPack ?? ''
     });
     setImagePreview(prod.imagenBase64 ? `data:image/png;base64,${prod.imagenBase64}` : null);
     setImageBytes(null); // Keep unchanged unless modified
@@ -219,6 +251,10 @@ const InventoryManagement = () => {
       setError('El precio debe ser un número positivo');
       return;
     }
+    if (productForm.esPack && (!productForm.idProductoBase || !(parseInt(productForm.cantidadPack) > 0))) {
+      setError('Un pack requiere un producto base y una cantidad por pack mayor a cero.');
+      return;
+    }
 
     const payload = {
       idCategoriaProducto: parseInt(productForm.idCategoriaProducto),
@@ -226,9 +262,12 @@ const InventoryManagement = () => {
       nombreProducto: productForm.nombreProducto,
       descripcionProducto: productForm.descripcionProducto || null,
       precio: parseInt(productForm.precio),
-      stock: productForm.requiereReceta ? null : (productForm.stock !== '' ? parseInt(productForm.stock) : null),
+      stock: (productForm.esPack || productForm.requiereReceta) ? null : (productForm.stock !== '' ? parseInt(productForm.stock) : null),
       requiereReceta: productForm.requiereReceta,
       aceptaIngredientesExtra: productForm.aceptaIngredientesExtra,
+      esPack: productForm.esPack,
+      idProductoBase: productForm.esPack ? parseInt(productForm.idProductoBase) : null,
+      cantidadPack: productForm.esPack ? parseInt(productForm.cantidadPack) : null,
       imagenBase64: imageBytes
     };
 
@@ -433,7 +472,7 @@ const InventoryManagement = () => {
       <PageHeader title="Gestión de inventario" icon={Package} actions={
         <div style={{ display: 'flex', gap: '12px' }}>
           {activeTab === 'products' ? can('inventario.productos.crear') && (
-            <button 
+            <button
               onClick={handleOpenCreateProduct}
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -441,8 +480,8 @@ const InventoryManagement = () => {
               <Plus size={16} />
               <span>Nuevo Producto</span>
             </button>
-          ) : salesEnabled && can('inventario.descuentos.crear') && (
-            <button 
+          ) : activeTab === 'offers' ? salesEnabled && can('inventario.descuentos.crear') && (
+            <button
               onClick={handleOpenCreateDiscount}
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -450,7 +489,7 @@ const InventoryManagement = () => {
               <Percent size={16} />
               <span>Nueva Oferta</span>
             </button>
-          )}
+          ) : null}
         </div>
       } />
 
@@ -501,6 +540,26 @@ const InventoryManagement = () => {
           <Tag size={18} />
           <span>Ofertas y Descuentos</span>
         </button>}
+        {salesEnabled && can('ventas.promociones.ver') && <button
+          onClick={() => setActiveTab('promotions')}
+          style={{
+            padding: '12px 4px',
+            fontSize: '0.95rem',
+            fontWeight: '700',
+            background: 'none',
+            border: 'none',
+            color: activeTab === 'promotions' ? 'var(--primary-color)' : 'var(--text-muted)',
+            borderBottom: activeTab === 'promotions' ? '3px solid var(--primary-color)' : '3px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Tags size={18} />
+          <span>Promociones</span>
+        </button>}
       </div>
 
       {/* Feedback Alerts */}
@@ -530,6 +589,9 @@ const InventoryManagement = () => {
           }} />
           <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
         </div>
+      ) : activeTab === 'promotions' ? (
+        /* PROMOTIONS TAB */
+        <Promotions embedded />
       ) : activeTab === 'products' ? (
         /* PRODUCTS TAB */
         <DataTable
@@ -559,7 +621,10 @@ const InventoryManagement = () => {
             { key: 'precio', header: 'Precio Original', sortValue: p => p.precio, cell: prod => <span style={{ fontWeight: 600 }}>${prod.precio.toLocaleString('es-CL')}</span> },
             materialsEnabled && { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
             { key: 'stock', header: 'Stock', sortValue: p => (p.stock ?? -1), cell: prod => prod.stock !== null ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}><Package size={14} /><span>{prod.stock}</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}>
+                <Package size={14} /><span>{prod.stock}</span>
+                {prod.esPack && <span className="badge" style={{ fontSize: '0.66rem', background: '#eef2ff', color: '#4338ca' }} title={`Pack de ${prod.cantidadPack}× ${prod.nombreProductoBase || ''}`}>pack ×{prod.cantidadPack}</span>}
+              </div>
             ) : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{materialsEnabled ? 'Usa receta' : 'Sin stock configurado'}</span> },
             { key: 'estado', header: 'Estado', sortValue: p => (p.activo ? 1 : 0), cell: prod => <span className={`badge ${prod.activo ? 'badge-success' : 'badge-danger'}`}>{prod.activo ? 'Activo' : 'Desactivado'}</span> },
             { key: 'acciones', header: 'Acciones', align: 'right', cell: prod => (
@@ -695,16 +760,56 @@ const InventoryManagement = () => {
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Stock inicial <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(por defecto 0)</span></label>
                     <input
                       type="number"
-                      value={productForm.stock}
+                      value={productForm.esPack ? '' : productForm.stock}
                       onChange={(e) => setProductForm(prev => ({ ...prev, stock: e.target.value }))}
                       style={inputStyle}
                       min={0}
-                      disabled={materialsEnabled && productForm.requiereReceta}
+                      placeholder={productForm.esPack ? 'Se controla en el producto base' : undefined}
+                      disabled={(materialsEnabled && productForm.requiereReceta) || productForm.esPack}
                     />
                   </div>
                 </div>
 
-                {materialsEnabled && <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
+                {/* Pack: el producto representa N unidades de un producto base */}
+                {!productForm.requiereReceta && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
+                    <input
+                      type="checkbox"
+                      checked={productForm.esPack}
+                      onChange={(e) => setProductForm(prev => ({ ...prev, esPack: e.target.checked, stock: e.target.checked ? '' : prev.stock }))}
+                      style={{ width: '17px', height: '17px', accentColor: 'var(--primary-color)' }}
+                    />
+                    <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>Este producto es un pack de otro producto (p. ej. sixpack, bandeja)</span>
+                  </label>
+                )}
+
+                {productForm.esPack && (
+                  <div className="modal-grid-2">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Producto base *</label>
+                      <SearchableSelect
+                        options={products.filter(p => p.activo && !p.esPack && p.idProducto !== editingProduct?.idProducto)
+                          .map(p => ({ value: p.idProducto, label: p.nombreProducto }))}
+                        value={productForm.idProductoBase}
+                        onChange={(val) => setProductForm(prev => ({ ...prev, idProductoBase: val }))}
+                        noOptionsMessage="No hay productos base disponibles"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Unidades del base por pack *</label>
+                      <input
+                        type="number"
+                        value={productForm.cantidadPack}
+                        onChange={(e) => setProductForm(prev => ({ ...prev, cantidadPack: e.target.value }))}
+                        style={inputStyle}
+                        min={1}
+                        placeholder="Ej: 6"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {materialsEnabled && !productForm.esPack && <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', border: '1px solid var(--panel-border)', borderRadius: '10px', background: '#f8fafc' }}>
                   <input
                     type="checkbox"
                     checked={productForm.requiereReceta}

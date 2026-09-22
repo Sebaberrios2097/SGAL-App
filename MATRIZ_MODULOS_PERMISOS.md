@@ -100,7 +100,7 @@ La edición separa los permisos sobre datos personales, cuenta de acceso y contr
 
 | Recurso | Funcionalidad actual | Permiso propuesto | Endpoint |
 |---|---|---|---|
-| Productos | Listar y ver stock/configuración y código SKU opcional | `inventario.productos.ver` | `GET /api/product` |
+| Productos | Listar y ver stock/configuración, código SKU opcional y packs | `inventario.productos.ver` | `GET /api/product` |
 | Productos | Crear | `inventario.productos.crear` | `POST /api/product` |
 | Productos | Editar | `inventario.productos.editar` | `PUT /api/product/{id}` |
 | Productos | Activar o desactivar | `inventario.productos.estado.modificar` | `PUT /api/product/{id}/status` |
@@ -112,8 +112,17 @@ La edición separa los permisos sobre datos personales, cuenta de acceso y contr
 | Descuentos | Crear y asociar a productos | `inventario.descuentos.crear` | `POST /api/discount` |
 | Descuentos | Activar o desactivar | `inventario.descuentos.estado.modificar` | `PUT /api/discount/{id}/status` |
 | Descuentos | Eliminar | `inventario.descuentos.eliminar` | `DELETE /api/discount/{id}` |
+| Promociones | Listar y ver configuración | `ventas.promociones.ver` | `GET /api/promotion` |
+| Promociones | Crear (con grupos) | `ventas.promociones.crear` | `POST /api/promotion` |
+| Promociones | Editar (datos y grupos) | `ventas.promociones.editar` | `PUT /api/promotion/{id}` |
+| Promociones | Activar o desactivar | `ventas.promociones.estado.modificar` | `PUT /api/promotion/{id}/status` |
+| Promociones | Eliminar | `ventas.promociones.eliminar` | `DELETE /api/promotion/{id}` |
 
 No existe actualmente un endpoint para editar un descuento; solo se puede crear, cambiar su estado o eliminarlo.
+
+**Promociones (combos).** Son un módulo funcional propio bajo **Punto de venta** (`ventas.promociones.*`), distinto de los descuentos por producto. Una promoción tiene precio propio y se compone de un **grupo base** (productos fijos con su cantidad) y **grupos excluyentes** (elegir `Cantidad_Elegir` opciones, con repetición). Tablas `Ven_Promociones`, `Ven_Promocion_Grupos`, `Ven_Promocion_Grupo_Productos`; la aplicación en ventas se persiste en `Ven_Venta_Promociones` y agrupa sus líneas mediante `Ven_Detalle_Venta.Id_Venta_Promocion`. Se administran en la pestaña **Promociones** de Inventario (`GET/POST/PUT/DELETE /api/promotion`, `PUT /api/promotion/{id}/status`) y se venden desde la pestaña **Promociones** de Punto de venta o Caja. El carrito, el vale y la boleta muestran el precio del combo y el ahorro frente a comprar sus productos por separado; el stock se descuenta sobre cada producto expandido, incluyendo la lógica de packs.
+
+**Productos en pack.** Un producto puede marcarse como **pack** (`Inv_Productos.Es_Pack`) de un **producto base** (`Id_Producto_Base`) que representa `Cantidad_Pack` unidades del base. El pack no tiene stock propio: su disponibilidad se calcula como `piso(stock_base / cantidad_pack)` y venderlo descuenta `cantidad_pack × unidades` del stock del base (la anulación lo repone). Las compras/recepciones ingresan stock solo al producto base.
 
 El mantenedor de **categorías de producto** se muestra en la sección **Configuración** del menú (`/settings/product-categories`, permiso `inventario.categorias.ver`), separado de la pantalla de productos. Los endpoints y permisos `inventario.categorias.*` no cambian.
 
@@ -232,7 +241,7 @@ Los códigos de cortesía conservan el prefijo histórico `configuracion_inventa
 
 El acceso a la pantalla exige actualmente el nombre de rol de barista y que el frontend detecte un turno propio abierto. Esa comprobación de interfaz no reemplaza la autorización en la API.
 
-**Módulo Caja.** El módulo opcional `caja` (dependiente de Punto de venta) separa la generación de la orden del cobro. Con Caja habilitado, `POST /api/sale` de un vendedor deja la venta en estado *Pendiente de pago* (vale de uso interno, sin métodos de pago) y el cobro se realiza en caja. Sus permisos son `caja.operar` (abrir la caja y ver los vales), `caja.turno.abrir`/`caja.turno.cerrar` (turno de caja, tipo 2), `caja.cobrar` (`GET /api/cash-register/pending`, `POST /api/cash-register/{idVenta}/collect`) y `caja.venta.modificar` (`PUT /api/cash-register/{idVenta}/items` para agregar o quitar productos de un vale, y `POST /api/cash-register/sale` para crear una venta nueva desde la caja sin requerir `ventas.crear`) y `caja.pago.efectivo.ingresar` (si el rol lo tiene, al cobrar en efectivo el cajero debe registrar el efectivo recibido para calcular el vuelto; si no, es opcional). La vista de caja es de pantalla completa con tres secciones —ventas sin cobrar · carrito · cobro— y los métodos de pago (Efectivo, Transferencia y, próximamente, Tarjeta por POS) con pago dividido, igual que el punto de venta. El cobro fija `Ven_Ventas.Id_Turno_Caja` y la cuadratura del dinero se calcula sobre ese turno; el turno de vendedor no cuadra efectivo cuando Caja está habilitado.
+**Módulo Caja.** El módulo opcional `caja` (dependiente de Punto de venta) separa la generación de la orden del cobro. Con Caja habilitado, `POST /api/sale` de un vendedor deja la venta en estado *Pendiente de pago* (vale de uso interno, sin métodos de pago) y el cobro se realiza en caja. Sus permisos son `caja.operar` (abrir la caja y ver los vales), `caja.turno.abrir`/`caja.turno.cerrar` (turno de caja, tipo 2), `caja.cobrar` (`GET /api/cash-register/pending`, `POST /api/cash-register/{idVenta}/collect`) y `caja.venta.modificar` (`PUT /api/cash-register/{idVenta}/items` para agregar o quitar productos de un vale, y `POST /api/cash-register/sale` para crear una venta nueva desde la caja sin requerir `ventas.crear`) y `caja.pago.efectivo.ingresar` (si el rol lo tiene, al cobrar en efectivo el cajero debe registrar el efectivo recibido para calcular el vuelto; si no, es opcional). La vista de caja es de pantalla completa con tres secciones —ventas sin cobrar · carrito · cobro— y los métodos de pago (Efectivo, Transferencia y Tarjeta) con pago dividido, igual que el punto de venta. **Tarjeta** cobra en la terminal POS: `POST /api/cash-register/{idVenta}/point/start` inicia la orden Point y `POST /api/cash-register/point/{idVenta}/sync` la sondea; al aprobarse, el vale se cobra explícitamente (la orden se marca `Ven_Ordenes_Point.Es_Caja` para que el webhook no la finalice por su cuenta). El cobro fija `Ven_Ventas.Id_Turno_Caja` y la cuadratura del dinero se calcula sobre ese turno; el turno de vendedor no cuadra efectivo cuando Caja está habilitado.
 
 **Lector de código de barras.** Tanto Punto de venta como Caja aceptan un lector tipo teclado (hook `frontend/src/hooks/useBarcodeScanner.js`): escuchan a nivel de ventana y, con el foco fuera de campos editables, resuelven el SKU escaneado (`Inv_Productos.Codigo_Producto`, ya presente en el catálogo) contra los productos activos. En Punto de venta el producto se agrega al carrito (abriendo su personalización si tiene alternativas); en Caja se agrega a la boleta activa o, si no hay ninguna, inicia una venta nueva desde la caja. No requiere endpoints nuevos para la búsqueda: el match es local sobre el catálogo cargado.
 

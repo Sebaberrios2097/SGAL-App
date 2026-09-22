@@ -599,6 +599,10 @@ body {
   animation: viewEnterBack 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Transición genérica entre vistas (lista <-> formulario). */
+.view-enter-forward { animation: viewEnterForward 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+.view-enter-back { animation: viewEnterBack 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out;
 }

@@ -19,6 +19,8 @@ namespace SgalApp.Api.DTOs.Point
 
         public List<SaleItemDto> Items { get; set; } = new();
 
+        public List<SalePromoInstanceDto> Promociones { get; set; } = new();
+
         /// <summary>Porcentaje de descuento aplicado al total (0 = sin descuento).</summary>
         public decimal PorcentajeDescuento { get; set; }
 

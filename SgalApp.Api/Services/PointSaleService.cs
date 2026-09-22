@@ -68,9 +68,9 @@ namespace SgalApp.Api.Services
             if (schemaError != null)
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(schemaError);
 
-            if (dto.Items == null || dto.Items.Count == 0)
+            if ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0)
             {
-                return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto.");
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto o promoción.");
             }
 
             // La interfaz solo solicita "Tarjeta". Mercado Pago informará si el cobro
@@ -119,7 +119,7 @@ namespace SgalApp.Api.Services
             _context.VenVentas.Add(sale);
             await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
 
-            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno, cancellationToken);
+            var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, idTurno, cancellationToken);
             if (!lines.EsValido)
             {
                 await transaction.RollbackAsync(cancellationToken);

@@ -40,6 +40,10 @@ namespace SgalApp.Api.Services
         /// <summary>Valor de las líneas marcadas como cortesía (informativo; no se cobra).</summary>
         public int MontoCortesia { get; init; }
 
+        /// <summary>Descuento total por promociones (suma de valor individual − precio de promo).
+        /// <see cref="Total"/> ya contiene el precio promocional neto.</summary>
+        public int DescuentoPromociones { get; init; }
+
         public bool EsValido => Error == null;
     }
 
@@ -50,6 +54,9 @@ namespace SgalApp.Api.Services
     public interface ISaleLinesService
     {
         Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default);
+
+        /// <summary>Como <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int?, CancellationToken)"/> pero además expande las promociones indicadas.</summary>
+        Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, IEnumerable<SalePromoInstanceDto>? promociones, int? idTurno, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Igual que <see cref="BuildAsync(int, IEnumerable{SaleItemDto}, int?, CancellationToken)"/> pero,
@@ -66,6 +73,8 @@ namespace SgalApp.Api.Services
         /// El llamador administra la transacción y actualiza los montos de la cabecera. No aplica cortesía.
         /// </summary>
         Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default);
+
+        Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, IEnumerable<SalePromoInstanceDto>? promociones, int? idTurno, CancellationToken cancellationToken = default);
     }
 
     public class SaleLinesService : ISaleLinesService
@@ -79,6 +88,94 @@ namespace SgalApp.Api.Services
 
         public Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default)
             => BuildAsync(idVenta, items, idTurno, false, 0, cancellationToken);
+
+        public async Task<SaleLinesResult> BuildAsync(
+            int idVenta,
+            IEnumerable<SaleItemDto> items,
+            IEnumerable<SalePromoInstanceDto>? promociones,
+            int? idTurno,
+            CancellationToken cancellationToken = default)
+        {
+            var normalResult = await BuildAsync(idVenta, items, idTurno, cancellationToken);
+            if (!normalResult.EsValido) return normalResult;
+
+            int total = normalResult.Total;
+            int descuentoPromociones = 0;
+            var ahora = DateTime.Now;
+
+            foreach (var instancia in promociones ?? [])
+            {
+                if (instancia.Cantidad <= 0)
+                    return new SaleLinesResult { Error = "La cantidad de cada promoción debe ser mayor que cero." };
+
+                var promo = await _context.VenPromociones
+                    .Include(p => p.Grupos).ThenInclude(g => g.Productos)
+                    .FirstOrDefaultAsync(p => p.IdPromocion == instancia.IdPromocion, cancellationToken);
+                if (promo == null || !promo.Activo || (promo.FechaInicio.HasValue && ahora < promo.FechaInicio.Value)
+                    || (promo.FechaFin.HasValue && ahora > promo.FechaFin.Value))
+                    return new SaleLinesResult { Error = $"La promoción con ID {instancia.IdPromocion} no existe o no está vigente." };
+
+                var selecciones = instancia.Selecciones ?? [];
+                if (selecciones.Any(s => s.Cantidad <= 0))
+                    return new SaleLinesResult { Error = $"Las selecciones de la promoción {promo.Nombre} deben tener una cantidad mayor que cero." };
+
+                var gruposExcluyentes = promo.Grupos.Where(g => !g.EsBase).ToList();
+                var idsGruposValidos = gruposExcluyentes.Select(g => g.IdGrupo).ToHashSet();
+                if (selecciones.Any(s => !idsGruposValidos.Contains(s.IdGrupo)))
+                    return new SaleLinesResult { Error = $"La promoción {promo.Nombre} contiene selecciones de un grupo no válido." };
+
+                foreach (var grupo in gruposExcluyentes)
+                {
+                    var elegidas = selecciones.Where(s => s.IdGrupo == grupo.IdGrupo).ToList();
+                    if (elegidas.Sum(s => s.Cantidad) != grupo.CantidadElegir)
+                        return new SaleLinesResult { Error = $"En '{grupo.Nombre}' debe elegir exactamente {grupo.CantidadElegir} opción(es)." };
+                    var opciones = grupo.Productos.Select(p => p.IdProducto).ToHashSet();
+                    if (elegidas.Any(s => !opciones.Contains(s.IdProducto)))
+                        return new SaleLinesResult { Error = $"Una selección no pertenece al grupo '{grupo.Nombre}'." };
+                }
+
+                var cantidades = new Dictionary<int, int>();
+                foreach (var fijo in promo.Grupos.Where(g => g.EsBase).SelectMany(g => g.Productos))
+                    cantidades[fijo.IdProducto] = cantidades.GetValueOrDefault(fijo.IdProducto) + fijo.Cantidad * instancia.Cantidad;
+                foreach (var elegida in selecciones)
+                    cantidades[elegida.IdProducto] = cantidades.GetValueOrDefault(elegida.IdProducto) + elegida.Cantidad * instancia.Cantidad;
+
+                if (cantidades.Count == 0)
+                    return new SaleLinesResult { Error = $"La promoción {promo.Nombre} no contiene productos." };
+
+                var detallesPrevios = _context.ChangeTracker.Entries<VenDetalleVenta>()
+                    .Where(e => e.State == EntityState.Added).Select(e => e.Entity).ToHashSet();
+                var productosPromo = cantidades.Select(x => new SaleItemDto { IdProducto = x.Key, Cantidad = x.Value }).ToList();
+                var promoLines = await BuildAsync(idVenta, productosPromo, idTurno, cancellationToken);
+                if (!promoLines.EsValido) return promoLines;
+
+                int precioPromoTotal = promo.Precio * instancia.Cantidad;
+                int descuento = promoLines.Total - precioPromoTotal;
+                var ventaPromo = new VenVentaPromociones
+                {
+                    IdVenta = idVenta,
+                    IdPromocion = promo.IdPromocion,
+                    Cantidad = instancia.Cantidad,
+                    Precio = promo.Precio,
+                    MontoIndividual = promoLines.Total,
+                    Descuento = descuento
+                };
+                _context.VenVentaPromociones.Add(ventaPromo);
+                foreach (var detalle in _context.ChangeTracker.Entries<VenDetalleVenta>()
+                    .Where(e => e.State == EntityState.Added && !detallesPrevios.Contains(e.Entity)).Select(e => e.Entity))
+                    detalle.IdVentaPromocionNavigation = ventaPromo;
+
+                total += precioPromoTotal;
+                descuentoPromociones += descuento;
+            }
+
+            return new SaleLinesResult
+            {
+                Total = total,
+                MontoCortesia = normalResult.MontoCortesia,
+                DescuentoPromociones = descuentoPromociones
+            };
+        }
 
         public async Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default)
         {
@@ -300,6 +397,16 @@ namespace SgalApp.Api.Services
                         });
                     }
                 }
+                else if (prod.EsPack && prod.IdProductoBase.HasValue && prod.CantidadPack is > 0)
+                {
+                    // El pack no tiene stock propio: descuenta N unidades del producto base.
+                    var baseProd = await _context.InvProductos.FindAsync([prod.IdProductoBase.Value], cancellationToken);
+                    int requerido = prod.CantidadPack.Value * item.Cantidad;
+                    if (baseProd?.Stock == null || baseProd.Stock.Value < requerido)
+                        return new SaleLinesResult { Error = $"Stock insuficiente del producto base para el pack {prod.NombreProducto}. Se requieren {requerido} unidades." };
+                    baseProd.Stock -= requerido;
+                    _context.Entry(baseProd).State = EntityState.Modified;
+                }
                 else if (prod.Stock.HasValue)
                 {
                     if (prod.Stock.Value < item.Cantidad)
@@ -447,6 +554,9 @@ namespace SgalApp.Api.Services
         /// Devuelve al inventario el stock de una venta que no llegó a concretarse.
         /// </summary>
         public async Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default)
+            => await ReplaceLinesAsync(idVenta, items, null, idTurno, cancellationToken);
+
+        public async Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, IEnumerable<SalePromoInstanceDto>? promociones, int? idTurno, CancellationToken cancellationToken = default)
         {
             await RestoreStockAsync(idVenta, cancellationToken);
 
@@ -461,9 +571,13 @@ namespace SgalApp.Api.Services
                 _context.VenDetalleVentaIngrediente.RemoveRange(detalle.VenDetalleVentaIngrediente);
             }
             _context.VenDetalleVenta.RemoveRange(detalles);
+            var promocionesAnteriores = await _context.VenVentaPromociones
+                .Where(p => p.IdVenta == idVenta)
+                .ToListAsync(cancellationToken);
+            _context.VenVentaPromociones.RemoveRange(promocionesAnteriores);
             await _context.SaveChangesAsync(cancellationToken);
 
-            return await BuildAsync(idVenta, items, idTurno, cancellationToken);
+            return await BuildAsync(idVenta, items, promociones, idTurno, cancellationToken);
         }
 
         public async Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default)
@@ -484,7 +598,17 @@ namespace SgalApp.Api.Services
                 // receta tienen Stock nulo, así que aquí solo se ajustan los que lo usan (incluso
                 // cuando llevan extras que sí registran consumo de materiales).
                 var prod = await _context.InvProductos.FindAsync([detalle.IdProducto], cancellationToken);
-                if (prod?.Stock != null)
+                if (prod != null && prod.EsPack && prod.IdProductoBase.HasValue && prod.CantidadPack is > 0)
+                {
+                    // El pack repone al producto base: N unidades por unidad del pack.
+                    var baseProd = await _context.InvProductos.FindAsync([prod.IdProductoBase.Value], cancellationToken);
+                    if (baseProd?.Stock != null)
+                    {
+                        baseProd.Stock += prod.CantidadPack.Value * detalle.Cantidad;
+                        _context.Entry(baseProd).State = EntityState.Modified;
+                    }
+                }
+                else if (prod?.Stock != null)
                 {
                     prod.Stock += detalle.Cantidad;
                     _context.Entry(prod).State = EntityState.Modified;

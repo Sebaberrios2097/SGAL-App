@@ -104,6 +104,11 @@ public static class Permissions
     public const string SalesVoid = "ventas.anular";
     public const string SalesDiscountApply = "ventas.descuento.aplicar";
     public const string SalesComandasManage = "ventas.comandas.gestionar";
+    public const string PromotionsView = "ventas.promociones.ver";
+    public const string PromotionsCreate = "ventas.promociones.crear";
+    public const string PromotionsEdit = "ventas.promociones.editar";
+    public const string PromotionsStatusEdit = "ventas.promociones.estado.modificar";
+    public const string PromotionsDelete = "ventas.promociones.eliminar";
     public const string CajaOperate = "caja.operar";
     public const string CajaTurnOpen = "caja.turno.abrir";
     public const string CajaTurnClose = "caja.turno.cerrar";

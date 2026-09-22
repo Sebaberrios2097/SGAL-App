@@ -648,6 +648,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             if (permissionCode.StartsWith("inventario.descuentos.") || permissionCode == "ventas.descuento.aplicar") return "Descuentos";
             if (permissionCode.StartsWith("ingredientes_extra.")) return "Ingredientes extra";
             if (permissionCode.StartsWith("ventas.documentos.")) return "Comprobantes";
+            if (permissionCode.StartsWith("ventas.promociones.")) return "Promociones";
             return "Punto de venta";
         }
 

@@ -32,6 +32,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { usePointAvailability } from '../hooks/usePointAvailability';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { buildReceiptHtml } from '../utils/receiptTemplates';
+import PromotionSelector from '../components/PromotionSelector';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
 // débito o crédito después de que Mercado Pago informa el medio real.
@@ -91,6 +92,22 @@ const getExtrasSurcharge = (extras = []) => extras
 // Permite agrupar líneas idénticas y separar las que difieren en sus extras.
 const getLineSignature = (selections = [], extras = []) =>
   `${getSelectionSignature(selections)}#${extras.map(extra => extra.idIngredienteExtra).sort((a, b) => a - b).join(',')}`;
+
+const promotionReceiptProducts = item => {
+  const quantities = new Map();
+  const names = new Map();
+  (item.promotion.grupos || []).filter(g => g.esBase).flatMap(g => g.productos || []).forEach(p => {
+    quantities.set(p.idProducto, (quantities.get(p.idProducto) || 0) + p.cantidad * item.quantity);
+    names.set(p.idProducto, p.nombreProducto);
+  });
+  (item.selections || []).forEach(selection => {
+    const group = (item.promotion.grupos || []).find(g => g.idGrupo === selection.idGrupo);
+    const product = group?.productos?.find(p => p.idProducto === selection.idProducto);
+    quantities.set(selection.idProducto, (quantities.get(selection.idProducto) || 0) + (selection.cantidad || 1) * item.quantity);
+    if (product) names.set(selection.idProducto, product.nombreProducto);
+  });
+  return [...quantities].map(([idProducto, cantidad]) => ({ idProducto, cantidad, nombreProducto: names.get(idProducto) || `Producto #${idProducto}` }));
+};
 
 const describirRechazoPoint = (estadoOrden) => {
   switch (estadoOrden) {
@@ -178,6 +195,9 @@ const SalesView = () => {
   // POS / Sales Catalog State
   const [products, setProducts] = useState([]);
   const [discounts, setDiscounts] = useState([]);
+  const [promotions, setPromotions] = useState([]);
+  const [promoCart, setPromoCart] = useState([]);
+  const [catalogTab, setCatalogTab] = useState('products');
   const [extrasCatalog, setExtrasCatalog] = useState([]); // ingredientes extra activos (global)
   const [cart, setCart] = useState([]); // { product, quantity, finalPrice }
   // Si != null, el carrito corresponde a un vale reescaneado que se está modificando.
@@ -235,10 +255,11 @@ const SalesView = () => {
 
   const fetchCatalog = async () => {
     try {
-      const [prodRes, catRes, discRes, extraRes] = await Promise.all([
+      const [prodRes, catRes, discRes, promoRes, extraRes] = await Promise.all([
         fetch('/api/product'),
         fetch('/api/category'),
         fetch('/api/discount'),
+        fetch('/api/promotion'),
         materialsEnabled ? fetch('/api/extra-ingredient/active') : null
       ]);
 
@@ -247,6 +268,7 @@ const SalesView = () => {
         setCategories(await catRes.json());
         setDiscounts(await discRes.json());
       }
+      if (promoRes.ok) setPromotions(await promoRes.json());
       // El catálogo de extras es opcional: si falla, los productos simplemente no ofrecerán extras.
       if (extraRes?.ok) setExtrasCatalog(await extraRes.json());
       else setExtrasCatalog([]);
@@ -269,6 +291,11 @@ const SalesView = () => {
         idMateriaPrimaSeleccionada: selection.idMateriaPrimaSeleccionada
       })),
       idsIngredientesExtra: (item.extras || []).map(extra => extra.idIngredienteExtra)
+    }));
+    const promociones = promoCart.map(item => ({
+      idPromocion: item.promotion.idPromocion,
+      cantidad: item.quantity,
+      selecciones: item.selections
     }));
 
     const asignacionesPago = Object.keys(paymentAllocations)
@@ -317,6 +344,7 @@ const SalesView = () => {
           montoTarjeta,
           metodosPago,
           items,
+          promociones,
           porcentajeDescuento: descuentoPctEfectivo()
         })
       });
@@ -390,14 +418,17 @@ const SalesView = () => {
     fecha: new Date().toLocaleString('es-CL'),
     barista: user.empleado ? `${user.empleado.nombres} ${user.empleado.apellido1}` : user.nombreUsuario,
     cart: [...cart],
+    promotions: [...promoCart],
     paymentAllocations: { ...paymentAllocations },
     cashReceived: cashReceived,
-    subtotal: cart.reduce((acc, item) => acc + ((item.normalPrice ?? item.product.precio) * item.quantity), 0),
+    subtotal: cart.reduce((acc, item) => acc + ((item.normalPrice ?? item.product.precio) * item.quantity), 0)
+      + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0),
     total: calculateCartTotal()
   });
 
   const finalizeSale = (saleData) => {
     setCart([]);
+    setPromoCart([]);
     setShowCheckoutModal(false);
     setCashReceived('');
     setDescuentoPct(0);
@@ -415,7 +446,7 @@ const SalesView = () => {
   // Con el módulo Caja: el vendedor genera la orden como vale (sin cobro) y la envía
   // a caja. Imprime un vale mínimo (fecha, productos, cantidades y subtotal con descuentos).
   const handleGenerarVale = async () => {
-    if (submittingSale || cart.length === 0 || faltaCalibracion) return;
+    if (submittingSale || (cart.length === 0 && promoCart.length === 0) || faltaCalibracion) return;
     setError('');
     setSubmittingSale(true);
 
@@ -428,6 +459,7 @@ const SalesView = () => {
       })),
       idsIngredientesExtra: (item.extras || []).map(extra => extra.idIngredienteExtra)
     }));
+    const promociones = promoCart.map(item => ({ idPromocion: item.promotion.idPromocion, cantidad: item.quantity, selecciones: item.selections }));
 
     try {
       // Vale reescaneado: se actualiza el mismo vale; si no, se crea uno nuevo.
@@ -435,7 +467,7 @@ const SalesView = () => {
       const res = await fetch(editando ? `/api/sale/${editingVentaId}/items` : '/api/sale', {
         method: editando ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editando ? { items } : { idTurno: activeTurn?.idTurno ?? null, items })
+        body: JSON.stringify(editando ? { items, promociones } : { idTurno: activeTurn?.idTurno ?? null, items, promociones })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -460,7 +492,8 @@ const SalesView = () => {
           idVenta,
           fecha: new Date().toLocaleString('es-CL'),
           items: valeItems,
-          subtotal: subtotalBruto,
+          promotions: promoCart.map(item => ({ nombre: item.promotion.nombre, cantidad: item.quantity, precio: item.promotion.precio, descuento: (item.individualAmount - item.promotion.precio) * item.quantity, productos: promotionReceiptProducts(item) })),
+          subtotal: subtotalBruto + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0),
           total: calculateCartSubtotal(),
           payments: []
         },
@@ -468,6 +501,7 @@ const SalesView = () => {
       });
 
       setCart([]);
+      setPromoCart([]);
       setDescuentoPct(0);
       setCartOpen(false);
       setEditingVentaId(null);
@@ -690,6 +724,13 @@ const SalesView = () => {
         fecha: saleData.fecha,
         barista: saleData.barista,
         items,
+        promotions: (saleData.promotions || []).map(item => ({
+          nombre: item.promotion.nombre,
+          cantidad: item.quantity,
+          precio: item.promotion.precio,
+          descuento: (item.individualAmount - item.promotion.precio) * item.quantity,
+          productos: promotionReceiptProducts(item)
+        })),
         subtotal: saleData.subtotal,
         total: saleData.total,
         payments,
@@ -710,7 +751,7 @@ const SalesView = () => {
     const barista = sale.barista || (user.empleado ? `${user.empleado.nombres} ${user.empleado.apellido1}` : user.nombreUsuario);
 
     const items = isReprint
-      ? sale.items.map(item => ({
+      ? sale.items.filter(item => item.idVentaPromocion == null).map(item => ({
           nombreProducto: item.nombreProducto,
           quantity: item.cantidad,
           finalPrice: item.precioUnitario,
@@ -735,6 +776,7 @@ const SalesView = () => {
 
     const subtotal = isReprint
       ? items.reduce((acc, item) => acc + (item.normalPrice * item.quantity), 0)
+        + (sale.promociones || []).reduce((acc, promo) => acc + promo.montoIndividual, 0)
       : sale.subtotal;
     const total = isReprint ? sale.montoTotal : sale.total;
 
@@ -753,6 +795,13 @@ const SalesView = () => {
         fecha,
         barista,
         items,
+        promotions: isReprint ? (sale.promociones || []) : (sale.promotions || []).map(item => ({
+          nombre: item.promotion.nombre,
+          cantidad: item.quantity,
+          precio: item.promotion.precio,
+          descuento: (item.individualAmount - item.promotion.precio) * item.quantity,
+          productos: promotionReceiptProducts(item)
+        })),
         subtotal,
         total,
         payments,
@@ -945,6 +994,14 @@ const SalesView = () => {
         };
       });
       setCart(nuevoCarrito);
+      setPromoCart((data.promociones || []).map(promo => ({
+        promotion: promotions.find(p => p.idPromocion === promo.idPromocion) || {
+          idPromocion: promo.idPromocion, nombre: promo.nombre, precio: promo.precio, grupos: []
+        },
+        quantity: promo.cantidad,
+        selections: promo.selecciones || [],
+        individualAmount: promo.cantidad > 0 ? promo.montoIndividual / promo.cantidad : promo.montoIndividual
+      })));
       setEditingVentaId(idVenta);
       notify.success(`Editando vale #${idVenta}. Modifica y vuelve a generar el vale.`);
     } catch (err) {
@@ -1096,7 +1153,17 @@ const SalesView = () => {
     setCart(updated);
   };
 
-  const calculateCartSubtotal = () => cart.reduce((total, item) => total + (item.finalPrice * item.quantity), 0);
+  const addPromotionToCart = promoItem => setPromoCart(current => [...current, promoItem]);
+  const updatePromotionQty = (index, delta) => setPromoCart(current => {
+    const next = [...current];
+    const quantity = next[index].quantity + delta;
+    if (quantity <= 0) next.splice(index, 1);
+    else next[index] = { ...next[index], quantity };
+    return next;
+  });
+
+  const calculateCartSubtotal = () => cart.reduce((total, item) => total + (item.finalPrice * item.quantity), 0)
+    + promoCart.reduce((total, item) => total + item.promotion.precio * item.quantity, 0);
 
   // Porcentaje efectivo (acotado al máximo del usuario) y monto de descuento.
   const descuentoPctEfectivo = () => Math.min(Math.max(Number(descuentoPct) || 0, 0), maxDescuento);
@@ -1718,8 +1785,12 @@ const SalesView = () => {
               padding: '24px',
               overflowY: 'auto'
             }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                <button type="button" onClick={() => setCatalogTab('products')} className={`btn ${catalogTab === 'products' ? 'btn-primary' : ''}`}>Productos</button>
+                <button type="button" onClick={() => setCatalogTab('promotions')} className={`btn ${catalogTab === 'promotions' ? 'btn-primary' : ''}`}><Gift size={16} /> Promociones</button>
+              </div>
               {/* Category Filter Pills */}
-              <div style={{
+              {catalogTab === 'products' && <div style={{
                 display: 'flex',
                 gap: '10px',
                 marginBottom: '20px',
@@ -1763,10 +1834,12 @@ const SalesView = () => {
                     {cat.nombreCategoriaProducto}
                   </button>
                 ))}
-              </div>
+              </div>}
 
               {/* Catalog Grid */}
-              {filteredProducts.length === 0 ? (
+              {catalogTab === 'promotions' ? (
+                <PromotionSelector promotions={promotions} onAdd={addPromotionToCart} />
+              ) : filteredProducts.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center', flex: 1, padding: '40px', color: 'var(--text-muted)' }}>
                   <Coffee size={40} style={{ opacity: 0.5 }} />
                   <span style={{ marginTop: '12px' }}>No hay productos activos en esta categoría</span>
@@ -1848,7 +1921,7 @@ const SalesView = () => {
                 overflowY: 'auto',
                 padding: '16px'
               }}>
-                {cart.length === 0 ? (
+                {cart.length === 0 && promoCart.length === 0 ? (
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -2000,6 +2073,20 @@ const SalesView = () => {
                         </button>
                       </div>
                     ))}
+                    {promoCart.map((item, index) => (
+                      <div key={`promo-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid #f1f5f9' }}>
+                        <Gift size={22} color="var(--primary-color)" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ display: 'block', fontSize: '.82rem' }}>{item.promotion.nombre}</strong>
+                          <span style={{ color: '#15803d', fontWeight: 800, fontSize: '.8rem' }}>${item.promotion.precio.toLocaleString('es-CL')}</span>
+                          {item.individualAmount > item.promotion.precio && <small style={{ display: 'block', color: '#b45309' }}>Ahorro ${(item.individualAmount - item.promotion.precio).toLocaleString('es-CL')} c/u</small>}
+                        </div>
+                        <button type="button" onClick={() => updatePromotionQty(index, -1)} style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 4 }}><Minus size={12} /></button>
+                        <strong>{item.quantity}</strong>
+                        <button type="button" onClick={() => updatePromotionQty(index, 1)} style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 4 }}><Plus size={12} /></button>
+                        <button type="button" onClick={() => setPromoCart(current => current.filter((_, i) => i !== index))} style={{ border: 0, background: 'none', color: '#ef4444' }}><Trash2 size={14} /></button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2066,7 +2153,7 @@ const SalesView = () => {
                 {editingVentaId && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', marginBottom: '10px', borderRadius: '8px', backgroundColor: 'rgba(217, 119, 6, 0.12)', border: '1px solid rgba(217, 119, 6, 0.4)', fontSize: '0.82rem', fontWeight: 600, color: '#92400e' }}>
                     <span>Editando vale #{editingVentaId}</span>
-                    <button type="button" onClick={() => { setCart([]); setEditingVentaId(null); }}
+                    <button type="button" onClick={() => { setCart([]); setPromoCart([]); setEditingVentaId(null); }}
                       style={{ background: 'none', border: 'none', color: '#92400e', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}>
                       Cancelar
                     </button>
@@ -2102,7 +2189,7 @@ const SalesView = () => {
                   )}
 
                   {canAny('ventas.crear', 'ventas.crear_point') && <button
-                    disabled={cart.length === 0 || faltaCalibracion || (cajaEnabled && submittingSale)}
+                    disabled={(cart.length === 0 && promoCart.length === 0) || faltaCalibracion || (cajaEnabled && submittingSale)}
                     onClick={() => {
                       setError('');
                       if (cajaEnabled) {
@@ -2126,23 +2213,23 @@ const SalesView = () => {
                       border: 'none',
                       borderRadius: '8px',
                       fontWeight: '700',
-                      cursor: (cart.length === 0 || faltaCalibracion) ? 'not-allowed' : 'pointer',
-                      opacity: (cart.length === 0 || faltaCalibracion) ? 0.6 : 1,
+                      cursor: ((cart.length === 0 && promoCart.length === 0) || faltaCalibracion) ? 'not-allowed' : 'pointer',
+                      opacity: ((cart.length === 0 && promoCart.length === 0) || faltaCalibracion) ? 0.6 : 1,
                       transition: 'background-color 0.2s ease',
                       fontSize: '0.9rem'
                     }}
                     onMouseEnter={(e) => {
-                      if (cart.length > 0 && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                      if ((cart.length > 0 || promoCart.length > 0) && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
                     }}
                     onMouseLeave={(e) => {
-                      if (cart.length > 0 && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
+                      if ((cart.length > 0 || promoCart.length > 0) && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
                     }}
                   >
                     {cajaEnabled ? (editingVentaId ? 'Actualizar vale' : 'Generar vale') : 'Continuar al Pago'}
                   </button>}
                   {turnsEnabled && can('ventas.crear') && <button
                     type="button"
-                    disabled={cart.length === 0 || faltaCalibracion || submittingSale}
+                    disabled={cart.length === 0 || promoCart.length > 0 || faltaCalibracion || submittingSale}
                     onClick={() => { setError(''); setShowConsumoConfirm(true); }}
                     title="Registrar el carrito como consumo del empleado (por cobrar, cortesía automática)"
                     aria-label="Consumo de empleado"
@@ -2157,8 +2244,8 @@ const SalesView = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      cursor: (cart.length === 0 || faltaCalibracion || submittingSale) ? 'not-allowed' : 'pointer',
-                      opacity: (cart.length === 0 || faltaCalibracion || submittingSale) ? 0.6 : 1
+                      cursor: (cart.length === 0 || promoCart.length > 0 || faltaCalibracion || submittingSale) ? 'not-allowed' : 'pointer',
+                      opacity: (cart.length === 0 || promoCart.length > 0 || faltaCalibracion || submittingSale) ? 0.6 : 1
                     }}
                   >
                     <BookOpen size={18} />
@@ -2177,7 +2264,7 @@ const SalesView = () => {
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ShoppingBag size={18} />
-              Ver carrito ({cart.reduce((count, item) => count + item.quantity, 0)})
+              Ver carrito ({cart.reduce((count, item) => count + item.quantity, 0) + promoCart.reduce((count, item) => count + item.quantity, 0)})
             </span>
             <span>${calculateCartTotal().toLocaleString('es-CL')}</span>
           </button>}

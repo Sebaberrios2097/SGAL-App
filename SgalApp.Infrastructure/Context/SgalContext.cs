@@ -120,6 +120,14 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<IntMaquinaPos> IntMaquinasPos { get; set; }
 
+    public virtual DbSet<VenPromociones> VenPromociones { get; set; }
+
+    public virtual DbSet<VenPromocionGrupos> VenPromocionGrupos { get; set; }
+
+    public virtual DbSet<VenPromocionGrupoProductos> VenPromocionGrupoProductos { get; set; }
+
+    public virtual DbSet<VenVentaPromociones> VenVentaPromociones { get; set; }
+
     public virtual DbSet<VenDetalleVentaIngrediente> VenDetalleVentaIngrediente { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -356,6 +364,11 @@ public partial class SgalContext : DbContext
             entity.HasOne(d => d.IdCategoriaProductoNavigation).WithMany(p => p.InvProductos)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Inv_Productos_Inv_Categoria_Productos");
+
+            entity.HasOne(d => d.IdProductoBaseNavigation).WithMany(p => p.PacksDelProducto)
+                .HasForeignKey(d => d.IdProductoBase)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Inv_Productos_Producto_Base");
         });
 
         modelBuilder.Entity<InvProductosCortesia>(entity =>
@@ -506,6 +519,24 @@ public partial class SgalContext : DbContext
             entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenDetalleVenta)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Ven_Detalle_Venta_Ven_Ventas");
+
+            entity.HasOne(d => d.IdVentaPromocionNavigation).WithMany(p => p.Lineas)
+                .HasForeignKey(d => d.IdVentaPromocion)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Ven_Detalle_Venta_Venta_Promocion");
+        });
+
+        modelBuilder.Entity<VenVentaPromociones>(entity =>
+        {
+            entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.VenVentaPromociones)
+                .HasForeignKey(d => d.IdVenta)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Ven_Venta_Promociones_Venta");
+
+            entity.HasOne(d => d.IdPromocionNavigation).WithMany()
+                .HasForeignKey(d => d.IdPromocion)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Ven_Venta_Promociones_Promocion");
         });
 
         modelBuilder.Entity<VenDetalleVentaMateriales>(entity =>

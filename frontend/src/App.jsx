@@ -244,7 +244,7 @@ function App() {
             <Route path="users" element={<Navigate to="/employees" replace />} />
             <Route path="roles" element={<PermissionRoute permission="roles.ver"><RoleManagement /></PermissionRoute>} />
             <Route path="roles/:id/permissions" element={<PermissionRoute permission="roles.permisos.asignar"><RolePermissions /></PermissionRoute>} />
-            <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver']}><InventoryManagement /></PermissionRoute>} />
+            <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver','ventas.promociones.ver']}><InventoryManagement /></PermissionRoute>} />
             <Route path="inventory/control" element={<PermissionRoute anyOf={['inventario.productos.ver','configuracion_inventario.materias_primas.ver']}><InventoryDashboard /></PermissionRoute>} />
             <Route path="inventory/products/:idProducto/recipe" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute></ModuleRoute>} />
             <Route path="recipes" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute></ModuleRoute>} />

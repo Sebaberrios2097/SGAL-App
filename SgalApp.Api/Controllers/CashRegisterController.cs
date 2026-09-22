@@ -61,6 +61,7 @@ namespace SgalApp.Api.Controllers
                         ?? v.IdUsuarioNavigation.NombreUsuario,
                     Items = v.VenDetalleVenta.Select(d => new
                     {
+                        d.IdVentaPromocion,
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
@@ -86,6 +87,16 @@ namespace SgalApp.Api.Controllers
                 })
                 .ToListAsync();
 
+            var pendingIds = pending.Select(p => p.IdVenta).ToList();
+            var promocionesAplicadas = await _context.VenVentaPromociones.AsNoTracking()
+                .Where(p => pendingIds.Contains(p.IdVenta))
+                .Include(p => p.IdPromocionNavigation).ThenInclude(p => p.Grupos).ThenInclude(g => g.Productos)
+                .Include(p => p.Lineas).ThenInclude(l => l.IdProductoNavigation)
+                .ToListAsync();
+            var promocionesPorVenta = promocionesAplicadas
+                .GroupBy(p => p.IdVenta)
+                .ToDictionary(g => g.Key, g => g.Select(SalePromotionMapper.Map).ToList());
+
             // Para que la caja pueda editar un vale y reconstruir sus líneas, cada alternativa
             // elegida necesita su materia prima base (Id_Materia_Prima_Reemplazada de la receta).
             var productIds = pending.SelectMany(p => p.Items).Select(i => i.IdProducto).Distinct().ToList();
@@ -108,7 +119,7 @@ namespace SgalApp.Api.Controllers
                 p.FechaVenta,
                 p.MontoTotal,
                 p.Vendedor,
-                Items = p.Items.Select(i => new
+                Items = p.Items.Where(i => i.IdVentaPromocion == null).Select(i => new
                 {
                     i.IdProducto,
                     i.NombreProducto,
@@ -124,7 +135,8 @@ namespace SgalApp.Api.Controllers
                         s.Recargo
                     }),
                     IngredientesExtra = i.Extras
-                })
+                }),
+                Promociones = promocionesPorVenta.GetValueOrDefault(p.IdVenta, [])
             });
 
             return Ok(result);
@@ -138,8 +150,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.CajaSaleModify)]
         public async Task<IActionResult> UpdateItems(int idVenta, [FromBody] SaleItemsUpdateDto dto)
         {
-            if (dto?.Items == null || dto.Items.Count == 0)
-                return BadRequest(new { mensaje = "El vale debe contener al menos un producto." });
+            if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
+                return BadRequest(new { mensaje = "El vale debe contener al menos un producto o promoción." });
 
             var cajaTurn = await _context.TurTurno.AnyAsync(t =>
                 t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
@@ -154,7 +166,7 @@ namespace SgalApp.Api.Controllers
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var lines = await _saleLines.ReplaceLinesAsync(idVenta, dto.Items, sale.IdTurno);
+                var lines = await _saleLines.ReplaceLinesAsync(idVenta, dto.Items ?? [], dto.Promociones, sale.IdTurno);
                 if (!lines.EsValido)
                 {
                     await transaction.RollbackAsync();
@@ -187,8 +199,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.CajaSaleModify)]
         public async Task<IActionResult> CreateSale([FromBody] SaleItemsUpdateDto dto)
         {
-            if (dto?.Items == null || dto.Items.Count == 0)
-                return BadRequest(new { mensaje = "La venta debe contener al menos un producto." });
+            if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
+                return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
 
             var cajaTurn = await _context.TurTurno.FirstOrDefaultAsync(t =>
                 t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
@@ -211,7 +223,7 @@ namespace SgalApp.Api.Controllers
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync();
 
-                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items, cajaTurn.IdTurno);
+                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, cajaTurn.IdTurno);
                 if (!lines.EsValido)
                 {
                     await transaction.RollbackAsync();
@@ -259,7 +271,7 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = "El vale ya fue cobrado." });
 
             // El total bruto proviene del detalle ya construido al generar el vale.
-            int totalBruto = sale.VenDetalleVenta.Sum(d => d.Subtotal);
+            int totalBruto = sale.MontoTotal;
 
             decimal porcentajeDescuento = dto.PorcentajeDescuento;
             int montoDescuento = 0;
@@ -394,7 +406,7 @@ namespace SgalApp.Api.Controllers
                 return Conflict(new { mensaje });
             }
 
-            int totalBruto = sale.VenDetalleVenta.Sum(d => d.Subtotal);
+            int totalBruto = sale.MontoTotal;
             int montoDescuento = 0;
             if (dto.PorcentajeDescuento != 0)
             {

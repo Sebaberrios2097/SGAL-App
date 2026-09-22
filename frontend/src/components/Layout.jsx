@@ -73,7 +73,8 @@ const Layout = () => {
   const hasQuickNavigation = canOperateTurns || canOperateCaja;
   const hasOperationNavigation = salesEnabled && canAny(
     'turnos.propios.ver', 'bitacora.propia.ver', 'configuracion_inventario.cortesia.ver',
-    'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver'
+    'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver',
+    'ventas.promociones.ver'
   );
   const hasInventoryNavigation = canAny('inventario.productos.ver', 'inventario.categorias.ver')
     || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'));
@@ -384,6 +385,7 @@ const Layout = () => {
               {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
               {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Gift })}
               {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Cortesía', path: '/turn/courtesy', icon: Gift })}
+              {can('ventas.promociones.ver') && renderNavItem({ label: 'Promociones', path: '/inventory?tab=promotions', icon: Tags })}
               {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
               {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
             </> })}

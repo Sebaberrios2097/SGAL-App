@@ -50,6 +50,8 @@ En particular, los permisos `inventario.descuentos.*` aparecen dentro de **Venta
 
 **Caja** es complementario a Punto de venta. Sin él, el cobro ocurre en la misma venta (el vendedor arma el carrito, elige el medio de pago y emite la boleta). Con él, el vendedor solo genera la orden y emite un **vale de uso interno** (venta en estado *Pendiente de pago*), y el **cajero**, con un turno de caja abierto, cobra ese vale, aplica descuentos, registra el medio de pago y emite la **boleta**. Los turnos se etiquetan por tipo (vendedor/caja) para coexistir; con Caja habilitado el turno de vendedor se simplifica (sin cuadratura de efectivo) y la cuadratura del dinero ocurre en el turno de caja (`Ven_Ventas.Id_Turno_Caja`).
 
+**Promociones y packs.** Un pack es un producto vendible sin stock propio: su disponibilidad y descuento de inventario se calculan sobre un producto base y su cantidad por pack. Las promociones son combos con precio propio, productos fijos y grupos de opciones repetibles. Punto de venta y Caja expanden cada promoción a líneas reales para descontar y reponer stock, pero conservan su agrupación y ahorro en el carrito, el vale y la boleta mediante `Ven_Venta_Promociones`.
+
 Esta separación permite que comercios de reventa —por ejemplo, una botillería— utilicen productos con stock unitario sin habilitar recetas ni materias primas. Cafeterías, cocinas u otros negocios que transforman insumos pueden habilitar adicionalmente **Recetas y materiales**.
 
 ## Cómo añadir o dividir un módulo

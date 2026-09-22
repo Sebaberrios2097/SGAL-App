@@ -61,6 +61,11 @@ namespace SgalApp.Api.Controllers
                     p.DescripcionProducto,
                     p.Precio,
                     p.Stock,
+                    p.EsPack,
+                    p.IdProductoBase,
+                    p.CantidadPack,
+                    NombreProductoBase = p.IdProductoBaseNavigation != null ? p.IdProductoBaseNavigation.NombreProducto : null,
+                    StockBase = p.IdProductoBaseNavigation != null ? p.IdProductoBaseNavigation.Stock : null,
                     RequiereReceta = p.RequiereReceta ?? false,
                     p.AceptaIngredientesExtra,
                     TieneRecetaConfigurada = p.InvRecetas.Any(r => r.Estado),
@@ -93,6 +98,13 @@ namespace SgalApp.Api.Controllers
                     }
                 }
 
+                // El pack no tiene stock propio: su disponibilidad se deriva del producto base.
+                int? stockMostrado = p.EsPack
+                    ? (p.CantidadPack.HasValue && p.CantidadPack.Value > 0 && p.StockBase.HasValue
+                        ? p.StockBase.Value / p.CantidadPack.Value
+                        : 0)
+                    : p.Stock;
+
                 return new
                 {
                     p.IdProducto,
@@ -102,7 +114,11 @@ namespace SgalApp.Api.Controllers
                     p.NombreProducto,
                     p.DescripcionProducto,
                     p.Precio,
-                    p.Stock,
+                    Stock = stockMostrado,
+                    p.EsPack,
+                    p.IdProductoBase,
+                    p.NombreProductoBase,
+                    p.CantidadPack,
                     p.RequiereReceta,
                     p.AceptaIngredientesExtra,
                     p.TieneRecetaConfigurada,
@@ -152,6 +168,9 @@ namespace SgalApp.Api.Controllers
             if (productCode != null && await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode))
                 return BadRequest(new { Mensaje = "Ya existe un producto con ese código" });
 
+            var packError = await ValidatePackAsync(dto, null);
+            if (packError != null) return BadRequest(new { Mensaje = packError });
+
             byte[]? imageBytes = null;
             if (!string.IsNullOrWhiteSpace(dto.ImagenBase64))
             {
@@ -174,7 +193,10 @@ namespace SgalApp.Api.Controllers
                 NombreProducto = dto.NombreProducto,
                 DescripcionProducto = dto.DescripcionProducto,
                 Precio = dto.Precio,
-                Stock = dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? null : 0)),
+                Stock = dto.EsPack ? null : (dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? null : 0))),
+                EsPack = dto.EsPack,
+                IdProductoBase = dto.EsPack ? dto.IdProductoBase : null,
+                CantidadPack = dto.EsPack ? dto.CantidadPack : null,
                 RequiereReceta = dto.RequiereReceta,
                 AceptaIngredientesExtra = dto.AceptaIngredientesExtra,
                 FechaIngreso = DateTime.Now,
@@ -246,6 +268,9 @@ namespace SgalApp.Api.Controllers
             if (productCode != null && await _context.InvProductos.AnyAsync(p => p.CodigoProducto == productCode && p.IdProducto != id))
                 return BadRequest(new { Mensaje = "Ya existe otro producto con ese código" });
 
+            var packError = await ValidatePackAsync(dto, id);
+            if (packError != null) return BadRequest(new { Mensaje = packError });
+
             if (dto.ImagenBase64 == "")
             {
                 product.Imagen = null;
@@ -269,7 +294,10 @@ namespace SgalApp.Api.Controllers
             product.NombreProducto = dto.NombreProducto;
             product.DescripcionProducto = dto.DescripcionProducto;
             product.Precio = dto.Precio;
-            product.Stock = dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? product.Stock : 0));
+            product.Stock = dto.EsPack ? null : (dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? product.Stock : 0)));
+            product.EsPack = dto.EsPack;
+            product.IdProductoBase = dto.EsPack ? dto.IdProductoBase : null;
+            product.CantidadPack = dto.EsPack ? dto.CantidadPack : null;
             product.RequiereReceta = dto.RequiereReceta;
             product.AceptaIngredientesExtra = dto.AceptaIngredientesExtra;
             product.FechaModificacion = DateTime.Now;
@@ -311,6 +339,23 @@ namespace SgalApp.Api.Controllers
         private Task<bool> IsMaterialsModuleEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
             module.Codigo == "recetas" && module.Activo
             && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)));
+
+        // Valida la configuración de pack. Devuelve un mensaje de error o null si es válida.
+        private async Task<string?> ValidatePackAsync(ProductDto dto, int? selfId)
+        {
+            if (!dto.EsPack) return null;
+            if (dto.IdProductoBase == null || dto.CantidadPack == null || dto.CantidadPack <= 0)
+                return "Un pack requiere un producto base y una cantidad por pack mayor a cero.";
+            if (dto.IdProductoBase == selfId)
+                return "Un pack no puede tener como base a sí mismo.";
+            if (dto.RequiereReceta)
+                return "Un pack no puede requerir receta.";
+            var baseProd = await _context.InvProductos.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.IdProducto == dto.IdProductoBase);
+            if (baseProd == null) return "El producto base del pack no existe.";
+            if (baseProd.EsPack) return "El producto base no puede ser a su vez un pack.";
+            return null;
+        }
 
         [HttpPut("{id}/status")]
         [Permission(Permissions.ProductsStatusEdit)]

@@ -37,6 +37,18 @@ public partial class InvProductos
 
     public int? Stock { get; set; }
 
+    /// <summary>El producto es un pack de otro producto (no tiene stock propio).</summary>
+    [Column("Es_Pack")]
+    public bool EsPack { get; set; }
+
+    /// <summary>Producto base del que se descuenta el stock al vender este pack.</summary>
+    [Column("Id_Producto_Base")]
+    public int? IdProductoBase { get; set; }
+
+    /// <summary>Unidades del producto base que representa una unidad de este pack.</summary>
+    [Column("Cantidad_Pack")]
+    public int? CantidadPack { get; set; }
+
     [Column("Requiere_Receta")]
     public bool? RequiereReceta { get; set; }
 
@@ -54,6 +66,13 @@ public partial class InvProductos
     [ForeignKey("IdCategoriaProducto")]
     [InverseProperty("InvProductos")]
     public virtual InvCategoriaProductos IdCategoriaProductoNavigation { get; set; } = null!;
+
+    [ForeignKey("IdProductoBase")]
+    [InverseProperty("PacksDelProducto")]
+    public virtual InvProductos? IdProductoBaseNavigation { get; set; }
+
+    [InverseProperty("IdProductoBaseNavigation")]
+    public virtual ICollection<InvProductos> PacksDelProducto { get; set; } = new List<InvProductos>();
 
     [InverseProperty("IdProductoNavigation")]
     public virtual ICollection<InvDescuentosProductos> InvDescuentosProductos { get; set; } = new List<InvDescuentosProductos>();

@@ -6,6 +6,9 @@ namespace SgalApp.Api.DTOs
         public List<SalePaymentMethodDto> MetodosPago { get; set; } = new();
         public List<SaleItemDto> Items { get; set; } = new();
 
+        /// <summary>Promociones agregadas a la venta (además de los productos sueltos).</summary>
+        public List<SalePromoInstanceDto> Promociones { get; set; } = new();
+
         /// <summary>Porcentaje de descuento aplicado al total (0 = sin descuento).</summary>
         public decimal PorcentajeDescuento { get; set; }
 
@@ -38,10 +41,55 @@ namespace SgalApp.Api.DTOs
         public int IdMateriaPrimaSeleccionada { get; set; }
     }
 
+    /// <summary>Instancia de una promoción en la venta: la promo y las opciones elegidas.</summary>
+    public class SalePromoInstanceDto
+    {
+        public int IdPromocion { get; set; }
+
+        /// <summary>Cuántas veces se lleva esta promoción (por defecto 1).</summary>
+        public int Cantidad { get; set; } = 1;
+
+        /// <summary>Selecciones de los grupos excluyentes (idGrupo + idProducto por cada elección).</summary>
+        public List<SalePromoSelectionDto> Selecciones { get; set; } = new();
+    }
+
+    public class SalePromoSelectionDto
+    {
+        public int IdGrupo { get; set; }
+        public int IdProducto { get; set; }
+        public int Cantidad { get; set; } = 1;
+    }
+
+    /// <summary>Promoción ya persistida, reconstruida para edición y presentación.</summary>
+    public sealed class SaleAppliedPromotionDto
+    {
+        public int IdVentaPromocion { get; set; }
+        public int IdPromocion { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public int Cantidad { get; set; }
+        public int Precio { get; set; }
+        public int MontoIndividual { get; set; }
+        public int Descuento { get; set; }
+        public List<SalePromoSelectionDto> Selecciones { get; set; } = new();
+        public List<SaleAppliedPromotionProductDto> Productos { get; set; } = new();
+    }
+
+    public sealed class SaleAppliedPromotionProductDto
+    {
+        public int IdProducto { get; set; }
+        public string NombreProducto { get; set; } = string.Empty;
+        public int Cantidad { get; set; }
+        public int PrecioUnitario { get; set; }
+        public int Subtotal { get; set; }
+    }
+
     /// <summary>Nuevo conjunto de líneas para un vale pendiente (edición en caja).</summary>
     public class SaleItemsUpdateDto
     {
         public List<SaleItemDto> Items { get; set; } = new();
+
+        /// <summary>Promociones a conservar/aplicar en el vale editado.</summary>
+        public List<SalePromoInstanceDto> Promociones { get; set; } = new();
     }
 
     /// <summary>Inicio de un cobro con tarjeta (Point) en caja: monto de tarjeta y descuento.</summary>

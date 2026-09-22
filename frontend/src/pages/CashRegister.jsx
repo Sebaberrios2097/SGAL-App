@@ -11,6 +11,7 @@ import { usePointAvailability } from '../hooks/usePointAvailability';
 import TurnOpeningModal from '../components/TurnOpeningModal';
 import TurnClosingModal from '../components/TurnClosingModal';
 import { buildReceiptHtml, printReceipt } from '../utils/receiptTemplates';
+import PromotionSelector from '../components/PromotionSelector';
 
 const TIPO_CAJA = 2;
 const PENDING_POLL_MS = 4000;
@@ -18,7 +19,7 @@ const PENDING_POLL_MS = 4000;
 const METODO_TARJETA = 5;
 
 const money = (value) => `$${Number(value || 0).toLocaleString('es-CL')}`;
-const brutoDe = (vale) => vale.items.reduce((acc, item) => acc + item.subtotal, 0);
+const brutoDe = (vale) => Number(vale?.montoTotal || 0);
 let uidSeq = 1;
 
 const draftFromVale = (vale) => vale.items.map(d => ({
@@ -64,11 +65,14 @@ const CashRegister = () => {
   const [cajaTurn, setCajaTurn] = useState(null);
   const [pending, setPending] = useState([]);
   const [catalog, setCatalog] = useState([]);
+  const [promotions, setPromotions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState('view'); // 'view' | 'edit' | 'new'
   const [draft, setDraft] = useState([]);
+  const [promoDraft, setPromoDraft] = useState([]);
   const [picker, setPicker] = useState(false);
+  const [pickerTab, setPickerTab] = useState('products');
   const [query, setQuery] = useState('');
   // Pago (igual que Ventas): métodos activos, pago dividido, montos y efectivo recibido.
   const [activeMethods, setActiveMethods] = useState([1]);
@@ -122,10 +126,13 @@ const CashRegister = () => {
 
   useEffect(() => {
     if (!cajaAbierta || !puedeModificar) return;
-    fetch('/api/product')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setCatalog((Array.isArray(data) ? data : []).filter(p => p.activo)))
-      .catch(() => setCatalog([]));
+    Promise.all([
+      fetch('/api/product').then(r => r.ok ? r.json() : []),
+      fetch('/api/promotion').then(r => r.ok ? r.json() : [])
+    ]).then(([productData, promotionData]) => {
+      setCatalog((Array.isArray(productData) ? productData : []).filter(p => p.activo));
+      setPromotions(Array.isArray(promotionData) ? promotionData : []);
+    }).catch(() => { setCatalog([]); setPromotions([]); });
   }, [cajaAbierta, puedeModificar]);
 
   const cajaTurnRef = useRef(cajaAbierta);
@@ -143,7 +150,8 @@ const CashRegister = () => {
     return bruto - Math.round(bruto * pct / 100);
   }, [selected, descuentoPct, maxDescuento]);
 
-  const draftTotal = useMemo(() => draft.reduce((acc, l) => acc + l.precioUnitario * l.cantidad, 0), [draft]);
+  const draftTotal = useMemo(() => draft.reduce((acc, l) => acc + l.precioUnitario * l.cantidad, 0)
+    + promoDraft.reduce((acc, p) => acc + p.promotion.precio * p.quantity, 0), [draft, promoDraft]);
   const catalogFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return catalog.filter(p => !q || p.nombreProducto.toLowerCase().includes(q)).slice(0, 40);
@@ -193,14 +201,20 @@ const CashRegister = () => {
   const startEdit = () => {
     if (!selected) return;
     setDraft(draftFromVale(selected));
+    setPromoDraft((selected.promociones || []).map(p => ({
+      promotion: promotions.find(x => x.idPromocion === p.idPromocion) || { idPromocion: p.idPromocion, nombre: p.nombre, precio: p.precio },
+      quantity: p.cantidad,
+      selections: p.selecciones || [],
+      individualAmount: p.cantidad > 0 ? p.montoIndividual / p.cantidad : p.montoIndividual
+    })));
     setPicker(false); setQuery(''); setMode('edit');
   };
   const startNew = () => {
-    setSelectedId(null); setDraft([]); setPicker(true); setQuery(''); setMode('new'); resetPago();
+    setSelectedId(null); setDraft([]); setPromoDraft([]); setPicker(true); setQuery(''); setMode('new'); resetPago();
   };
   const cancelEdit = () => {
     if (mode === 'new') setSelectedId(null);
-    setMode('view'); setDraft([]); setPicker(false);
+    setMode('view'); setDraft([]); setPromoDraft([]); setPicker(false);
   };
 
   const addProduct = (p) => setDraft(prev => addLine(prev, p));
@@ -226,12 +240,12 @@ const CashRegister = () => {
   useBarcodeScanner(handleScan, { enabled: cajaAbierta && (puedeCobrar || puedeModificar) });
 
   const saveEdit = async () => {
-    if (submitting || draft.length === 0) return;
+    if (submitting || (draft.length === 0 && promoDraft.length === 0)) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/cash-register/${selectedId}/items`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: draftToItems(draft) })
+        body: JSON.stringify({ items: draftToItems(draft), promociones: promoDraft.map(p => ({ idPromocion: p.promotion.idPromocion, cantidad: p.quantity, selecciones: p.selections })) })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || 'No fue posible modificar el vale.');
@@ -242,12 +256,12 @@ const CashRegister = () => {
   };
 
   const createSale = async () => {
-    if (submitting || draft.length === 0 || !cajaTurn) return;
+    if (submitting || (draft.length === 0 && promoDraft.length === 0) || !cajaTurn) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/cash-register/sale', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: draftToItems(draft) })
+        body: JSON.stringify({ items: draftToItems(draft), promociones: promoDraft.map(p => ({ idPromocion: p.promotion.idPromocion, cantidad: p.quantity, selecciones: p.selections })) })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || 'No fue posible crear la venta.');
@@ -306,7 +320,10 @@ const CashRegister = () => {
       logoUrl: hasLogo('boletas') ? `${window.location.origin}${getLogoUrl('boletas')}` : null,
       data: {
         idVenta: vale.idVenta, fecha: new Date().toLocaleString('es-CL'), barista: vale.vendedor,
-        items, subtotal: subtotalBruto, total: totalCobrado, payments, cashReceived: recibidoValor
+        items,
+        promotions: vale.promociones || [],
+        subtotal: subtotalBruto + (vale.promociones || []).reduce((sum, p) => sum + p.montoIndividual, 0),
+        total: totalCobrado, payments, cashReceived: recibidoValor
       },
       options: {
         showSeller: receiptShowSeller, showPayment: receiptShowPayment, customFooter: receiptCustomFooter,
@@ -438,6 +455,11 @@ const CashRegister = () => {
   // ---- Columna 2: carrito (vista o edición) ----
   const renderPicker = () => (
     <div style={{ borderTop: '1px solid var(--panel-border)', padding: '12px 16px', background: '#fff' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 9 }}>
+        <button type="button" className={`btn ${pickerTab === 'products' ? 'btn-primary' : ''}`} onClick={() => setPickerTab('products')}>Productos</button>
+        <button type="button" className={`btn ${pickerTab === 'promotions' ? 'btn-primary' : ''}`} onClick={() => setPickerTab('promotions')}>Promociones</button>
+      </div>
+      {pickerTab === 'products' ? <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
         <Search size={15} color="var(--text-muted)" />
         <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar producto…"
@@ -454,6 +476,7 @@ const CashRegister = () => {
             </button>
           ))}
       </div>
+      </> : <div style={{ maxHeight: 300, overflowY: 'auto' }}><PromotionSelector compact promotions={promotions} onAdd={item => setPromoDraft(current => [...current, item])} /></div>}
     </div>
   );
 
@@ -464,8 +487,8 @@ const CashRegister = () => {
         <button type="button" onClick={cancelEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 18px' }}>
-        {draft.length === 0 ? <div style={{ padding: '30px 8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem' }}>Agrega productos.</div>
-          : draft.map(l => (
+        {draft.length === 0 && promoDraft.length === 0 ? <div style={{ padding: '30px 8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem' }}>Agrega productos o promociones.</div>
+          : <>{draft.map(l => (
             <div key={l.uid} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{l.nombreProducto}</div>
@@ -476,13 +499,21 @@ const CashRegister = () => {
               <button type="button" onClick={() => changeQty(l.uid, 1)} style={qtyBtn}><Plus size={14} /></button>
               <button type="button" onClick={() => removeLine(l.uid)} style={{ ...qtyBtn, borderColor: '#fca5a5', color: '#dc2626' }}><Trash2 size={14} /></button>
             </div>
-          ))}
+          ))}{promoDraft.map((item, index) => (
+            <div key={`promo-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <div style={{ flex: 1 }}><strong>{item.promotion.nombre}</strong><small style={{ display: 'block', color: '#15803d' }}>{money(item.promotion.precio)} c/u</small></div>
+              <button type="button" style={qtyBtn} onClick={() => setPromoDraft(current => current.map((p, i) => i === index ? { ...p, quantity: Math.max(1, p.quantity - 1) } : p))}><Minus size={14} /></button>
+              <strong>{item.quantity}</strong>
+              <button type="button" style={qtyBtn} onClick={() => setPromoDraft(current => current.map((p, i) => i === index ? { ...p, quantity: p.quantity + 1 } : p))}><Plus size={14} /></button>
+              <button type="button" style={{ ...qtyBtn, color: '#dc2626' }} onClick={() => setPromoDraft(current => current.filter((_, i) => i !== index))}><Trash2 size={14} /></button>
+            </div>
+          ))}</>}
       </div>
       {picker ? renderPicker() : (
         <div style={{ padding: '10px 18px', borderTop: '1px solid var(--panel-border)' }}>
           <button type="button" onClick={() => { setPicker(true); setQuery(''); }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '8px', border: '1.5px dashed var(--primary-color)', background: '#fff', color: 'var(--primary-color)', fontWeight: 700, cursor: 'pointer' }}>
-            <Plus size={16} /> Agregar producto
+            <Plus size={16} /> Agregar producto o promoción
           </button>
         </div>
       )}
@@ -492,8 +523,8 @@ const CashRegister = () => {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button type="button" onClick={cancelEdit} style={{ padding: '11px 16px', borderRadius: '8px', border: '1.5px solid var(--panel-border)', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-          <button type="button" disabled={submitting || draft.length === 0} onClick={mode === 'new' ? createSale : saveEdit}
-            style={{ flex: 1, padding: '11px', borderRadius: '8px', border: 'none', background: 'var(--primary-color)', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: (submitting || draft.length === 0) ? 0.6 : 1 }}>
+          <button type="button" disabled={submitting || (draft.length === 0 && promoDraft.length === 0)} onClick={mode === 'new' ? createSale : saveEdit}
+            style={{ flex: 1, padding: '11px', borderRadius: '8px', border: 'none', background: 'var(--primary-color)', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: (submitting || (draft.length === 0 && promoDraft.length === 0)) ? 0.6 : 1 }}>
             {submitting ? 'Guardando…' : (mode === 'new' ? 'Crear venta' : 'Guardar cambios')}
           </button>
         </div>
@@ -519,6 +550,16 @@ const CashRegister = () => {
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '9px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.92rem' }}>
             <span><strong>{d.cantidad}×</strong> {d.nombreProducto}</span>
             <span style={{ whiteSpace: 'nowrap' }}>{money(d.subtotal)}</span>
+          </div>
+        ))}
+        {(selected.promociones || []).map(promo => (
+          <div key={promo.idVentaPromocion} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <strong>{promo.cantidad}× Promo: {promo.nombre}</strong>
+              <strong>{money(promo.precio * promo.cantidad)}</strong>
+            </div>
+            <small style={{ display: 'block', color: 'var(--text-muted)', marginTop: 3 }}>{(promo.productos || []).map(p => `${p.cantidad}× ${p.nombreProducto}`).join(' · ')}</small>
+            {promo.descuento > 0 && <small style={{ display: 'block', color: '#b45309', marginTop: 2 }}>Descuento promo: -{money(promo.descuento)}</small>}
           </div>
         ))}
       </div>
@@ -696,7 +737,7 @@ const CashRegister = () => {
                     </div>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 600 }}>{vale.vendedor}</span>
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      {new Date(vale.fechaVenta).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} · {vale.items.length} {vale.items.length === 1 ? 'ítem' : 'ítems'}
+                      {new Date(vale.fechaVenta).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} · {vale.items.length + (vale.promociones?.length || 0)} ítem(s)
                     </span>
                   </button>
                 );
@@ -764,6 +805,47 @@ const CashRegister = () => {
                 <button type="button" className="btn btn-primary" onClick={() => setPointPay(null)}>Volver a intentar</button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {pointPay && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: 420, padding: 28, textAlign: 'center' }}>
+            {pointPay.estado === 'esperando' && (
+              <>
+                <div style={{ margin: '4px auto 18px', border: '4px solid rgba(var(--primary-rgb), 0.15)', width: 44, height: 44, borderRadius: '50%', borderLeftColor: 'var(--primary-color)', animation: 'spin 1s linear infinite' }} />
+                <h3 style={{ margin: '0 0 6px', fontWeight: 800 }}>Cobrando en la terminal</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', margin: '0 0 4px' }}>
+                  Pide al cliente que pase la tarjeta en la terminal POS.
+                </p>
+                <p style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary-color)', margin: '8px 0 20px' }}>{money(pointPay.montoTarjeta)}</p>
+                <button type="button" className="btn btn-danger" disabled={cancelandoPoint} onClick={cancelarPoint} style={{ width: '100%' }}>
+                  {cancelandoPoint ? 'Cancelando…' : 'Cancelar cobro'}
+                </button>
+              </>
+            )}
+            {pointPay.estado === 'rechazado' && (
+              <>
+                <h3 style={{ margin: '0 0 8px', fontWeight: 800, color: '#c5221f' }}>Cobro no completado</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', margin: '0 0 20px' }}>{pointPay.mensaje}</p>
+                <button type="button" className="btn btn-primary" onClick={() => { setPointPay(null); loadPending(); }} style={{ width: '100%' }}>
+                  Cerrar
+                </button>
+              </>
+            )}
+            {pointPay.estado === 'error_cobro' && (
+              <>
+                <h3 style={{ margin: '0 0 8px', fontWeight: 800, color: '#b45309' }}>Tarjeta cobrada</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '.9rem', margin: '0 0 16px' }}>
+                  El pago con tarjeta se aprobó pero no se pudo cerrar la venta: {pointPay.mensaje}. Reintenta para finalizar (no se vuelve a cobrar).
+                </p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="button" className="btn" onClick={() => { setPointPay(null); loadPending(); }} style={{ flex: 1, border: '1.5px solid var(--panel-border)' }}>Cerrar</button>
+                  <button type="button" className="btn btn-primary" onClick={reintentarCierre} style={{ flex: 1 }}>Reintentar</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

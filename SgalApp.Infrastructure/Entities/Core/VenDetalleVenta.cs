@@ -42,6 +42,14 @@ public partial class VenDetalleVenta
     [Column("Monto_Cortesia")]
     public int MontoCortesia { get; set; }
 
+    /// <summary>Si la línea forma parte de una promoción vendida (agrupación y descuento).</summary>
+    [Column("Id_Venta_Promocion")]
+    public int? IdVentaPromocion { get; set; }
+
+    [ForeignKey("IdVentaPromocion")]
+    [InverseProperty("Lineas")]
+    public virtual VenVentaPromociones? IdVentaPromocionNavigation { get; set; }
+
     [ForeignKey("IdProducto")]
     [InverseProperty("VenDetalleVenta")]
     public virtual InvProductos IdProductoNavigation { get; set; } = null!;

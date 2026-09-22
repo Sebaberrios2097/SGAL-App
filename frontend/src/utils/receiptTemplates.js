@@ -83,6 +83,17 @@ const buildItemsRows = (items = []) => items.map(item => {
     </tr>`;
 }).join('');
 
+const buildPromotionRows = (promotions = []) => promotions.map(promo => `
+  <tr>
+    <td style="font-size: 12px; padding: 7px 0; font-family: ${MONO}; vertical-align: top; line-height: 1.25;">
+      <strong>PROMO: ${escapeHtml(promo.nombre)}</strong>
+      ${(promo.productos || []).length ? `<br><small style="font-size: 10px;">${promo.productos.map(p => `${p.cantidad}× ${escapeHtml(p.nombreProducto)}`).join('<br>')}</small>` : ''}
+      ${promo.descuento > 0 ? `<br><small style="font-size: 10px;">Descuento promo: -${money(promo.descuento)}</small>` : ''}
+    </td>
+    <td style="text-align:center; font-size:12px; font-family:${MONO}; vertical-align:top; padding:7px 0;">${promo.cantidad || 1}</td>
+    <td style="text-align:right; font-size:12px; font-family:${MONO}; vertical-align:top; padding:7px 0;"><strong>${money((promo.precio || 0) * (promo.cantidad || 1))}</strong></td>
+  </tr>`).join('');
+
 // payments: [{ name, amount, isCash }]; cashReceived opcional para el vuelto.
 const buildPaymentsHtml = (payments = [], cashReceived = null) => payments
   .filter(p => p.amount > 0)
@@ -150,7 +161,7 @@ const buildComandaSection = (idVenta, items = []) => {
 export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl = null, data, options = {} }) => {
   const isVale = mode === 'vale';
   const {
-    idVenta, fecha, barista, items = [],
+    idVenta, fecha, barista, items = [], promotions = [],
     subtotal = 0, total = 0, payments = [], cashReceived = null
   } = data || {};
   const {
@@ -227,7 +238,7 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
             <th style="text-align: right; width: 75px; font-size: 12px; border-bottom: 1px solid #000; font-family: ${MONO};">Total</th>
           </tr>
         </thead>
-        <tbody>${buildItemsRows(items)}</tbody>
+        <tbody>${buildItemsRows(items)}${buildPromotionRows(promotions)}</tbody>
       </table>
       <div class="divider"></div>
       <table class="totals-table">

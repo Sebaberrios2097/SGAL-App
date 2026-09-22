@@ -15,5 +15,14 @@ namespace SgalApp.Api.DTOs
 
         /// <summary>Si el producto admite ingredientes extra en la venta.</summary>
         public bool AceptaIngredientesExtra { get; set; }
+
+        /// <summary>El producto es un pack de otro producto (no tiene stock propio).</summary>
+        public bool EsPack { get; set; }
+
+        /// <summary>Producto base del pack (requerido si EsPack).</summary>
+        public int? IdProductoBase { get; set; }
+
+        /// <summary>Unidades del base que representa una unidad del pack (requerido si EsPack).</summary>
+        public int? CantidadPack { get; set; }
     }
 }

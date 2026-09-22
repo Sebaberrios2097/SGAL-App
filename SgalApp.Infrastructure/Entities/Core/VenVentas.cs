@@ -120,4 +120,7 @@ public partial class VenVentas
 
     [InverseProperty("IdVentaNavigation")]
     public virtual ICollection<VenOrdenesPoint> VenOrdenesPoint { get; set; } = new List<VenOrdenesPoint>();
+
+    [InverseProperty("IdVentaNavigation")]
+    public virtual ICollection<VenVentaPromociones> VenVentaPromociones { get; set; } = new List<VenVentaPromociones>();
 }

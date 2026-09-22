@@ -37,10 +37,10 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.SalesCreate)]
         public async Task<IActionResult> CreateSale([FromBody] SaleCreateDto dto)
         {
-            if (dto == null || dto.Items == null || !dto.Items.Any())
-            {
-                return BadRequest(new { mensaje = "La venta debe contener al menos un producto." });
-            }
+            if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
+                return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
+            if (dto.EsConsumoEmpleado && (dto.Promociones?.Count ?? 0) > 0)
+                return BadRequest(new { mensaje = "Las promociones no se aplican a consumos de empleado." });
 
             var turnsEnabled = await AreTurnsEnabledAsync();
             TurTurno? turn = null;
@@ -95,8 +95,8 @@ namespace SgalApp.Api.Controllers
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
                 var lines = dto.EsConsumoEmpleado
-                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno, true, User.GetUserId(), default)
-                    : await _saleLines.BuildAsync(sale.IdVenta, dto.Items, idTurno);
+                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], idTurno, true, User.GetUserId(), default)
+                    : await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, idTurno);
                 if (!lines.EsValido)
                 {
                     return BadRequest(new { mensaje = lines.Error });
@@ -336,8 +336,20 @@ namespace SgalApp.Api.Controllers
                         mp.IdMetodoPagoNavigation.NombreMetodoPago,
                         mp.Monto
                     }),
+                    Promociones = v.VenVentaPromociones.Select(p => new
+                    {
+                        p.IdVentaPromocion,
+                        p.IdPromocion,
+                        p.IdPromocionNavigation.Nombre,
+                        p.Cantidad,
+                        p.Precio,
+                        p.MontoIndividual,
+                        p.Descuento,
+                        Productos = p.Lineas.Select(l => new { l.IdProducto, l.IdProductoNavigation.NombreProducto, l.Cantidad })
+                    }),
                     Items = v.VenDetalleVenta.Select(d => new
                     {
+                        d.IdVentaPromocion,
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
@@ -390,8 +402,20 @@ namespace SgalApp.Api.Controllers
                         mp.IdMetodoPagoNavigation.NombreMetodoPago,
                         mp.Monto
                     }),
+                    Promociones = v.VenVentaPromociones.Select(p => new
+                    {
+                        p.IdVentaPromocion,
+                        p.IdPromocion,
+                        p.IdPromocionNavigation.Nombre,
+                        p.Cantidad,
+                        p.Precio,
+                        p.MontoIndividual,
+                        p.Descuento,
+                        Productos = p.Lineas.Select(l => new { l.IdProducto, l.IdProductoNavigation.NombreProducto, l.Cantidad })
+                    }),
                     Items = v.VenDetalleVenta.Select(d => new
                     {
+                        d.IdVentaPromocion,
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
@@ -457,6 +481,7 @@ namespace SgalApp.Api.Controllers
                     v.IdTurnoCaja,
                     Items = v.VenDetalleVenta.Select(d => new
                     {
+                        d.IdVentaPromocion,
                         d.IdProducto,
                         d.IdProductoNavigation.NombreProducto,
                         d.Cantidad,
@@ -490,11 +515,17 @@ namespace SgalApp.Api.Controllers
                 .GroupBy(x => (x.Producto, x.Alternativa))
                 .ToDictionary(g => g.Key, g => g.First().Base);
 
+            var promocionesAplicadas = await _context.VenVentaPromociones.AsNoTracking()
+                .Where(p => p.IdVenta == idVenta)
+                .Include(p => p.IdPromocionNavigation).ThenInclude(p => p.Grupos).ThenInclude(g => g.Productos)
+                .Include(p => p.Lineas).ThenInclude(l => l.IdProductoNavigation)
+                .ToListAsync();
+
             return Ok(new
             {
                 sale.IdVenta,
                 sale.MontoTotal,
-                Items = sale.Items.Select(i => new
+                Items = sale.Items.Where(i => i.IdVentaPromocion == null).Select(i => new
                 {
                     i.IdProducto,
                     i.NombreProducto,
@@ -510,7 +541,8 @@ namespace SgalApp.Api.Controllers
                         s.Recargo
                     }),
                     IngredientesExtra = i.Extras
-                })
+                }),
+                Promociones = promocionesAplicadas.Select(SalePromotionMapper.Map)
             });
         }
 
@@ -522,8 +554,8 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.SalesCreate)]
         public async Task<IActionResult> UpdateSaleItems(int idVenta, [FromBody] SaleItemsUpdateDto dto)
         {
-            if (dto?.Items == null || dto.Items.Count == 0)
-                return BadRequest(new { mensaje = "La venta debe contener al menos un producto." });
+            if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
+                return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
 
             var sale = await _context.VenVentas.FirstOrDefaultAsync(v => v.IdVenta == idVenta);
             if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
@@ -534,7 +566,7 @@ namespace SgalApp.Api.Controllers
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var lines = await _saleLines.ReplaceLinesAsync(idVenta, dto.Items, sale.IdTurno);
+                var lines = await _saleLines.ReplaceLinesAsync(idVenta, dto.Items ?? [], dto.Promociones, sale.IdTurno);
                 if (!lines.EsValido)
                 {
                     await transaction.RollbackAsync();
