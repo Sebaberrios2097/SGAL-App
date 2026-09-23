@@ -18,6 +18,7 @@ import {
     Palette,
     PackageCheck,
     Puzzle,
+    Receipt,
     Ruler,
     ShieldAlert,
     ShoppingBag,
@@ -44,7 +45,7 @@ const sidebarGroupForPath = (pathname) => {
   if (pathname.startsWith('/recipes') || pathname.startsWith('/inventory/products/') || ['/settings/raw-materials', '/settings/extra-ingredients', '/settings/units', '/settings/material-categories', '/settings/brands'].some(path => pathname.startsWith(path))) return 'recetas';
   if (pathname.startsWith('/purchase-orders') || pathname.startsWith('/providers')) return 'compras';
   if (pathname.startsWith('/employees') || pathname.startsWith('/roles')) return 'accesos';
-  if (pathname.startsWith('/settings/organization') || pathname.startsWith('/settings/modules') || pathname.startsWith('/settings/pos-machines')) return 'sistema';
+  if (pathname.startsWith('/settings/organization') || pathname.startsWith('/settings/modules') || pathname.startsWith('/settings/pos-machines') || pathname.startsWith('/settings/boletas')) return 'sistema';
   return 'operacion';
 };
 
@@ -64,6 +65,7 @@ const Layout = () => {
   const materialsEnabled = isModuleEnabled('recetas');
   const logbookEnabled = salesEnabled;
   const cajaEnabled = isModuleEnabled('caja');
+  const boletasEnabled = isModuleEnabled('boletas');
   const canOperateCaja = cajaEnabled && can('caja.operar');
   const canOperateTurns = turnsEnabled && (
     canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar')
@@ -86,7 +88,9 @@ const Layout = () => {
   );
   const hasPurchasesNavigation = canAny('ordenes_compra.ver', 'ordenes_compra.recibir', 'proveedores.ver');
   const hasAccessNavigation = canAny('usuarios.ver', 'roles.ver');
-  const hasSystemNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar') || Boolean(user?.esDesarrollador);
+  const hasSystemNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar')
+    || (boletasEnabled && can('configuracion_sistema.boletas.configurar'))
+    || Boolean(user?.esDesarrollador);
   const hasModuleGroups = hasOperationNavigation || hasInventoryNavigation || hasRecipesNavigation
     || hasPurchasesNavigation || hasAccessNavigation || hasSystemNavigation;
 
@@ -425,6 +429,7 @@ const Layout = () => {
           {renderNavGroup({ id: 'sistema', label: 'Configuración del sistema', icon: Puzzle, visible: hasSystemNavigation, children: <>
               {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
               {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
+              {boletasEnabled && can('configuracion_sistema.boletas.configurar') && renderNavItem({ label: 'Boletas (SII)', path: '/settings/boletas', icon: Receipt })}
               {user?.esDesarrollador && renderNavItem({ label: 'Máquinas POS', path: '/settings/pos-machines', icon: CreditCard })}
             </> })}
         </nav>

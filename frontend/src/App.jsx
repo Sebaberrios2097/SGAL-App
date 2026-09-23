@@ -27,6 +27,7 @@ import PurchaseOrders from './pages/PurchaseOrders';
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import ProviderManagement from './pages/ProviderManagement';
 import BrandingSettings from './pages/BrandingSettings';
+import BoletasSettings from './pages/BoletasSettings';
 import ModuleSettings from './pages/ModuleSettings';
 import MyConsumptions from './pages/MyConsumptions';
 import InventoryDashboard from './pages/InventoryDashboard';
@@ -266,6 +267,7 @@ function App() {
             <Route path="settings/brands" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="configuracion_inventario.marcas.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/organization" element={<PermissionRoute permission="configuracion_sistema.marca.ver"><BrandingSettings /></PermissionRoute>} />
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
+            <Route path="settings/boletas" element={<ModuleRoute required={['boletas']}><PermissionRoute permission="configuracion_sistema.boletas.configurar"><BoletasSettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/pos-machines" element={<PosMachines />} />
             <Route path="turn-history" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
             <Route path="turn/consumptions" element={<ModuleRoute required={['ventas']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />

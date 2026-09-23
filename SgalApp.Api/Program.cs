@@ -2,6 +2,7 @@ using SgalApp.Infrastructure.Extensions;
 using Microsoft.Extensions.Options;
 using SgalApp.Api.Configuration;
 using SgalApp.Api.Services;
+using SgalApp.Api.Services.Dte;
 using SgalApp.Api.Security;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -51,6 +52,10 @@ builder.Services.AddDataProtection()
 builder.Services.Configure<MercadoPagoPointOptions>(
     builder.Configuration.GetSection(MercadoPagoPointOptions.SectionName));
 
+// LibreDTE (emisión de DTE al SII)
+builder.Services.Configure<LibreDteOptions>(
+    builder.Configuration.GetSection(LibreDteOptions.SectionName));
+
 builder.Services.AddScoped<IPosCredentialProvider, PosCredentialProvider>();
 builder.Services.AddScoped<ISaleLinesService, SaleLinesService>();
 builder.Services.AddScoped<IPointSaleService, PointSaleService>();
@@ -69,6 +74,24 @@ builder.Services.AddHttpClient<IPointService, PointService>((sp, client) =>
     {
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", pointOptions.AccessToken);
+    }
+});
+
+builder.Services.AddScoped<IDteService, DteService>();
+
+builder.Services.AddHttpClient<ILibreDteClient, LibreDteClient>((sp, client) =>
+{
+    var dteOptions = sp.GetRequiredService<IOptions<LibreDteOptions>>().Value;
+
+    client.BaseAddress = new Uri(dteOptions.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(dteOptions.TimeoutSeconds);
+
+    // La API de LibreDTE usa HTTP Basic con el hash del usuario como nombre de usuario.
+    if (!string.IsNullOrWhiteSpace(dteOptions.ApiToken))
+    {
+        var basic = Convert.ToBase64String(
+            System.Text.Encoding.UTF8.GetBytes($"{dteOptions.ApiToken}:"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
     }
 });
 

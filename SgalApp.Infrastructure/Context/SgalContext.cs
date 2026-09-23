@@ -80,6 +80,10 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<SiiClientesEmpresa> SiiClientesEmpresa { get; set; }
 
+    public virtual DbSet<SiiEmisor> SiiEmisor { get; set; }
+
+    public virtual DbSet<SiiDteEmision> SiiDteEmision { get; set; }
+
     public virtual DbSet<SiiEstadosBoleta> SiiEstadosBoleta { get; set; }
 
     public virtual DbSet<SiiTiposDte> SiiTiposDte { get; set; }
@@ -416,6 +420,27 @@ public partial class SgalContext : DbContext
             entity.Property(e => e.IdTipoDte)
                 .ValueGeneratedNever()
                 .HasComment("Código oficial del SII.");
+        });
+
+        modelBuilder.Entity<SiiDteEmision>(entity =>
+        {
+            // Sin cascadas: los catálogos y la venta no deben borrar documentos tributarios,
+            // y SQL Server rechaza múltiples rutas de cascada hacia la misma venta.
+            entity.HasOne(d => d.IdVentaNavigation).WithMany(p => p.SiiDteEmision)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SII_Dte_Emision_Ven_Ventas");
+
+            entity.HasOne(d => d.IdTipoDteNavigation).WithMany()
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SII_Dte_Emision_SII_Tipos_DTE");
+
+            entity.HasOne(d => d.IdEstadoBoletaNavigation).WithMany()
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SII_Dte_Emision_SII_Estados_Boleta");
+
+            entity.HasOne(d => d.IdEmisionReferenciaNavigation).WithMany(p => p.NotasCredito)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SII_Dte_Emision_Referencia");
         });
 
         modelBuilder.Entity<TurBitacora>(entity =>

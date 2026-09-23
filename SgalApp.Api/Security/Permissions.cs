@@ -5,6 +5,7 @@ public static class Permissions
     public const string SystemBrandingView = "configuracion_sistema.marca.ver";
     public const string SystemBrandingEdit = "configuracion_sistema.marca.editar";
     public const string SystemModulesManage = "configuracion_sistema.modulos.administrar";
+    public const string BoletasConfigure = "configuracion_sistema.boletas.configurar";
 
     public const string DashboardView = "inicio.dashboard.ver";
     public const string TurnRecordsView = "registros_turnos.ver";
@@ -103,6 +104,7 @@ public static class Permissions
     public const string SalesDocumentsReprint = "ventas.documentos.reimprimir";
     public const string SalesVoid = "ventas.anular";
     public const string SalesDiscountApply = "ventas.descuento.aplicar";
+    public const string SalesEmitExempt = "ventas.emitir_exento";
     public const string SalesComandasManage = "ventas.comandas.gestionar";
     public const string PromotionsView = "ventas.promociones.ver";
     public const string PromotionsCreate = "ventas.promociones.crear";

@@ -123,4 +123,7 @@ public partial class VenVentas
 
     [InverseProperty("IdVentaNavigation")]
     public virtual ICollection<VenVentaPromociones> VenVentaPromociones { get; set; } = new List<VenVentaPromociones>();
+
+    [InverseProperty("IdVentaNavigation")]
+    public virtual ICollection<SiiDteEmision> SiiDteEmision { get; set; } = new List<SiiDteEmision>();
 }

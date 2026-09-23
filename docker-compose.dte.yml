@@ -1,0 +1,28 @@
+# LibreDTE Core API (oficial, edición comunidad) como microservicio de firma y emisión de DTE.
+#
+# Imagen oficial mantenida: ghcr.io/libredte/libredte-lib-core-api
+# Es un único contenedor con la API HTTP de LibreDTE Core; no requiere base de datos aparte.
+# Solo SgalApp.Api lo consume; NO exponer públicamente en producción.
+#
+# Puesta en marcha:
+#   docker compose -f docker-compose.dte.yml up -d
+# Luego abrir http://localhost:8093 para ver la API (y su documentación interactiva).
+#
+# El contenedor escucha SIEMPRE en el puerto 80 por dentro; el puerto externo (8093) es
+# elección nuestra. APP_URL debe coincidir con la URL externa para que los enlaces absolutos
+# que devuelve la API sean correctos.
+
+services:
+  libredte:
+    image: ghcr.io/libredte/libredte-lib-core-api:latest
+    restart: unless-stopped
+    environment:
+      APP_URL: http://localhost:8093
+    ports:
+      - "127.0.0.1:8093:80"
+    networks:
+      - sgal-dte
+
+networks:
+  sgal-dte:
+    driver: bridge
