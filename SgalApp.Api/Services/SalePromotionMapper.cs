@@ -27,7 +27,10 @@ public static class SalePromotionMapper
             {
                 if (faltanPorInstancia == 0) break;
                 var disponibles = Math.Max(0, restantes.GetValueOrDefault(opcion.IdProducto));
-                var cantidadPorInstancia = ventaPromo.Cantidad > 0 ? disponibles / ventaPromo.Cantidad : 0;
+                var unidadesPorEleccion = Math.Max(1, opcion.Cantidad);
+                var cantidadPorInstancia = ventaPromo.Cantidad > 0
+                    ? disponibles / (ventaPromo.Cantidad * unidadesPorEleccion)
+                    : 0;
                 var tomar = Math.Min(faltanPorInstancia, cantidadPorInstancia);
                 if (tomar <= 0) continue;
                 selecciones.Add(new SalePromoSelectionDto
@@ -36,7 +39,7 @@ public static class SalePromotionMapper
                     IdProducto = opcion.IdProducto,
                     Cantidad = tomar
                 });
-                restantes[opcion.IdProducto] = disponibles - tomar * ventaPromo.Cantidad;
+                restantes[opcion.IdProducto] = disponibles - tomar * unidadesPorEleccion * ventaPromo.Cantidad;
                 faltanPorInstancia -= tomar;
             }
         }

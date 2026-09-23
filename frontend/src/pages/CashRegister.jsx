@@ -52,6 +52,27 @@ const addLine = (list, p) => {
   return [...list, { uid: uidSeq++, idProducto: p.idProducto, nombreProducto: p.nombreProducto, cantidad: 1, precioUnitario: p.precio, seleccionesMateriales: [], idsIngredientesExtra: [] }];
 };
 
+const promotionProducts = item => {
+  const products = new Map();
+  const add = (product, quantity) => {
+    if (!product) return;
+    const current = products.get(product.idProducto);
+    products.set(product.idProducto, {
+      idProducto: product.idProducto,
+      nombreProducto: product.nombreProducto,
+      cantidad: (current?.cantidad || 0) + quantity
+    });
+  };
+  (item.promotion.grupos || []).filter(group => group.esBase).flatMap(group => group.productos || [])
+    .forEach(product => add(product, product.cantidad || 1));
+  (item.selections || []).forEach(selection => {
+    const group = (item.promotion.grupos || []).find(candidate => candidate.idGrupo === selection.idGrupo);
+    const product = group?.productos?.find(candidate => candidate.idProducto === selection.idProducto);
+    add(product, (selection.cantidad || 1) * (product?.cantidad || 1));
+  });
+  return [...products.values()];
+};
+
 const CashRegister = () => {
   const navigate = useNavigate();
   const { user, can } = useAuth();
@@ -501,7 +522,13 @@ const CashRegister = () => {
             </div>
           ))}{promoDraft.map((item, index) => (
             <div key={`promo-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ flex: 1 }}><strong>{item.promotion.nombre}</strong><small style={{ display: 'block', color: '#15803d' }}>{money(item.promotion.precio)} c/u</small></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{item.promotion.nombre}</strong>
+                <small style={{ display: 'block', color: '#15803d' }}>{money(item.promotion.precio)} c/u</small>
+                <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)', fontSize: '.7rem', lineHeight: 1.35 }}>
+                  {promotionProducts(item).map(product => <span key={product.idProducto} style={{ display: 'block' }}>{product.cantidad}× {product.nombreProducto}</span>)}
+                </span>
+              </div>
               <button type="button" style={qtyBtn} onClick={() => setPromoDraft(current => current.map((p, i) => i === index ? { ...p, quantity: Math.max(1, p.quantity - 1) } : p))}><Minus size={14} /></button>
               <strong>{item.quantity}</strong>
               <button type="button" style={qtyBtn} onClick={() => setPromoDraft(current => current.map((p, i) => i === index ? { ...p, quantity: p.quantity + 1 } : p))}><Plus size={14} /></button>

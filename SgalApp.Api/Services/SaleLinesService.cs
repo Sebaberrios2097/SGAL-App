@@ -138,7 +138,13 @@ namespace SgalApp.Api.Services
                 foreach (var fijo in promo.Grupos.Where(g => g.EsBase).SelectMany(g => g.Productos))
                     cantidades[fijo.IdProducto] = cantidades.GetValueOrDefault(fijo.IdProducto) + fijo.Cantidad * instancia.Cantidad;
                 foreach (var elegida in selecciones)
-                    cantidades[elegida.IdProducto] = cantidades.GetValueOrDefault(elegida.IdProducto) + elegida.Cantidad * instancia.Cantidad;
+                {
+                    var cantidadPorOpcion = gruposExcluyentes
+                        .First(g => g.IdGrupo == elegida.IdGrupo).Productos
+                        .First(p => p.IdProducto == elegida.IdProducto).Cantidad;
+                    cantidades[elegida.IdProducto] = cantidades.GetValueOrDefault(elegida.IdProducto)
+                        + elegida.Cantidad * cantidadPorOpcion * instancia.Cantidad;
+                }
 
                 if (cantidades.Count == 0)
                     return new SaleLinesResult { Error = $"La promoción {promo.Nombre} no contiene productos." };

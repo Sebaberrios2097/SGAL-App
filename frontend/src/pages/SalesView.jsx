@@ -103,7 +103,8 @@ const promotionReceiptProducts = item => {
   (item.selections || []).forEach(selection => {
     const group = (item.promotion.grupos || []).find(g => g.idGrupo === selection.idGrupo);
     const product = group?.productos?.find(p => p.idProducto === selection.idProducto);
-    quantities.set(selection.idProducto, (quantities.get(selection.idProducto) || 0) + (selection.cantidad || 1) * item.quantity);
+    quantities.set(selection.idProducto, (quantities.get(selection.idProducto) || 0)
+      + (selection.cantidad || 1) * (product?.cantidad || 1) * item.quantity);
     if (product) names.set(selection.idProducto, product.nombreProducto);
   });
   return [...quantities].map(([idProducto, cantidad]) => ({ idProducto, cantidad, nombreProducto: names.get(idProducto) || `Producto #${idProducto}` }));
@@ -2079,6 +2080,11 @@ const SalesView = () => {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong style={{ display: 'block', fontSize: '.82rem' }}>{item.promotion.nombre}</strong>
                           <span style={{ color: '#15803d', fontWeight: 800, fontSize: '.8rem' }}>${item.promotion.precio.toLocaleString('es-CL')}</span>
+                          <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)', fontSize: '.7rem', lineHeight: 1.35 }}>
+                            {promotionReceiptProducts({ ...item, quantity: 1 }).map(product => (
+                              <span key={product.idProducto} style={{ display: 'block' }}>{product.cantidad}× {product.nombreProducto}</span>
+                            ))}
+                          </span>
                           {item.individualAmount > item.promotion.precio && <small style={{ display: 'block', color: '#b45309' }}>Ahorro ${(item.individualAmount - item.promotion.precio).toLocaleString('es-CL')} c/u</small>}
                         </div>
                         <button type="button" onClick={() => updatePromotionQty(index, -1)} style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 4 }}><Minus size={12} /></button>

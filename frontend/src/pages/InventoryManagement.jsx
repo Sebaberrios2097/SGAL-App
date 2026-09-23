@@ -51,6 +51,7 @@ const InventoryManagement = () => {
   // Modals state
   const [showProductModal, setShowProductModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [showNewPromotion, setShowNewPromotion] = useState(false);
   
   // Quick Category add state (inline inside product modal)
   const [showQuickCategory, setShowQuickCategory] = useState(false);
@@ -122,6 +123,10 @@ const InventoryManagement = () => {
       setActiveTab(puedeProductos ? 'products' : 'offers');
     }
   }, [activeTab, salesEnabled, can]);
+
+  useEffect(() => {
+    if (activeTab !== 'promotions' && showNewPromotion) setShowNewPromotion(false);
+  }, [activeTab, showNewPromotion]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -467,9 +472,12 @@ const InventoryManagement = () => {
     }
   };
 
+  const pageTitle = activeTab === 'offers' ? 'Ofertas y descuentos' : activeTab === 'promotions' ? 'Promociones' : 'Productos';
+  const PageIcon = activeTab === 'offers' ? Tag : activeTab === 'promotions' ? Tags : Package;
+
   return (
     <div className="animate-fade-in" style={{ width: '100%' }}>
-      <PageHeader title="Gestión de inventario" icon={Package} actions={
+      <PageHeader title={pageTitle} icon={PageIcon} actions={
         <div style={{ display: 'flex', gap: '12px' }}>
           {activeTab === 'products' ? can('inventario.productos.crear') && (
             <button
@@ -489,78 +497,18 @@ const InventoryManagement = () => {
               <Percent size={16} />
               <span>Nueva Oferta</span>
             </button>
+          ) : activeTab === 'promotions' && !showNewPromotion ? salesEnabled && can('ventas.promociones.crear') && (
+            <button
+              onClick={() => setShowNewPromotion(true)}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Plus size={16} />
+              <span>Nueva Promoción</span>
+            </button>
           ) : null}
         </div>
       } />
-
-      {/* Tabs Menu */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '2px solid var(--panel-border)',
-        marginBottom: '24px',
-        gap: '24px'
-      }}>
-        {can('inventario.productos.ver') && <button
-          onClick={() => setActiveTab('products')}
-          style={{
-            padding: '12px 4px',
-            fontSize: '0.95rem',
-            fontWeight: '700',
-            background: 'none',
-            border: 'none',
-            color: activeTab === 'products' ? 'var(--primary-color)' : 'var(--text-muted)',
-            borderBottom: activeTab === 'products' ? '3px solid var(--primary-color)' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Coffee size={18} />
-          <span>Productos</span>
-        </button>}
-        {salesEnabled && can('inventario.descuentos.ver') && <button
-          onClick={() => setActiveTab('offers')}
-          style={{
-            padding: '12px 4px',
-            fontSize: '0.95rem',
-            fontWeight: '700',
-            background: 'none',
-            border: 'none',
-            color: activeTab === 'offers' ? 'var(--primary-color)' : 'var(--text-muted)',
-            borderBottom: activeTab === 'offers' ? '3px solid var(--primary-color)' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Tag size={18} />
-          <span>Ofertas y Descuentos</span>
-        </button>}
-        {salesEnabled && can('ventas.promociones.ver') && <button
-          onClick={() => setActiveTab('promotions')}
-          style={{
-            padding: '12px 4px',
-            fontSize: '0.95rem',
-            fontWeight: '700',
-            background: 'none',
-            border: 'none',
-            color: activeTab === 'promotions' ? 'var(--primary-color)' : 'var(--text-muted)',
-            borderBottom: activeTab === 'promotions' ? '3px solid var(--primary-color)' : '3px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Tags size={18} />
-          <span>Promociones</span>
-        </button>}
-      </div>
 
       {/* Feedback Alerts */}
       {error && (
@@ -591,7 +539,7 @@ const InventoryManagement = () => {
         </div>
       ) : activeTab === 'promotions' ? (
         /* PROMOTIONS TAB */
-        <Promotions embedded />
+        <Promotions embedded createNew={showNewPromotion} onFormOpenChange={setShowNewPromotion} />
       ) : activeTab === 'products' ? (
         /* PRODUCTS TAB */
         <DataTable

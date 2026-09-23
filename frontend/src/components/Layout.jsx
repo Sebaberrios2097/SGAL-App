@@ -77,6 +77,7 @@ const Layout = () => {
     'ventas.promociones.ver'
   );
   const hasInventoryNavigation = canAny('inventario.productos.ver', 'inventario.categorias.ver')
+    || (salesEnabled && canAny('inventario.descuentos.ver', 'ventas.promociones.ver'))
     || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'));
   const hasRecipesNavigation = materialsEnabled && canAny(
     'recetas.ver', 'ingredientes_extra.ver', 'configuracion_inventario.materias_primas.ver',
@@ -163,6 +164,8 @@ const Layout = () => {
     {
       label: 'Productos',
       path: '/inventory',
+      to: '/inventory?tab=products',
+      tab: 'products',
       icon: Coffee,
       exact: true,
       module: 2
@@ -224,17 +227,19 @@ const Layout = () => {
     const matchesExclusion = (item.excludePaths || []).some(
       (excluded) => location.pathname === excluded || location.pathname.startsWith(`${excluded}/`)
     );
-    const isActive = matchesExclusion
+    const pathIsActive = matchesExclusion
       ? false
       : item.exact
         ? location.pathname === item.path
         : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+    const currentTab = new URLSearchParams(location.search).get('tab') || 'products';
+    const isActive = pathIsActive && (!item.tab || currentTab === item.tab);
     const Icon = item.icon;
 
     return (
       <Link
-        key={item.path}
-        to={item.path}
+        key={item.to || item.path}
+        to={item.to || item.path}
         onClick={() => setMobileMenuOpen(false)}
         style={{
           display: 'flex',
@@ -383,15 +388,16 @@ const Layout = () => {
           {renderNavGroup({ id: 'operacion', label: 'Punto de venta', icon: ShoppingBag, visible: hasOperationNavigation, children: <>
               {hasAdministrativePanel && can('inicio.dashboard.ver') && renderNavItem({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard })}
               {can('turnos.propios.ver') && renderNavItem({ label: 'Historial de turnos', path: '/turn-history', icon: CalendarDays })}
-              {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Gift })}
+              {canAny('turnos.propios.ver','bitacora.propia.ver') && renderNavItem({ label: 'Mis consumos', path: '/turn/consumptions', icon: Coffee })}
               {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Cortesía', path: '/turn/courtesy', icon: Gift })}
-              {can('ventas.promociones.ver') && renderNavItem({ label: 'Promociones', path: '/inventory?tab=promotions', icon: Tags })}
               {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
               {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
             </> })}
 
           {renderNavGroup({ id: 'inventario', label: 'Inventario', icon: Boxes, visible: hasInventoryNavigation, children: <>
               {can('inventario.productos.ver') && renderNavItem(navItemsModule2[0])}
+              {salesEnabled && can('inventario.descuentos.ver') && renderNavItem({ label: 'Ofertas y descuentos', path: '/inventory', to: '/inventory?tab=offers', tab: 'offers', icon: Tags, exact: true })}
+              {salesEnabled && can('ventas.promociones.ver') && renderNavItem({ label: 'Promociones', path: '/inventory', to: '/inventory?tab=promotions', tab: 'promotions', icon: Gift, exact: true })}
               {(can('inventario.productos.ver') || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'))) && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
               {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
             </> })}
