@@ -13,6 +13,8 @@ import TurnClosingModal from '../components/TurnClosingModal';
 import { buildReceiptHtml, printReceipt } from '../utils/receiptTemplates';
 import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
+import DteCheckoutFields from '../components/DteCheckoutFields';
+import { EMPTY_INVOICE_RECIPIENT, isInvoiceDocument, isInvoiceRecipientComplete } from '../utils/dteDocuments';
 
 const TIPO_CAJA = 2;
 const PENDING_POLL_MS = 4000;
@@ -104,7 +106,8 @@ const CashRegister = () => {
   const [descuentoPct, setDescuentoPct] = useState(0);
   const [tipoDocumento, setTipoDocumento] = useState('boleta');
   const [imprimirDte, setImprimirDte] = useState(true);
-  const [receptorFactura, setReceptorFactura] = useState({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
+  const [receptorFactura, setReceptorFactura] = useState({ ...EMPTY_INVOICE_RECIPIENT });
+  const esFacturaSeleccionada = isInvoiceDocument(tipoDocumento);
   const [submitting, setSubmitting] = useState(false);
   const [showOpening, setShowOpening] = useState(false);
   const [showClosing, setShowClosing] = useState(false);
@@ -465,13 +468,13 @@ const CashRegister = () => {
   const finalizarCobro = async (valeCobrado, pagos, recibidoValor) => {
     const res = await fetch(`/api/cash-register/${valeCobrado.idVenta}/collect`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos, tipoDocumento, receptorFactura: tipoDocumento === 'factura' ? receptorFactura : null })
+      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos, tipoDocumento, receptorFactura: esFacturaSeleccionada ? receptorFactura : null })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.mensaje || 'No fue posible cobrar el vale.');
-    notify.success(tipoDocumento === 'factura' ? 'Venta cobrada. Factura emitida.' : 'Venta cobrada. Boleta emitida.');
+    notify.success(esFacturaSeleccionada ? 'Venta cobrada. Factura emitida.' : 'Venta cobrada. Boleta emitida.');
     if (imprimirDte) {
-      if (tipoDocumento === 'factura') window.open(`/api/dte/venta/${valeCobrado.idVenta}/pdf`, '_blank');
+      if (esFacturaSeleccionada) window.open(`/api/dte/venta/${valeCobrado.idVenta}/pdf`, '_blank');
       else {
         const emitida = await printBoletaDte(valeCobrado, pagos, recibidoValor);
         if (!emitida) notify.error('La venta se cobró, pero la boleta no está disponible para imprimir.');
@@ -481,12 +484,16 @@ const CashRegister = () => {
     setPending(prev => prev.filter(v => v.idVenta !== valeCobrado.idVenta));
     resetPago();
     setTipoDocumento('boleta'); setImprimirDte(true);
-    setReceptorFactura({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
+    setReceptorFactura({ ...EMPTY_INVOICE_RECIPIENT });
     loadPending();
   };
 
   const handleCollect = async () => {
     if (!selected || submitting || pointPay) return;
+    if (esFacturaSeleccionada && !isInvoiceRecipientComplete(receptorFactura)) {
+      notify.error('Completa RUT, razón social, giro, dirección y comuna para emitir la factura.');
+      return;
+    }
     if (sumAsignado !== total) {
       notify.error(`La suma de los pagos (${money(sumAsignado)}) debe ser igual al total (${money(total)}).`);
       return;
@@ -508,7 +515,12 @@ const CashRegister = () => {
       try {
         const res = await fetch(`/api/cash-register/${selected.idVenta}/point/start`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ montoTarjeta: tarjetaMonto, porcentajeDescuento: pctDescuento() })
+          body: JSON.stringify({
+            montoTarjeta: tarjetaMonto,
+            porcentajeDescuento: pctDescuento(),
+            tipoDocumento,
+            receptorFactura: esFacturaSeleccionada ? receptorFactura : null
+          })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.mensaje || 'No fue posible enviar el cobro a la terminal.');
@@ -747,16 +759,12 @@ const CashRegister = () => {
           <span>TOTAL:</span><span>{money(total)}</span>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          {['boleta', 'factura'].map(tipo => <button key={tipo} type="button" onClick={() => setTipoDocumento(tipo)} className={`btn ${tipoDocumento === tipo ? 'btn-primary' : ''}`} style={{ flex: 1, textTransform: 'capitalize' }}>{tipo}</button>)}
-        </div>
-        {tipoDocumento === 'factura' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-          {[['rut','RUT'],['razonSocial','Razón social'],['giro','Giro'],['direccion','Dirección'],['comuna','Comuna'],['ciudad','Ciudad'],['correo','Correo']].map(([campo, etiqueta]) =>
-            <input key={campo} type={campo === 'correo' ? 'email' : 'text'} placeholder={etiqueta} value={receptorFactura[campo]} onChange={e => setReceptorFactura(actual => ({ ...actual, [campo]: e.target.value }))} style={{ gridColumn: ['razonSocial','direccion','correo'].includes(campo) ? 'span 2' : undefined, padding: '7px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />)}
-        </div>}
+        <DteCheckoutFields documentType={tipoDocumento} onDocumentTypeChange={setTipoDocumento}
+          recipient={receptorFactura} onRecipientChange={setReceptorFactura}
+          canEmitExempt={can('ventas.emitir_exento')} disabled={submitting || Boolean(pointPay)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.86rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} />
-          {tipoDocumento === 'factura' ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}
+          {esFacturaSeleccionada ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>

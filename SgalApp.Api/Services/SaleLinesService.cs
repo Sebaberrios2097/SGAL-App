@@ -65,6 +65,9 @@ namespace SgalApp.Api.Services
         /// </summary>
         Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, bool aplicarCortesia, int idUsuario, CancellationToken cancellationToken = default);
 
+        /// <summary>Marca todas las líneas de la venta como afectas o exentas para la emisión DTE.</summary>
+        Task SetExemptAsync(int idVenta, bool exempt, CancellationToken cancellationToken = default);
+
         Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -88,6 +91,21 @@ namespace SgalApp.Api.Services
 
         public Task<SaleLinesResult> BuildAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default)
             => BuildAsync(idVenta, items, idTurno, false, 0, cancellationToken);
+
+        public async Task SetExemptAsync(int idVenta, bool exempt, CancellationToken cancellationToken = default)
+        {
+            // Incluye líneas recién agregadas (todavía sin guardar) y líneas persistidas de un vale
+            // que se clasifica tributariamente al momento de cobrarlo en Caja.
+            foreach (var entry in _context.ChangeTracker.Entries<VenDetalleVenta>()
+                .Where(entry => entry.Entity.IdVenta == idVenta && entry.State != EntityState.Deleted))
+                entry.Entity.IndExento = exempt;
+
+            var persisted = await _context.VenDetalleVenta
+                .Where(detail => detail.IdVenta == idVenta)
+                .ToListAsync(cancellationToken);
+            foreach (var detail in persisted)
+                detail.IndExento = exempt;
+        }
 
         public async Task<SaleLinesResult> BuildAsync(
             int idVenta,

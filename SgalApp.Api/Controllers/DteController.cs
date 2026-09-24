@@ -45,6 +45,36 @@ public sealed class DteController : ControllerBase
         return result.Ok ? Ok(new { disponible = true }) : StatusCode(503, new { disponible = false, mensaje = result.Error });
     }
 
+    /// <summary>Clientes empresa guardados previamente al emitir facturas.</summary>
+    [HttpGet("clientes")]
+    [Permission(Permissions.SalesCreate + "|" + Permissions.SalesCreatePoint + "|" + Permissions.CajaCollect)]
+    public async Task<IActionResult> Clientes([FromQuery] string? search, CancellationToken cancellationToken)
+    {
+        var query = _context.SiiClientesEmpresa.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(client => client.RutEmpresa.Contains(term) || client.RazonSocial.Contains(term));
+        }
+
+        var clientes = await query
+            .OrderBy(client => client.RazonSocial)
+            .Take(100)
+            .Select(client => new
+            {
+                client.IdClienteEmpresa,
+                Rut = client.RutEmpresa,
+                client.RazonSocial,
+                client.Giro,
+                Direccion = client.DireccionLegal,
+                client.Comuna,
+                client.Ciudad,
+                client.Correo
+            })
+            .ToListAsync(cancellationToken);
+        return Ok(clientes);
+    }
+
     /// <summary>
     /// Emite una boleta de PRUEBA (tipo 39) con certificado y folios ficticios de LibreDTE y
     /// devuelve los datos para imprimir el ticket 80mm con su timbre. Sirve para verificar el

@@ -34,6 +34,8 @@ import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { buildReceiptHtml, buildComandaHtml } from '../utils/receiptTemplates';
 import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
+import DteCheckoutFields from '../components/DteCheckoutFields';
+import { EMPTY_INVOICE_RECIPIENT, isInvoiceDocument, isInvoiceRecipientComplete } from '../utils/dteDocuments';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
 // débito o crédito después de que Mercado Pago informa el medio real.
@@ -159,7 +161,8 @@ const SalesView = () => {
   const [submittingSale, setSubmittingSale] = useState(false);
   const [tipoDocumento, setTipoDocumento] = useState('boleta');
   const [imprimirDte, setImprimirDte] = useState(true);
-  const [receptorFactura, setReceptorFactura] = useState({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
+  const [receptorFactura, setReceptorFactura] = useState({ ...EMPTY_INVOICE_RECIPIENT });
+  const esFacturaSeleccionada = isInvoiceDocument(tipoDocumento);
   // Consumo de empleado: modal de confirmación y de resultado (estilizados).
   const [showConsumoConfirm, setShowConsumoConfirm] = useState(false);
   const [consumoResult, setConsumoResult] = useState(null); // { montoAdeudado, montoCortesia }
@@ -285,6 +288,10 @@ const SalesView = () => {
   const handleCreateSale = async (e) => {
     e.preventDefault();
     if (submittingSale) return;
+    if (esFacturaSeleccionada && !isInvoiceRecipientComplete(receptorFactura)) {
+      setError('Completa RUT, razón social, giro, dirección y comuna para emitir la factura.');
+      return;
+    }
     setError('');
     setSubmittingSale(true);
 
@@ -351,7 +358,7 @@ const SalesView = () => {
           items,
           promociones,
           porcentajeDescuento: descuentoPctEfectivo()
-          ,tipoDocumento, receptorFactura: tipoDocumento === 'factura' ? receptorFactura : null
+          ,tipoDocumento, receptorFactura: esFacturaSeleccionada ? receptorFactura : null
         })
       });
 
@@ -445,11 +452,11 @@ const SalesView = () => {
     setTimeout(() => setSuccess(''), 4000);
 
     if (saleData.imprimirDte) setTimeout(() => {
-      if (saleData.tipoDocumento === 'factura') window.open(`/api/dte/venta/${saleData.idVenta}/pdf`, '_blank');
+      if (isInvoiceDocument(saleData.tipoDocumento)) window.open(`/api/dte/venta/${saleData.idVenta}/pdf`, '_blank');
       else triggerPrintTicket(saleData);
     }, 300);
     setTipoDocumento('boleta'); setImprimirDte(true);
-    setReceptorFactura({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
+    setReceptorFactura({ ...EMPTY_INVOICE_RECIPIENT });
   };
 
   // Con el módulo Caja: el vendedor genera la orden como vale (sin cobro) y la envía
@@ -2726,14 +2733,12 @@ const SalesView = () => {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                {['boleta', 'factura'].map(tipo => <button key={tipo} type="button" className={`btn ${tipoDocumento === tipo ? 'btn-primary' : ''}`} onClick={() => setTipoDocumento(tipo)} style={{ flex: 1, textTransform: 'capitalize' }}>{tipo}</button>)}
+              <div style={{ marginBottom: 12 }}>
+                <DteCheckoutFields documentType={tipoDocumento} onDocumentTypeChange={setTipoDocumento}
+                  recipient={receptorFactura} onRecipientChange={setReceptorFactura}
+                  canEmitExempt={can('ventas.emitir_exento')} disabled={submittingSale} />
               </div>
-              {tipoDocumento === 'factura' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginBottom: 12 }}>
-                {[['rut','RUT'],['razonSocial','Razón social'],['giro','Giro'],['direccion','Dirección'],['comuna','Comuna'],['ciudad','Ciudad'],['correo','Correo']].map(([campo, etiqueta]) =>
-                  <input key={campo} required={!['ciudad','correo'].includes(campo)} type={campo === 'correo' ? 'email' : 'text'} placeholder={etiqueta} value={receptorFactura[campo]} onChange={e => setReceptorFactura(actual => ({ ...actual, [campo]: e.target.value }))} style={{ gridColumn: ['razonSocial','direccion','correo'].includes(campo) ? 'span 2' : undefined, padding: 8, border: '1px solid #cbd5e1', borderRadius: 6 }} />)}
-              </div>}
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, fontSize: '.86rem' }}><input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} /> {tipoDocumento === 'factura' ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}</label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, fontSize: '.86rem' }}><input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} /> {esFacturaSeleccionada ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}</label>
 
               {/* Active Payment Methods Selection */}
               <div style={{ marginBottom: '16px' }}>

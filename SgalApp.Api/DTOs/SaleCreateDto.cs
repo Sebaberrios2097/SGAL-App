@@ -99,6 +99,8 @@ namespace SgalApp.Api.DTOs
     {
         public int MontoTarjeta { get; set; }
         public decimal PorcentajeDescuento { get; set; }
+        public string TipoDocumento { get; set; } = "boleta";
+        public FacturaReceptorDto? ReceptorFactura { get; set; }
     }
 
     /// <summary>Cobro en caja de un vale pendiente: descuento y métodos de pago.</summary>
@@ -114,6 +116,7 @@ namespace SgalApp.Api.DTOs
 
     public sealed class FacturaReceptorDto
     {
+        public int? IdClienteEmpresa { get; set; }
         public string Rut { get; set; } = string.Empty;
         public string RazonSocial { get; set; } = string.Empty;
         public string Giro { get; set; } = string.Empty;

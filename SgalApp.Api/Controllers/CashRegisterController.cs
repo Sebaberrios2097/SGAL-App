@@ -337,6 +337,11 @@ namespace SgalApp.Api.Controllers
         public async Task<IActionResult> Collect(int idVenta, [FromBody] CashCollectDto dto)
         {
             if (dto == null) return BadRequest(new { mensaje = "Datos de cobro no válidos." });
+            if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
+                return BadRequest(new { mensaje = "Seleccione un tipo de documento válido." });
+            var esExento = DteDocumentSelection.IsExempt(dto.TipoDocumento);
+            if (esExento && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.SalesEmitExempt))
+                return StatusCode(StatusCodes.Status403Forbidden, new { mensaje = "No tiene permiso para emitir documentos exentos." });
 
             // El cajero debe tener un turno de caja abierto propio.
             var cajaTurn = await _context.TurTurno.FirstOrDefaultAsync(t =>
@@ -412,23 +417,17 @@ namespace SgalApp.Api.Controllers
                     return BadRequest(new { mensaje = "El monto con tarjeta no coincide con el aprobado por Mercado Pago." });
             }
 
-            if (dto.TipoDocumento is not ("boleta" or "factura"))
-                return BadRequest(new { mensaje = "Seleccione boleta o factura." });
-            if (dto.TipoDocumento == "factura")
+            if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
             {
                 var receptor = dto.ReceptorFactura;
                 if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
                     return BadRequest(new { mensaje = "Complete RUT, razón social, giro, dirección y comuna para emitir factura." });
-                var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim());
-                cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
-                cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
-                cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
-                cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
-                if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
-                await _context.SaveChangesAsync();
+                var cliente = await DteCustomerResolver.UpsertAsync(_context, receptor);
                 sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
             }
             else sale.IdClienteEmpresa = null;
+
+            await _saleLines.SetExemptAsync(sale.IdVenta, esExento);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -445,8 +444,8 @@ namespace SgalApp.Api.Controllers
                 sale.PorcentajeDescuento = porcentajeDescuento;
                 sale.MontoDescuento = montoDescuento;
                 sale.MontoTotal = total;
-                sale.MontoNeto = (int)Math.Round(total / 1.19);
-                sale.MontoIva = total - sale.MontoNeto;
+                sale.MontoNeto = esExento ? 0 : (int)Math.Round(total / 1.19);
+                sale.MontoIva = esExento ? 0 : total - sale.MontoNeto;
                 sale.IdEstadoVenta = EstadosVenta.Terminada;
                 _context.Entry(sale).State = EntityState.Modified;
 
@@ -482,6 +481,11 @@ namespace SgalApp.Api.Controllers
         {
             if (dto == null || dto.MontoTarjeta <= 0)
                 return BadRequest(new { mensaje = "El monto a cobrar con tarjeta debe ser mayor a cero." });
+            if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
+                return BadRequest(new { mensaje = "Seleccione un tipo de documento válido." });
+            var esExento = DteDocumentSelection.IsExempt(dto.TipoDocumento);
+            if (esExento && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.SalesEmitExempt))
+                return StatusCode(StatusCodes.Status403Forbidden, new { mensaje = "No tiene permiso para emitir documentos exentos." });
 
             var schemaError = await PointSchemaGuard.GetConfigurationErrorAsync(_context, cancellationToken);
             if (schemaError != null)
@@ -525,6 +529,21 @@ namespace SgalApp.Api.Controllers
             int total = totalBruto - montoDescuento;
             if (dto.MontoTarjeta > total)
                 return BadRequest(new { mensaje = "El monto con tarjeta no puede superar el total a cobrar." });
+
+            if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
+            {
+                var receptor = dto.ReceptorFactura;
+                if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
+                    return BadRequest(new { mensaje = "Complete RUT, razón social, giro, dirección y comuna para emitir factura." });
+                var cliente = await DteCustomerResolver.UpsertAsync(_context, receptor, cancellationToken);
+                sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
+            }
+            else sale.IdClienteEmpresa = null;
+
+            await _saleLines.SetExemptAsync(sale.IdVenta, esExento, cancellationToken);
+            sale.MontoNeto = esExento ? 0 : (int)Math.Round(total / 1.19);
+            sale.MontoIva = esExento ? 0 : total - sale.MontoNeto;
+            await _context.SaveChangesAsync(cancellationToken);
 
             var referencia = $"CJ{sale.IdVenta}_{DateTime.Now:yyyyMMddHHmmss}";
             PointOrder order;

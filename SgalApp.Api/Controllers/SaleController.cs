@@ -61,6 +61,11 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
             if (dto.EsConsumoEmpleado && (dto.Promociones?.Count ?? 0) > 0)
                 return BadRequest(new { mensaje = "Las promociones no se aplican a consumos de empleado." });
+            if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
+                return BadRequest(new { mensaje = "Seleccione un tipo de documento válido." });
+            var esExento = DteDocumentSelection.IsExempt(dto.TipoDocumento);
+            if (esExento && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.SalesEmitExempt))
+                return StatusCode(StatusCodes.Status403Forbidden, new { mensaje = "No tiene permiso para emitir documentos exentos." });
 
             var turnsEnabled = await AreTurnsEnabledAsync();
             TurTurno? turn = null;
@@ -111,18 +116,12 @@ namespace SgalApp.Api.Controllers
                     MontoIva = 0
                 };
 
-                if (dto.TipoDocumento == "factura")
+                if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
                 {
                     var receptor = dto.ReceptorFactura;
                     if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
                         return BadRequest(new { mensaje = "Complete los datos tributarios para emitir factura." });
-                    var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim());
-                    cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
-                    cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
-                    cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
-                    cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
-                    if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
-                    await _context.SaveChangesAsync();
+                    var cliente = await DteCustomerResolver.UpsertAsync(_context, receptor);
                     sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
                 }
 
@@ -136,6 +135,7 @@ namespace SgalApp.Api.Controllers
                 {
                     return BadRequest(new { mensaje = lines.Error });
                 }
+                await _saleLines.SetExemptAsync(sale.IdVenta, esExento);
 
                 // Consumo de empleado: por cobrar (sin descuento manual ni métodos de pago). El
                 // monto total es lo adeudado (excluye cortesías).
@@ -166,8 +166,8 @@ namespace SgalApp.Api.Controllers
                 {
                     sale.IdEstadoVenta = EstadosVenta.PendienteDePago;
                     sale.MontoTotal = totalBruto;
-                    sale.MontoNeto = (int)Math.Round(totalBruto / 1.19);
-                    sale.MontoIva = totalBruto - sale.MontoNeto;
+                    sale.MontoNeto = esExento ? 0 : (int)Math.Round(totalBruto / 1.19);
+                    sale.MontoIva = esExento ? 0 : totalBruto - sale.MontoNeto;
                     _context.Entry(sale).State = EntityState.Modified;
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
@@ -198,8 +198,8 @@ namespace SgalApp.Api.Controllers
                 int total = totalBruto - montoDescuento;
 
                 // Compute Net & VAT
-                int neto = (int)Math.Round(total / 1.19);
-                int iva = total - neto;
+                int neto = esExento ? 0 : (int)Math.Round(total / 1.19);
+                int iva = esExento ? 0 : total - neto;
 
                 sale.MontoTotal = total;
                 sale.MontoNeto = neto;
@@ -265,6 +265,11 @@ namespace SgalApp.Api.Controllers
             {
                 return BadRequest(new { mensaje = "La solicitud de venta no es válida." });
             }
+            if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
+                return BadRequest(new { mensaje = "Seleccione un tipo de documento válido." });
+            if (DteDocumentSelection.IsExempt(dto.TipoDocumento)
+                && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.SalesEmitExempt))
+                return StatusCode(StatusCodes.Status403Forbidden, new { mensaje = "No tiene permiso para emitir documentos exentos." });
             // Descuento opcional: se valida el % máximo del usuario antes de enviar a la terminal.
             if (dto.PorcentajeDescuento != 0)
             {

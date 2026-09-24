@@ -47,6 +47,7 @@ DatabaseChanges/20260916_Configuracion_Organizacion_Modulos.sql
 DatabaseChanges/20260917_Logos_Multiples.sql
 DatabaseChanges/20260923_Modulo_Boletas.sql
 DatabaseChanges/20260924_Contingencia_Dte.sql
+DatabaseChanges/20260925_Clientes_Factura_Unicos.sql
 ```
 
 SQL Server oficial se distribuye para Linux x86-64; un servidor ARM no puede ejecutar esa imagen de forma nativa. API y frontend sí pueden compilarse para ARM, conectándose a SQL Server en otra máquina compatible.

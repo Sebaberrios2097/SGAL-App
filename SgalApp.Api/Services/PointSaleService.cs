@@ -2,6 +2,7 @@ using SgalApp.Infrastructure.Context;
 using SgalApp.Infrastructure.Entities;
 using Microsoft.EntityFrameworkCore;
 using SgalApp.Api.DTOs.Point;
+using SgalApp.Api.Services.Dte;
 
 namespace SgalApp.Api.Services
 {
@@ -81,6 +82,9 @@ namespace SgalApp.Api.Services
             {
                 return PointSaleResult<PointSaleStartResultDto>.Fallo("La venta debe contener al menos un producto o promoción.");
             }
+            if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
+                return PointSaleResult<PointSaleStartResultDto>.Fallo("Seleccione un tipo de documento válido.");
+            var esExento = DteDocumentSelection.IsExempt(dto.TipoDocumento);
 
             // La interfaz solo solicita "Tarjeta". Mercado Pago informará si el cobro
             // se procesó como débito o crédito cuando termine la operación.
@@ -125,18 +129,12 @@ namespace SgalApp.Api.Services
                 MontoIva = 0
             };
 
-            if (dto.TipoDocumento == "factura")
+            if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
             {
                 var receptor = dto.ReceptorFactura;
                 if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
                     return PointSaleResult<PointSaleStartResultDto>.Fallo("Complete los datos tributarios para emitir factura.");
-                var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim(), cancellationToken);
-                cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
-                cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
-                cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
-                cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
-                if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
-                await _context.SaveChangesAsync(cancellationToken);
+                var cliente = await DteCustomerResolver.UpsertAsync(_context, receptor, cancellationToken);
                 sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
             }
 
@@ -149,6 +147,7 @@ namespace SgalApp.Api.Services
                 await transaction.RollbackAsync(cancellationToken);
                 return PointSaleResult<PointSaleStartResultDto>.Fallo(lines.Error!);
             }
+            await _saleLines.SetExemptAsync(sale.IdVenta, esExento, cancellationToken);
 
             // Descuento opcional (el % ya fue validado en el controlador contra el máximo del usuario).
             int totalBruto = lines.Total;
@@ -165,10 +164,10 @@ namespace SgalApp.Api.Services
                     $"La suma de los métodos de pago (${sumPayments:N0}) debe ser igual al total de la venta (${totalConDescuento:N0}).");
             }
 
-            int neto = (int)Math.Round(totalConDescuento / 1.19);
+            int neto = esExento ? 0 : (int)Math.Round(totalConDescuento / 1.19);
             sale.MontoTotal = totalConDescuento;
             sale.MontoNeto = neto;
-            sale.MontoIva = totalConDescuento - neto;
+            sale.MontoIva = esExento ? 0 : totalConDescuento - neto;
             sale.PorcentajeDescuento = dto.PorcentajeDescuento;
             sale.MontoDescuento = montoDescuento;
             _context.Entry(sale).State = EntityState.Modified;
