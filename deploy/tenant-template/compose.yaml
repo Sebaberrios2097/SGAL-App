@@ -12,11 +12,25 @@ services:
       - .env
     environment:
       DataProtection__KeysPath: /app/dp-keys
+      LibreDte__BaseUrl: http://libredte:80
+      LibreDte__TimeoutSeconds: ${LIBREDTE_TIMEOUT_SECONDS:-60}
     volumes:
       - api-data-protection:/app/dp-keys
     extra_hosts:
       # Permite alcanzar un SQL Server instalado en el propio host, si aplica.
       - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+    depends_on:
+      - libredte
+
+  libredte:
+    # Se fija por digest para que el despliegue sea reproducible. Para actualizarlo,
+    # cambia LIBREDTE_IMAGE en el .env del tenant de forma controlada.
+    image: ${LIBREDTE_IMAGE:-ghcr.io/libredte/libredte-lib-core-api@sha256:a953e36b3a3fa1f6b570834d19511dd0a674e2ede66f0b7b8a0004579ad21587}
+    restart: unless-stopped
+    environment:
+      APP_URL: http://libredte
     networks:
       - internal
 

@@ -9,6 +9,7 @@ set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TENANTS_DIR="${BASE_DIR}/tenants"
+LIBREDTE_OVERLAY="${BASE_DIR}/tenant-template/compose.libredte.yaml"
 
 # 1) Asegura el reverse proxy (idempotente)
 if [[ -d "${BASE_DIR}/reverse-proxy" ]]; then
@@ -26,7 +27,19 @@ shopt -s nullglob
 for dir in "${TENANTS_DIR}"/*/; do
   if [[ -f "${dir}/compose.yaml" ]]; then
     echo "==> Desplegando $(basename "$dir")"
-    ( cd "$dir" && docker compose pull && docker compose up -d )
+    (
+      cd "$dir"
+      compose_args=(-f compose.yaml)
+
+      # Los tenants creados antes de LibreDTE conservan su compose local. Se les
+      # aplica un overlay versionado sin sobrescribir personalizaciones del servidor.
+      if ! docker compose -f compose.yaml config --services | grep -qx 'libredte'; then
+        compose_args+=(-f "$LIBREDTE_OVERLAY")
+      fi
+
+      docker compose "${compose_args[@]}" pull
+      docker compose "${compose_args[@]}" up -d
+    )
   fi
 done
 

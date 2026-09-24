@@ -31,7 +31,7 @@ npm ci
 npm run dev
 ```
 
-Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`; los fondos personalizados por zona (imagen de fondo para menú lateral, ventas y comandas) mediante `20260918_Fondos_Personalizados.sql`; el fondo de inicio de sesión mediante `20260919_Fondo_Login.sql`; el catálogo funcional consolidado mediante `20260920_Consolidacion_Modulos.sql`, y las ventas sin turno mediante `20260920_Ventas_Sin_Turnos.sql`.
+Antes de iniciar una base existente, aplica en orden los scripts de `DatabaseChanges`. La configuración de organización y módulos se incorpora mediante `20260916_Configuracion_Organizacion_Modulos.sql`; la biblioteca y asignación de logos mediante `20260917_Logos_Multiples.sql`; los fondos personalizados por zona (imagen de fondo para menú lateral, ventas y comandas) mediante `20260918_Fondos_Personalizados.sql`; el fondo de inicio de sesión mediante `20260919_Fondo_Login.sql`; el catálogo funcional consolidado mediante `20260920_Consolidacion_Modulos.sql`; las ventas sin turno mediante `20260920_Ventas_Sin_Turnos.sql`, y el módulo DTE mediante `20260923_Modulo_Boletas.sql` y `20260924_Contingencia_Dte.sql`.
 
 En desarrollo, configura la conexión sin guardarla en Git:
 

@@ -25,10 +25,16 @@ Desde la raíz del repositorio:
 docker compose build
 ```
 
-Esto produce dos imágenes independientes:
+Esto produce dos imágenes propias y descarga LibreDTE Core:
 
 - `sgal-app-api`: API ASP.NET Core.
 - `sgal-app-web`: frontend compilado y Nginx.
+- `libredte`: servicio interno para firmar, timbrar y renderizar DTE.
+
+LibreDTE no publica puertos al host. La API lo alcanza por la red privada de
+Docker mediante `http://libredte:80`. Su imagen está fijada por digest en
+`.env.example`; una actualización debe hacerse explícitamente cambiando
+`LIBREDTE_IMAGE`.
 
 También pueden publicarse en un registro cambiando `OWNER` en `compose.yaml` y ejecutando `docker compose push`.
 
@@ -39,6 +45,8 @@ Respalda la base y ejecuta en orden los scripts pendientes de `DatabaseChanges`.
 ```text
 DatabaseChanges/20260916_Configuracion_Organizacion_Modulos.sql
 DatabaseChanges/20260917_Logos_Multiples.sql
+DatabaseChanges/20260923_Modulo_Boletas.sql
+DatabaseChanges/20260924_Contingencia_Dte.sql
 ```
 
 SQL Server oficial se distribuye para Linux x86-64; un servidor ARM no puede ejecutar esa imagen de forma nativa. API y frontend sí pueden compilarse para ARM, conectándose a SQL Server en otra máquina compatible.
@@ -48,10 +56,17 @@ SQL Server oficial se distribuye para Linux x86-64; un servidor ARM no puede eje
 ```bash
 docker compose up -d
 docker compose ps
-docker compose logs --tail=200 api web
+docker compose logs --tail=200 api web libredte
 ```
 
 La aplicación queda publicada en `APP_PORT` (80 por defecto). Configura HTTPS con un proxy inverso como Caddy, Traefik o Nginx y limita el acceso directo a SQL Server.
+
+Comprueba la comunicación interna sin exponer LibreDTE públicamente:
+
+```bash
+docker compose exec api wget -qO- http://libredte:80 || \
+  docker compose exec api curl -fsS http://libredte:80
+```
 
 Después del primer ingreso, configura nombre, colores y logo; luego habilita solamente los módulos contratados y asigna permisos a los roles.
 

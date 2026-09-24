@@ -38,7 +38,13 @@ public sealed class LibreDteClient : ILibreDteClient
         try
         {
             using var response = await _http.GetAsync(Endpoints.Ping, cancellationToken);
-            return LibreDteResult.Exito();
+            if (response.IsSuccessStatusCode)
+                return LibreDteResult.Exito();
+
+            _logger.LogWarning("LibreDTE respondió {Status} al comprobar conectividad.",
+                (int)response.StatusCode);
+            return LibreDteResult.Fallo(
+                $"LibreDTE respondió con estado HTTP {(int)response.StatusCode}.");
         }
         catch (Exception ex)
         {

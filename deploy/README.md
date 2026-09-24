@@ -353,7 +353,7 @@ cd /opt/sgal/deploy/tenants/cliente1
 docker compose pull
 docker compose up -d
 docker compose ps
-docker compose logs --tail=100 api web
+docker compose logs --tail=100 api web libredte
 ```
 
 ### Si GHCR responde `denied`
@@ -398,6 +398,25 @@ curl -i https://cliente1.tudominio.cl/api/health
 
 Luego abre `https://cliente1.tudominio.cl`.
 
+LibreDTE se ejecuta en la red privada `internal` del tenant y no publica un
+puerto al host. La API lo consume mediante `http://libredte:80`.
+
+Para tenants creados antes de incorporar LibreDTE, `deploy-all.sh` aplica
+automáticamente `tenant-template/compose.libredte.yaml` como overlay. No
+sobrescribe el `compose.yaml` local ni sus personalizaciones. Si levantas uno de
+esos tenants manualmente, usa ambos archivos:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f ../../tenant-template/compose.libredte.yaml \
+  pull
+docker compose \
+  -f compose.yaml \
+  -f ../../tenant-template/compose.libredte.yaml \
+  up -d
+```
+
 ---
 
 ## 7. Agregar más clientes
@@ -422,7 +441,7 @@ Cada cliente usa su red interna, dominio, `.env` y base de datos.
 
 En cada push a `main`, `.github/workflows/deploy.yml`:
 
-1. Construye API y Web una sola vez.
+1. Construye API y Web una sola vez; LibreDTE se descarga desde su imagen oficial fijada.
 2. Publica las imágenes en GHCR con `latest` y el SHA.
 3. Lee `DEPLOY_ENVIRONMENTS`.
 4. Crea un job por servidor.
