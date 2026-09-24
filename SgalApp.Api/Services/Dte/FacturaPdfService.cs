@@ -29,7 +29,8 @@ public sealed class FacturaPdfService(SgalContext context) : IFacturaPdfService
 {
     private const string Font = "Arial";
     private const int DetailCols = 6;
-    private const double BarcodeWidthCm = 7.5;
+    private const double BarcodeWidthCm = 7.0;
+    private const double DetailBodyHeightCm = 11.2;
     // Paleta clásica de la factura electrónica del SII: razón social y recuadro del folio en rojo,
     // datos del emisor en azul. Se mantiene fija para respetar el formato tributario habitual.
     private static readonly MColor Rojo = new(192, 0, 0);
@@ -79,8 +80,8 @@ public sealed class FacturaPdfService(SgalContext context) : IFacturaPdfService
         var document = new Document();
         var section = document.AddSection();
         section.PageSetup.PageFormat = PageFormat.A4;
-        section.PageSetup.TopMargin = Unit.FromCentimeter(1.2);
-        section.PageSetup.BottomMargin = Unit.FromCentimeter(1.2);
+        section.PageSetup.TopMargin = Unit.FromCentimeter(1.0);
+        section.PageSetup.BottomMargin = Unit.FromCentimeter(1.0);
         section.PageSetup.LeftMargin = Unit.FromCentimeter(1.5);
         section.PageSetup.RightMargin = Unit.FromCentimeter(1.5);
         document.Styles["Normal"]!.Font.Name = Font;
@@ -150,24 +151,23 @@ public sealed class FacturaPdfService(SgalContext context) : IFacturaPdfService
             SetCell(row.Cells[5], Miles(item.Subtotal), ParagraphAlignment.Right);
             DetailVLines(row);
         }
-        // El recuadro del detalle se estira para llenar la hoja: así el timbre, los totales y el
-        // acuse quedan cerca del pie (como en la factura del SII) en vez de subir cuando hay pocas
-        // líneas. Se mantiene un cuerpo de detalle de altura ~constante restando el alto de las filas.
+        // El recuadro conserva espacio para escribir sin empujar el acuse de recibo a una segunda
+        // página. La altura objetivo considera el encabezado, timbre, totales y cola cedible de A4.
         var altoFilas = venta.VenDetalleVenta.Count * 0.52;
-        var spacer = detail.AddRow(); spacer.Height = Unit.FromCentimeter(Math.Max(2.0, 14.8 - altoFilas)); spacer.HeightRule = RowHeightRule.Exactly;
+        var spacer = detail.AddRow(); spacer.Height = Unit.FromCentimeter(Math.Max(1.2, DetailBodyHeightCm - altoFilas)); spacer.HeightRule = RowHeightRule.Exactly;
         DetailVLines(spacer);
         for (int i = 0; i < DetailCols; i++) spacer.Cells[i].Borders.Bottom.Width = .75;
 
         // ---- Timbre electrónico (izquierda) y recuadro de totales (derecha) ----
-        var lower = section.AddTable(); lower.Format.SpaceBefore = Unit.FromCentimeter(.6); lower.AddColumn(Unit.FromCentimeter(11.2)); lower.AddColumn(Unit.FromCentimeter(6.8));
+        var lower = section.AddTable(); lower.Format.SpaceBefore = Unit.FromCentimeter(.35); lower.AddColumn(Unit.FromCentimeter(11.2)); lower.AddColumn(Unit.FromCentimeter(6.8));
         var lr = lower.AddRow(); lr.Cells[0].VerticalAlignment = VerticalAlignment.Top; lr.Cells[1].VerticalAlignment = VerticalAlignment.Top;
         if (barcodePath != null)
         {
             // El timbre y sus leyendas se agrupan en una tabla anidada que se ajusta a su contenido:
             // así el PDF417 y los textos quedan juntos y no se dispersan por la alineación de la celda.
-            var timbreBox = lr.Cells[0].Elements.AddTable(); timbreBox.Format.SpaceBefore = Unit.FromMillimeter(8); timbreBox.AddColumn(Unit.FromCentimeter(8.5));
+            var timbreBox = lr.Cells[0].Elements.AddTable(); timbreBox.Format.SpaceBefore = Unit.FromMillimeter(1); timbreBox.AddColumn(Unit.FromCentimeter(8.5));
             var tb = timbreBox.AddRow().Cells[0]; tb.Format.Alignment = ParagraphAlignment.Center;
-            // El PNG del PDF417 se guarda con una resolución tal que su tamaño intrínseco ya es ~7,5x2,5 cm
+            // El PNG del PDF417 se guarda con una resolución tal que su ancho intrínseco ya es ~7 cm
             // (ver WritePdf417): así MigraDoc reserva exactamente ese alto y las leyendas quedan pegadas al timbre.
             var image = tb.AddImage(barcodePath); image.LockAspectRatio = true; image.Width = Unit.FromCentimeter(BarcodeWidthCm);
             var timbre = tb.AddParagraph("Timbre Electrónico S.I.I."); timbre.Format.Alignment = ParagraphAlignment.Center; timbre.Format.Font.Size = 8; timbre.Format.SpaceBefore = Unit.FromMillimeter(1);
@@ -182,8 +182,8 @@ public sealed class FacturaPdfService(SgalContext context) : IFacturaPdfService
         AddTotalLine(tcell, "TOTAL", montos.Total, true);
 
         // ---- Acuse de recibo (Ley 19.983) y leyenda CEDIBLE ----
-        var receipt = section.AddTable(); receipt.Format.SpaceBefore = Unit.FromCentimeter(.35); receipt.Borders.Width = .75; receipt.AddColumn(Unit.FromCentimeter(18.0));
-        var receiptRow = receipt.AddRow(); receiptRow.Height = Unit.FromCentimeter(1.4); receiptRow.HeightRule = RowHeightRule.AtLeast;
+        var receipt = section.AddTable(); receipt.Format.SpaceBefore = Unit.FromCentimeter(.25); receipt.Borders.Width = .75; receipt.AddColumn(Unit.FromCentimeter(18.0));
+        var receiptRow = receipt.AddRow(); receiptRow.Height = Unit.FromCentimeter(1.25); receiptRow.HeightRule = RowHeightRule.AtLeast;
         var rp = receiptRow.Cells[0].AddParagraph(); rp.Format.Font.Size = 7.5;
         rp.AddFormattedText("NOMBRE: _______________________   R.U.T.: ______________   FECHA: __________   RECINTO: __________________\n", TextFormat.Bold);
         rp.AddFormattedText("FIRMA: ___________________________\n\n", TextFormat.Bold);
