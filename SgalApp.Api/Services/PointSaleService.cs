@@ -46,6 +46,7 @@ namespace SgalApp.Api.Services
         private readonly IPointService _pointService;
         private readonly ISaleLinesService _saleLines;
         private readonly IPosCredentialProvider _credentials;
+        private readonly SgalApp.Api.Services.Dte.IDteService _dte;
         private readonly ILogger<PointSaleService> _logger;
 
         public PointSaleService(
@@ -53,14 +54,22 @@ namespace SgalApp.Api.Services
             IPointService pointService,
             ISaleLinesService saleLines,
             IPosCredentialProvider credentials,
+            SgalApp.Api.Services.Dte.IDteService dte,
             ILogger<PointSaleService> logger)
         {
             _context = context;
             _pointService = pointService;
             _saleLines = saleLines;
             _credentials = credentials;
+            _dte = dte;
             _logger = logger;
         }
+
+        private Task<bool> IsBoletasEnabledAsync(CancellationToken cancellationToken) =>
+            _context.SegModulos.AsNoTracking().AnyAsync(module =>
+                module.Codigo == "boletas" && module.Activo
+                && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                    && module.ConfiguracionOrganizacion.Habilitado)), cancellationToken);
 
         public async Task<PointSaleResult<PointSaleStartResultDto>> StartAsync(PointSaleStartDto dto, int idUsuario, CancellationToken cancellationToken = default)
         {
@@ -115,6 +124,21 @@ namespace SgalApp.Api.Services
                 MontoNeto = 0,
                 MontoIva = 0
             };
+
+            if (dto.TipoDocumento == "factura")
+            {
+                var receptor = dto.ReceptorFactura;
+                if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
+                    return PointSaleResult<PointSaleStartResultDto>.Fallo("Complete los datos tributarios para emitir factura.");
+                var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim(), cancellationToken);
+                cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
+                cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
+                cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
+                cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
+                if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
+                await _context.SaveChangesAsync(cancellationToken);
+                sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
+            }
 
             _context.VenVentas.Add(sale);
             await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
@@ -293,6 +317,9 @@ namespace SgalApp.Api.Services
             registro.MontoPropina = ParseMonto(payment?.TipAmount) ?? registro.MontoPropina;
             registro.FechaActualizacion = DateTime.Now;
 
+            // Venta que quedó Terminada en esta llamada y debe emitir su DTE (Point de Ventas).
+            int? ventaAEmitir = null;
+
             // Las órdenes de caja se finalizan explícitamente en la caja (registrando el turno de
             // caja y el pago dividido). Aquí solo se actualiza el registro, sin tocar la venta.
             if (registro.IdVenta.HasValue && !registro.EsCaja)
@@ -341,6 +368,7 @@ namespace SgalApp.Api.Services
                             });
 
                             venta.IdEstadoVenta = EstadosVenta.Terminada;
+                            ventaAEmitir = venta.IdVenta;
                             _logger.LogInformation("Venta {IdVenta} confirmada por la orden {OrderId}.", venta.IdVenta, order.Id);
                             break;
 
@@ -369,6 +397,13 @@ namespace SgalApp.Api.Services
             }
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            // Venta Point confirmada: se emite el DTE fuera del guardado, sin romper el flujo si falla.
+            if (ventaAEmitir.HasValue && await IsBoletasEnabledAsync(cancellationToken))
+            {
+                try { await _dte.EmitirPorVentaAsync(ventaAEmitir.Value, cancellationToken); }
+                catch (Exception ex) { _logger.LogError(ex, "No se pudo emitir el DTE de la venta {IdVenta} (Point).", ventaAEmitir.Value); }
+            }
         }
 
         public async Task<PointSaleResult<PointSaleStatusDto>> SyncAsync(int idVenta, CancellationToken cancellationToken = default)

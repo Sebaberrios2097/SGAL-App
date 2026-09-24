@@ -17,6 +17,8 @@ namespace SgalApp.Api.DTOs
         /// queda por cobrar (sin métodos de pago) y aplica cortesía automática.
         /// </summary>
         public bool EsConsumoEmpleado { get; set; }
+        public string TipoDocumento { get; set; } = "boleta";
+        public FacturaReceptorDto? ReceptorFactura { get; set; }
     }
 
     public class SalePaymentMethodDto
@@ -106,6 +108,19 @@ namespace SgalApp.Api.DTOs
 
         /// <summary>Porcentaje de descuento aplicado al cobro (0 = sin descuento).</summary>
         public decimal PorcentajeDescuento { get; set; }
+        public string TipoDocumento { get; set; } = "boleta";
+        public FacturaReceptorDto? ReceptorFactura { get; set; }
+    }
+
+    public sealed class FacturaReceptorDto
+    {
+        public string Rut { get; set; } = string.Empty;
+        public string RazonSocial { get; set; } = string.Empty;
+        public string Giro { get; set; } = string.Empty;
+        public string Direccion { get; set; } = string.Empty;
+        public string Comuna { get; set; } = string.Empty;
+        public string Ciudad { get; set; } = string.Empty;
+        public string? Correo { get; set; }
     }
 
     /// <summary>Marca (o desmarca) una venta de consumo como pagada por el empleado.</summary>

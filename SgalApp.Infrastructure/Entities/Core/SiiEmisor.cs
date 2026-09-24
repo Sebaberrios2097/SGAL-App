@@ -59,6 +59,15 @@ public partial class SiiEmisor
     [StringLength(20)]
     public string Ambiente { get; set; } = "certificacion";
 
+    /// <summary>
+    /// Fase de puesta en marcha: "desarrollo" (timbre local con datos ficticios, sin enviar al
+    /// SII — permite usar la app sin certificado), "certificacion" (envía a maullin para el Set
+    /// de Pruebas) o "produccion" (envía a palena; ya autorizado por el SII).
+    /// </summary>
+    [Column("Fase")]
+    [StringLength(20)]
+    public string Fase { get; set; } = "desarrollo";
+
     /// <summary>URL base del microservicio LibreDTE que firma y envía al SII.</summary>
     [Column("Libredte_Url")]
     [StringLength(250)]

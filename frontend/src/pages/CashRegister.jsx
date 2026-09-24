@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlayCircle, StopCircle, Wallet, Receipt, Printer, ArrowLeft, Home, ShoppingCart, Plus, Minus, Trash2, Pencil, Search, X, CreditCard } from 'lucide-react';
+import { PlayCircle, StopCircle, Wallet, Receipt, Printer, ArrowLeft, Home, ShoppingCart, Plus, Minus, Trash2, Pencil, Search, X, CreditCard, History, RefreshCw } from 'lucide-react';
 import { notify } from '../components/NotificationCenter';
 import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,7 @@ import { usePointAvailability } from '../hooks/usePointAvailability';
 import TurnOpeningModal from '../components/TurnOpeningModal';
 import TurnClosingModal from '../components/TurnClosingModal';
 import { buildReceiptHtml, printReceipt } from '../utils/receiptTemplates';
+import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
 
 const TIPO_CAJA = 2;
@@ -101,6 +102,9 @@ const CashRegister = () => {
   const [allocations, setAllocations] = useState({ 1: '', 4: '', [METODO_TARJETA]: '' });
   const [recibido, setRecibido] = useState('');
   const [descuentoPct, setDescuentoPct] = useState(0);
+  const [tipoDocumento, setTipoDocumento] = useState('boleta');
+  const [imprimirDte, setImprimirDte] = useState(true);
+  const [receptorFactura, setReceptorFactura] = useState({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
   const [submitting, setSubmitting] = useState(false);
   const [showOpening, setShowOpening] = useState(false);
   const [showClosing, setShowClosing] = useState(false);
@@ -108,6 +112,9 @@ const CashRegister = () => {
   // Cobro con tarjeta en la terminal (Point): { idVenta, idOrden, estado, mensaje, ... }
   const [pointPay, setPointPay] = useState(null);
   const [cancelandoPoint, setCancelandoPoint] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [cashHistory, setCashHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const maxDescuento = Number(user?.maxDiscountPercent || 0);
   const puedeCobrar = can('caja.cobrar');
@@ -119,6 +126,46 @@ const CashRegister = () => {
   const cajaAbierta = Boolean(cajaTurn);
   const selected = useMemo(() => pending.find(v => v.idVenta === selectedId) || null, [pending, selectedId]);
   const editing = mode === 'edit' || mode === 'new';
+
+  const openHistory = async () => {
+    setShowHistory(true); setLoadingHistory(true);
+    try {
+      const res = await fetch('/api/cash-register/history', { cache: 'no-store' });
+      if (!res.ok) throw new Error('No fue posible cargar el historial de cobros.');
+      setCashHistory(await res.json());
+    } catch (err) { notify.error(err.message); setShowHistory(false); }
+    finally { setLoadingHistory(false); }
+  };
+
+  const reprintFromCash = async (sale) => {
+    if ([33, 34].includes(sale.idTipoDte)) {
+      window.open(`/api/dte/venta/${sale.idVenta}/pdf`, '_blank');
+      return;
+    }
+    const items = (sale.items || []).map(item => ({
+      nombreProducto: item.nombreProducto, quantity: item.cantidad,
+      normalPrice: item.precioNormal || item.precioUnitario, finalPrice: item.precioUnitario,
+      materialSelections: item.seleccionesMateriales || [], extras: item.ingredientesExtra || []
+    }));
+    const payments = (sale.metodosPago || []).map(p => ({ name: p.nombreMetodoPago, amount: p.monto, isCash: p.idMetodoPago === 1 }));
+    const printed = await tryPrintBoletaDte({
+      idVenta: sale.idVenta, items, promotions: sale.promociones || [], payments,
+      barista: sale.vendedor, logoUrl: hasLogo('boletas') ? `${window.location.origin}${getLogoUrl('boletas')}` : null,
+      options: { showSeller: receiptShowSeller, showPayment: receiptShowPayment, customFooter: receiptCustomFooter, defaultFooter: branding.textoPieDocumentos || 'Gracias por su preferencia.', contacto: branding.contactoPublico || null }
+    });
+    if (!printed) notify.error('Esta venta no tiene una boleta electrónica disponible para reimprimir.');
+  };
+
+  const retryDteFromCash = async (sale) => {
+    try {
+      const res = await fetch(`/api/dte/venta/${sale.idVenta}/emitir`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.mensaje || 'No fue posible emitir el documento.');
+      notify.success(`Documento emitido con folio ${data.folio}.`);
+      await openHistory();
+      if ([33, 34].includes(data.tipoDte)) window.open(`/api/dte/venta/${sale.idVenta}/pdf`, '_blank');
+    } catch (err) { notify.error(err.message); }
+  };
 
   const loadPending = useCallback(async () => {
     try {
@@ -230,8 +277,18 @@ const CashRegister = () => {
     })));
     setPicker(false); setQuery(''); setMode('edit');
   };
-  const startNew = () => {
-    setSelectedId(null); setDraft([]); setPromoDraft([]); setPicker(true); setQuery(''); setMode('new'); resetPago();
+  const startNew = async () => {
+    if (submitting || !cajaTurn) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/cash-register/sale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: [], promociones: [] }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.mensaje || 'No fue posible crear la venta.');
+      await loadPending();
+      setSelectedId(data.idVenta); setMode('view'); resetPago();
+      notify.success('Venta creada. Escanea o agrega productos para continuar.');
+    } catch (err) { notify.error(err.message); }
+    finally { setSubmitting(false); }
   };
   const cancelEdit = () => {
     if (mode === 'new') setSelectedId(null);
@@ -242,7 +299,7 @@ const CashRegister = () => {
   const changeQty = (uid, delta) => setDraft(prev => prev.map(l => l.uid === uid ? { ...l, cantidad: Math.max(1, l.cantidad + delta) } : l));
   const removeLine = (uid) => setDraft(prev => prev.filter(l => l.uid !== uid));
 
-  const handleScan = (code) => {
+  const handleScan = async (code) => {
     const normalized = code.trim();
     const ticket = /^VTA(\d+)$/i.exec(normalized);
     if (ticket) {
@@ -254,9 +311,30 @@ const CashRegister = () => {
     if (!puedeModificar) { notify.warning('No tiene permiso para agregar productos.'); return; }
     const prod = catalog.find(p => p.activo && (p.codigoProducto || '').trim() === normalized);
     if (!prod) { notify.warning(`Código no reconocido: ${normalized}`); return; }
-    if (mode === 'edit' || mode === 'new') setDraft(prev => addLine(prev, prod));
-    else if (selected) { setDraft(addLine(draftFromVale(selected), prod)); setPicker(false); setMode('edit'); }
-    else { setDraft(addLine([], prod)); setSelectedId(null); setPicker(false); setMode('new'); }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      if (!selected) {
+        const res = await fetch('/api/cash-register/sale', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: draftToItems(addLine([], prod)), promociones: [] })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.mensaje || 'No fue posible crear la venta.');
+        await loadPending(); setSelectedId(data.idVenta); setMode('view'); resetPago();
+      } else {
+        const updated = addLine(draftFromVale(selected), prod);
+        const res = await fetch(`/api/cash-register/${selected.idVenta}/items`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: draftToItems(updated), promociones: (selected.promociones || []).map(p => ({ idPromocion: p.idPromocion, cantidad: p.cantidad, selecciones: p.selecciones || [] })) })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.mensaje || 'No fue posible agregar el producto.');
+        await loadPending(); setSelectedId(selected.idVenta); setMode('view');
+      }
+      notify.success(`${prod.nombreProducto} agregado.`);
+    } catch (err) { notify.error(err.message); }
+    finally { setSubmitting(false); }
   };
   useBarcodeScanner(handleScan, { enabled: cajaAbierta && (puedeCobrar || puedeModificar) });
 
@@ -357,19 +435,53 @@ const CashRegister = () => {
 
   const pctDescuento = () => Math.min(Math.max(Number(descuentoPct) || 0, 0), maxDescuento);
 
+  // Imprime la boleta electrónica (80mm con timbre) si la venta ya tiene DTE emitido.
+  // Conserva el detalle del ticket interno (líneas con selecciones/extras, pago, vendedor, pie).
+  // Devuelve true si imprimió; false si no hay DTE (módulo apagado o emisión fallida).
+  const printBoletaDte = async (vale, pagos, recibidoValor) => {
+    const items = (vale.items || []).map(d => ({
+      nombreProducto: d.nombreProducto,
+      quantity: d.cantidad,
+      normalPrice: d.precioNormal || d.precioUnitario,
+      finalPrice: d.precioUnitario,
+      materialSelections: (d.seleccionesMateriales || []).map(s => ({ nombreMateriaPrima: s.nombreMateriaPrima, recargo: s.recargo })),
+      extras: (d.ingredientesExtra || []).map(x => ({ nombre: x.nombre, precio: x.precio }))
+    }));
+    const nombres = { 1: 'Efectivo', 2: 'Débito', 3: 'Crédito', 4: 'Transferencia' };
+    const payments = (pagos || []).map(p => ({ name: nombres[p.idMetodoPago] || 'Pago', amount: p.monto, isCash: p.idMetodoPago === 1 }));
+    return tryPrintBoletaDte({
+      idVenta: vale.idVenta, items, promotions: vale.promociones || [], payments,
+      cashReceived: recibidoValor, barista: vale.vendedor,
+      logoUrl: hasLogo('boletas') ? `${window.location.origin}${getLogoUrl('boletas')}` : null,
+      options: {
+        showSeller: receiptShowSeller, showPayment: receiptShowPayment, customFooter: receiptCustomFooter,
+        defaultFooter: branding.textoPieDocumentos || 'Gracias por su preferencia.',
+        contacto: branding.contactoPublico || null
+      }
+    });
+  };
+
   // Cobra el vale con los métodos indicados; imprime la boleta y limpia.
   const finalizarCobro = async (valeCobrado, pagos, recibidoValor) => {
     const res = await fetch(`/api/cash-register/${valeCobrado.idVenta}/collect`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos })
+      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos, tipoDocumento, receptorFactura: tipoDocumento === 'factura' ? receptorFactura : null })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.mensaje || 'No fue posible cobrar el vale.');
-    notify.success('Venta cobrada. Imprimiendo boleta...');
-    printBoleta(valeCobrado, data.montoTotal, pagos, recibidoValor);
+    notify.success(tipoDocumento === 'factura' ? 'Venta cobrada. Factura emitida.' : 'Venta cobrada. Boleta emitida.');
+    if (imprimirDte) {
+      if (tipoDocumento === 'factura') window.open(`/api/dte/venta/${valeCobrado.idVenta}/pdf`, '_blank');
+      else {
+        const emitida = await printBoletaDte(valeCobrado, pagos, recibidoValor);
+        if (!emitida) notify.error('La venta se cobró, pero la boleta no está disponible para imprimir.');
+      }
+    }
     setSelectedId(null);
     setPending(prev => prev.filter(v => v.idVenta !== valeCobrado.idVenta));
     resetPago();
+    setTipoDocumento('boleta'); setImprimirDte(true);
+    setReceptorFactura({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
     loadPending();
   };
 
@@ -536,14 +648,12 @@ const CashRegister = () => {
             </div>
           ))}</>}
       </div>
-      {picker ? renderPicker() : (
-        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--panel-border)' }}>
+      <div style={{ padding: '10px 18px', borderTop: '1px solid var(--panel-border)' }}>
           <button type="button" onClick={() => { setPicker(true); setQuery(''); }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '8px', border: '1.5px dashed var(--primary-color)', background: '#fff', color: 'var(--primary-color)', fontWeight: 700, cursor: 'pointer' }}>
             <Plus size={16} /> Agregar producto o promoción
           </button>
         </div>
-      )}
       <div style={{ padding: '14px 18px', borderTop: '1px solid var(--panel-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 800 }}>
           <span>Total aprox.:</span><span style={{ color: 'var(--primary-color)' }}>{money(draftTotal)}</span>
@@ -566,11 +676,10 @@ const CashRegister = () => {
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Vale #{selected.idVenta}</h3>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Atendió: {selected.vendedor}</span>
         </div>
-        {puedeModificar && (
-          <button type="button" onClick={startEdit} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1.5px solid var(--panel-border)', background: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>
-            <Pencil size={14} /> Editar
-          </button>
-        )}
+        {puedeModificar && <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" onClick={() => { startEdit(); setPicker(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', borderRadius: 8, border: '1.5px solid var(--primary-color)', background: '#fff', color: 'var(--primary-color)', fontWeight: 700, cursor: 'pointer', fontSize: '.82rem' }}><Plus size={14} /> Agregar productos</button>
+          <button type="button" onClick={startEdit} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1.5px solid var(--panel-border)', background: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}><Pencil size={14} /> Editar</button>
+        </div>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 18px' }}>
         {selected.items.map((d, i) => (
@@ -638,6 +747,18 @@ const CashRegister = () => {
           <span>TOTAL:</span><span>{money(total)}</span>
         </div>
 
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['boleta', 'factura'].map(tipo => <button key={tipo} type="button" onClick={() => setTipoDocumento(tipo)} className={`btn ${tipoDocumento === tipo ? 'btn-primary' : ''}`} style={{ flex: 1, textTransform: 'capitalize' }}>{tipo}</button>)}
+        </div>
+        {tipoDocumento === 'factura' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+          {[['rut','RUT'],['razonSocial','Razón social'],['giro','Giro'],['direccion','Dirección'],['comuna','Comuna'],['ciudad','Ciudad'],['correo','Correo']].map(([campo, etiqueta]) =>
+            <input key={campo} type={campo === 'correo' ? 'email' : 'text'} placeholder={etiqueta} value={receptorFactura[campo]} onChange={e => setReceptorFactura(actual => ({ ...actual, [campo]: e.target.value }))} style={{ gridColumn: ['razonSocial','direccion','correo'].includes(campo) ? 'span 2' : undefined, padding: '7px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />)}
+        </div>}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.86rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} />
+          {tipoDocumento === 'factura' ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}
+        </label>
+
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={isSplit} onChange={toggleSplit} /> Pago dividido
         </label>
@@ -683,7 +804,7 @@ const CashRegister = () => {
       <div style={{ padding: '14px 18px', borderTop: '1px solid var(--panel-border)', background: '#f8fafc' }}>
         <button type="button" disabled={submitting || !puedeCobrar} onClick={handleCollect}
           style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', background: 'var(--primary-color)', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '1rem', cursor: submitting ? 'wait' : 'pointer', opacity: (submitting || !puedeCobrar) ? 0.6 : 1 }}>
-          <Printer size={18} /> {submitting ? 'Cobrando…' : `Cobrar e imprimir (${money(total)})`}
+          <Printer size={18} /> {submitting ? 'Cobrando…' : `${imprimirDte ? 'Cobrar e imprimir' : 'Cobrar sin imprimir'} (${money(total)})`}
         </button>
       </div>
     </>
@@ -704,6 +825,7 @@ const CashRegister = () => {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button type="button" onClick={openHistory} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', padding: '9px 12px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}><History size={16} /> Historial</button>
           <span style={{ padding: '5px 12px', borderRadius: '30px', fontSize: '0.78rem', fontWeight: 700, background: headerStatus.bg, whiteSpace: 'nowrap' }}>{headerStatus.text}</span>
           {!cajaAbierta && puedeAbrir && (
             <button type="button" disabled={directBusy} onClick={() => turnsRequireReconciliation ? setShowOpening(true) : openDirect()}
@@ -719,6 +841,29 @@ const CashRegister = () => {
           )}
         </div>
       </header>
+
+      {showHistory && <div className="modal-overlay" style={{ zIndex: 180 }}>
+        <div className="modal-content" style={{ width: 'min(900px, 94vw)', maxWidth: 900, maxHeight: '85vh', padding: 24, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h3 style={{ margin: 0 }}>Historial de cobros en Caja</h3><button type="button" className="btn" onClick={() => setShowHistory(false)}><X size={17} /></button></div>
+          <div style={{ overflow: 'auto' }}>
+            {loadingHistory ? <div style={{ padding: 30, textAlign: 'center' }}>Cargando…</div> : cashHistory.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>No hay cobros registrados.</div> :
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.86rem' }}><thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--panel-border)' }}><th style={{ padding: 8 }}>Venta</th><th>Fecha</th><th>Vendedor</th><th>Documento</th><th>Total</th><th></th></tr></thead><tbody>
+                {cashHistory.map(sale => <tr key={sale.idVenta} style={{ borderBottom: '1px solid var(--panel-border)' }}><td style={{ padding: 8 }}>#{sale.idVenta}</td><td>{new Date(sale.fechaVenta).toLocaleString('es-CL')}</td><td>{sale.vendedor}</td><td>{sale.idTipoDte ? `${[33,34].includes(sale.idTipoDte) ? 'Factura' : 'Boleta'} N° ${sale.folioDte || '—'}` : 'Emisión pendiente'}</td><td>{money(sale.montoTotal)}</td><td>{sale.idTipoDte ? <button type="button" className="btn" onClick={() => reprintFromCash(sale)}><Printer size={15} /> Reimprimir</button> : <button type="button" className="btn btn-primary" onClick={() => retryDteFromCash(sale)}><RefreshCw size={15} /> Emitir ahora</button>}</td></tr>)}
+              </tbody></table>}
+          </div>
+        </div>
+      </div>}
+
+      {picker && <div className="modal-overlay" style={{ zIndex: 190 }} onMouseDown={event => { if (event.target === event.currentTarget) setPicker(false); }}>
+        <div className="modal-content" style={{ width: 'min(820px, 94vw)', maxWidth: 820, maxHeight: '82vh', padding: 22, overflow: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div><h3 style={{ margin: 0 }}>Agregar a la venta #{selectedId}</h3><small style={{ color: 'var(--text-muted)' }}>Selecciona productos o promociones y luego guarda los cambios.</small></div>
+            <button type="button" className="btn" onClick={() => setPicker(false)}><X size={17} /></button>
+          </div>
+          {renderPicker()}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><button type="button" className="btn btn-primary" onClick={() => setPicker(false)}>Listo</button></div>
+        </div>
+      </div>}
 
       {loading ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Cargando…</div>

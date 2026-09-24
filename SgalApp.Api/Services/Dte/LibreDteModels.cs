@@ -36,7 +36,19 @@ public sealed class DteBuildResult
 }
 
 /// <summary>Error de negocio devuelto por LibreDTE (para diferenciarlo de fallas de red).</summary>
-public sealed class DteException : Exception
+public class DteException : Exception
 {
     public DteException(string message) : base(message) { }
+}
+
+public sealed class DteSinFoliosException(int tipoDte)
+    : DteException($"No hay CAF reales con folios disponibles para el tipo DTE {tipoDte}.")
+{
+    public int TipoDte { get; } = tipoDte;
+}
+
+public sealed class DteEstadoSiiResult
+{
+    public string Estado { get; init; } = "Enviado";
+    public string RespuestaJson { get; init; } = string.Empty;
 }

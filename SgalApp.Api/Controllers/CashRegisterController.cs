@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SgalApp.Api.DTOs;
 using SgalApp.Api.DTOs.Point;
 using SgalApp.Api.Services;
+using SgalApp.Api.Services.Dte;
 using SgalApp.Api.Security;
 
 namespace SgalApp.Api.Controllers
@@ -25,6 +26,8 @@ namespace SgalApp.Api.Controllers
         private readonly IPointService _pointService;
         private readonly IPointSaleService _pointSales;
         private readonly IPosCredentialProvider _credentials;
+        private readonly IDteService _dte;
+        private readonly ILogger<CashRegisterController> _logger;
 
         public CashRegisterController(
             SgalContext context,
@@ -32,7 +35,9 @@ namespace SgalApp.Api.Controllers
             ISaleLinesService saleLines,
             IPointService pointService,
             IPointSaleService pointSales,
-            IPosCredentialProvider credentials)
+            IPosCredentialProvider credentials,
+            IDteService dte,
+            ILogger<CashRegisterController> logger)
         {
             _context = context;
             _permissions = permissions;
@@ -40,6 +45,24 @@ namespace SgalApp.Api.Controllers
             _pointService = pointService;
             _pointSales = pointSales;
             _credentials = credentials;
+            _dte = dte;
+            _logger = logger;
+        }
+
+        private Task<bool> IsBoletasEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "boletas" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                && module.ConfiguracionOrganizacion.Habilitado)));
+
+        /// <summary>
+        /// Emite el DTE de una venta ya cobrada. No debe romper el cobro si LibreDTE falla: el
+        /// documento queda pendiente y se puede reintentar.
+        /// </summary>
+        private async Task TryEmitirDteAsync(int idVenta)
+        {
+            if (!await IsBoletasEnabledAsync()) return;
+            try { await _dte.EmitirPorVentaAsync(idVenta); }
+            catch (Exception ex) { _logger.LogError(ex, "No se pudo emitir el DTE de la venta {IdVenta} tras el cobro.", idVenta); }
         }
 
         /// <summary>Vales pendientes de cobro: ventas PendienteDePago aún no cobradas en caja.</summary>
@@ -142,6 +165,63 @@ namespace SgalApp.Api.Controllers
             return Ok(result);
         }
 
+        /// <summary>Historial de ventas efectivamente cobradas por el usuario en Caja.</summary>
+        [HttpGet("history")]
+        [Permission(Permissions.CajaOperate + "|" + Permissions.CajaCollect)]
+        public async Task<IActionResult> GetHistory()
+        {
+            var userId = User.GetUserId();
+            var ventas = await _context.VenVentas.AsNoTracking()
+                .Where(v => v.IdTurnoCaja != null
+                    && v.IdTurnoCajaNavigation != null
+                    && v.IdTurnoCajaNavigation.IdUsuario == userId
+                    && v.IdEstadoVenta != EstadosVenta.Cancelada
+                    && v.IdBitacora == null)
+                .OrderByDescending(v => v.FechaVenta)
+                .Take(250)
+                .Select(v => new
+                {
+                    v.IdVenta,
+                    v.FechaVenta,
+                    v.MontoTotal,
+                    v.IdEstadoVenta,
+                    v.IdTipoDte,
+                    v.FolioDte,
+                    Vendedor = v.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
+                        .Select(e => e.Nombres + " " + e.Apellido1).FirstOrDefault()
+                        ?? v.IdUsuarioNavigation.NombreUsuario,
+                    MetodosPago = v.VenMetodosPagoVenta.Select(mp => new
+                    {
+                        mp.IdMetodoPago,
+                        mp.IdMetodoPagoNavigation.NombreMetodoPago,
+                        mp.Monto
+                    }),
+                    Items = v.VenDetalleVenta.Where(d => d.IdVentaPromocion == null).Select(d => new
+                    {
+                        d.IdProductoNavigation.NombreProducto,
+                        d.Cantidad,
+                        d.PrecioNormal,
+                        d.PrecioUnitario,
+                        d.Subtotal,
+                        SeleccionesMateriales = d.VenDetalleVentaMateriales.Where(m => m.EsEleccionAlternativa)
+                            .Select(m => new { NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial, m.Recargo }),
+                        IngredientesExtra = d.VenDetalleVentaIngrediente
+                            .Select(x => new { Nombre = x.IdMateriaPrimaNavigation.NombreMaterial, x.Precio })
+                    }),
+                    Promociones = v.VenVentaPromociones.Select(p => new
+                    {
+                        p.IdVentaPromocion,
+                        p.IdPromocionNavigation.Nombre,
+                        p.Cantidad,
+                        p.Precio,
+                        p.MontoIndividual,
+                        p.Descuento,
+                        Productos = p.Lineas.Select(l => new { l.IdProductoNavigation.NombreProducto, l.Cantidad })
+                    })
+                }).ToListAsync();
+            return Ok(ventas);
+        }
+
         /// <summary>
         /// Reemplaza las líneas de un vale pendiente (el cajero agrega o quita productos antes
         /// de cobrar). Reconstruye el detalle con la misma lógica que una venta nueva.
@@ -199,8 +279,7 @@ namespace SgalApp.Api.Controllers
         [Permission(Permissions.CajaSaleModify)]
         public async Task<IActionResult> CreateSale([FromBody] SaleItemsUpdateDto dto)
         {
-            if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
-                return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
+            dto ??= new SaleItemsUpdateDto();
 
             var cajaTurn = await _context.TurTurno.FirstOrDefaultAsync(t =>
                 t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
@@ -223,14 +302,18 @@ namespace SgalApp.Api.Controllers
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync();
 
-                var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, cajaTurn.IdTurno);
-                if (!lines.EsValido)
+                var tieneLineas = (dto.Items?.Count ?? 0) > 0 || (dto.Promociones?.Count ?? 0) > 0;
+                var totalBruto = 0;
+                if (tieneLineas)
                 {
-                    await transaction.RollbackAsync();
-                    return BadRequest(new { mensaje = lines.Error });
+                    var lines = await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, cajaTurn.IdTurno);
+                    if (!lines.EsValido)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { mensaje = lines.Error });
+                    }
+                    totalBruto = lines.Total;
                 }
-
-                int totalBruto = lines.Total;
                 sale.MontoTotal = totalBruto;
                 sale.MontoNeto = (int)Math.Round(totalBruto / 1.19);
                 sale.MontoIva = totalBruto - sale.MontoNeto;
@@ -329,6 +412,24 @@ namespace SgalApp.Api.Controllers
                     return BadRequest(new { mensaje = "El monto con tarjeta no coincide con el aprobado por Mercado Pago." });
             }
 
+            if (dto.TipoDocumento is not ("boleta" or "factura"))
+                return BadRequest(new { mensaje = "Seleccione boleta o factura." });
+            if (dto.TipoDocumento == "factura")
+            {
+                var receptor = dto.ReceptorFactura;
+                if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
+                    return BadRequest(new { mensaje = "Complete RUT, razón social, giro, dirección y comuna para emitir factura." });
+                var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim());
+                cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
+                cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
+                cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
+                cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
+                if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
+                await _context.SaveChangesAsync();
+                sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
+            }
+            else sale.IdClienteEmpresa = null;
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -351,6 +452,10 @@ namespace SgalApp.Api.Controllers
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                // Emisión del DTE fuera de la transacción del cobro: si falla, el cobro se mantiene
+                // y el documento queda pendiente para reintento.
+                await TryEmitirDteAsync(sale.IdVenta);
 
                 return Ok(new
                 {

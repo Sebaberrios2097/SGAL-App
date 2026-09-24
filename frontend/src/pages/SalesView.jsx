@@ -31,7 +31,8 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { usePointAvailability } from '../hooks/usePointAvailability';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
-import { buildReceiptHtml } from '../utils/receiptTemplates';
+import { buildReceiptHtml, buildComandaHtml } from '../utils/receiptTemplates';
+import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
@@ -156,6 +157,9 @@ const SalesView = () => {
   const [isSplitPayment, setIsSplitPayment] = useState(false);
   const [cashReceived, setCashReceived] = useState('');
   const [submittingSale, setSubmittingSale] = useState(false);
+  const [tipoDocumento, setTipoDocumento] = useState('boleta');
+  const [imprimirDte, setImprimirDte] = useState(true);
+  const [receptorFactura, setReceptorFactura] = useState({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
   // Consumo de empleado: modal de confirmación y de resultado (estilizados).
   const [showConsumoConfirm, setShowConsumoConfirm] = useState(false);
   const [consumoResult, setConsumoResult] = useState(null); // { montoAdeudado, montoCortesia }
@@ -347,6 +351,7 @@ const SalesView = () => {
           items,
           promociones,
           porcentajeDescuento: descuentoPctEfectivo()
+          ,tipoDocumento, receptorFactura: tipoDocumento === 'factura' ? receptorFactura : null
         })
       });
 
@@ -424,7 +429,7 @@ const SalesView = () => {
     cashReceived: cashReceived,
     subtotal: cart.reduce((acc, item) => acc + ((item.normalPrice ?? item.product.precio) * item.quantity), 0)
       + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0),
-    total: calculateCartTotal()
+    total: calculateCartTotal(), tipoDocumento, imprimirDte
   });
 
   const finalizeSale = (saleData) => {
@@ -436,12 +441,15 @@ const SalesView = () => {
     setPaymentAllocations({ 1: '', 4: '', [METODO_TARJETA]: '' });
     fetchCatalog();
 
-    setSuccess('Venta registrada con éxito. Imprimiendo...');
+    setSuccess(`Venta registrada con éxito.${saleData.imprimirDte ? ' Preparando documento…' : ''}`);
     setTimeout(() => setSuccess(''), 4000);
 
-    setTimeout(() => {
-      triggerPrintTicket(saleData);
+    if (saleData.imprimirDte) setTimeout(() => {
+      if (saleData.tipoDocumento === 'factura') window.open(`/api/dte/venta/${saleData.idVenta}/pdf`, '_blank');
+      else triggerPrintTicket(saleData);
     }, 300);
+    setTipoDocumento('boleta'); setImprimirDte(true);
+    setReceptorFactura({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '', correo: '' });
   };
 
   // Con el módulo Caja: el vendedor genera la orden como vale (sin cobro) y la envía
@@ -472,7 +480,7 @@ const SalesView = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detalle ? `${data.mensaje} (${data.detalle})` : (data.mensaje || 'Error al generar el vale'));
+        throw new Error(data.detalle ? `${data.mensaje} (${data.detalle})` : (data.mensaje || 'Error al generar la venta'));
       }
 
       const idVenta = editando ? editingVentaId : data.idVenta;
@@ -492,13 +500,14 @@ const SalesView = () => {
         data: {
           idVenta,
           fecha: new Date().toLocaleString('es-CL'),
+          barista: user.empleado ? `${user.empleado.nombres} ${user.empleado.apellido1}` : user.nombreUsuario,
           items: valeItems,
           promotions: promoCart.map(item => ({ nombre: item.promotion.nombre, cantidad: item.quantity, precio: item.promotion.precio, descuento: (item.individualAmount - item.promotion.precio) * item.quantity, productos: promotionReceiptProducts(item) })),
           subtotal: subtotalBruto + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0),
           total: calculateCartSubtotal(),
           payments: []
         },
-        options: { includeComanda: false, barcodeValue: receiptShowBarcode ? `VTA${idVenta}` : null }
+        options: { includeComanda: false, showSeller: receiptShowSeller, barcodeValue: `VTA${idVenta}` }
       });
 
       setCart([]);
@@ -507,7 +516,7 @@ const SalesView = () => {
       setCartOpen(false);
       setEditingVentaId(null);
       fetchCatalog();
-      setSuccess(editando ? 'Vale actualizado. Imprimiendo...' : 'Vale generado. Enviado a caja. Imprimiendo...');
+      setSuccess(editando ? 'Venta actualizada. Imprimiendo ticket...' : 'Venta generada. Enviada a caja. Imprimiendo ticket...');
       setTimeout(() => setSuccess(''), 4000);
       setTimeout(() => printTicket(html), 300);
     } catch (err) {
@@ -696,7 +705,7 @@ const SalesView = () => {
 
   const METHOD_NAMES = { 1: 'Efectivo', 4: 'Transferencia', [METODO_TARJETA]: 'Tarjeta' };
 
-  const triggerPrintTicket = (saleData) => {
+  const triggerPrintTicket = async (saleData) => {
     if (!saleData) return;
 
     const items = saleData.cart.map(item => ({
@@ -715,6 +724,25 @@ const SalesView = () => {
         isCash: parseInt(id) === 1
       }))
       .filter(p => p.amount > 0);
+
+    const promotions = (saleData.promotions || []).map(item => ({
+      nombre: item.promotion.nombre,
+      cantidad: item.quantity,
+      precio: item.promotion.precio,
+      descuento: (item.individualAmount - item.promotion.precio) * item.quantity,
+      productos: promotionReceiptProducts(item)
+    }));
+
+    // Si el módulo Boletas emitió el DTE, se imprime la boleta con timbre + la comanda aparte.
+    const emitida = await tryPrintBoletaDte({
+      idVenta: saleData.idVenta, items, promotions, payments,
+      cashReceived: saleData.cashReceived, barista: saleData.barista,
+      logoUrl: boletaLogoUrl(), options: receiptOptions()
+    });
+    if (emitida) {
+      setTimeout(() => printTicket(buildComandaHtml(saleData.idVenta, items)), 400);
+      return;
+    }
 
     const html = buildReceiptHtml({
       mode: 'boleta',
@@ -744,8 +772,12 @@ const SalesView = () => {
 
   // Reimpresión de boleta: acepta una venta del historial (desde BD, `fechaVenta`
   // presente) o el snapshot recién generado en pantalla. No incluye la comanda.
-  const triggerPrintBoleta = (sale) => {
+  const triggerPrintBoleta = async (sale) => {
     if (!sale) return;
+    if (!cajaEnabled && [33, 34].includes(sale.idTipoDte)) {
+      window.open(`/api/dte/venta/${sale.idVenta}/pdf`, '_blank');
+      return;
+    }
     const isReprint = !!sale.fechaVenta;
 
     const fecha = isReprint ? new Date(sale.fechaVenta).toLocaleString('es-CL') : sale.fecha;
@@ -787,6 +819,34 @@ const SalesView = () => {
           .map(id => ({ name: METHOD_NAMES[id], amount: parseInt(sale.paymentAllocations[id]) || 0, isCash: parseInt(id) === 1 }))
           .filter(p => p.amount > 0);
 
+    const promotions = isReprint ? (sale.promociones || []) : (sale.promotions || []).map(item => ({
+      nombre: item.promotion.nombre,
+      cantidad: item.quantity,
+      precio: item.promotion.precio,
+      descuento: (item.individualAmount - item.promotion.precio) * item.quantity,
+      productos: promotionReceiptProducts(item)
+    }));
+
+    // Cuando existe Caja, el vendedor solo puede reimprimir su ticket interno. La boleta o
+    // factura pertenece al cobro y se reimprime desde el historial de Caja.
+    if (cajaEnabled) {
+      const ticket = buildReceiptHtml({
+        mode: 'vale', commercialName: branding.nombreComercial,
+        data: { idVenta: sale.idVenta, fecha, barista, items, promotions, subtotal, total },
+        options: { showSeller: receiptShowSeller, barcodeValue: `VTA${sale.idVenta}` }
+      });
+      printTicket(ticket);
+      return;
+    }
+
+    // Boleta con timbre si la venta tiene DTE emitido; si no, el ticket interno.
+    const emitida = await tryPrintBoletaDte({
+      idVenta: sale.idVenta, items, promotions, payments,
+      cashReceived: isReprint ? null : sale.cashReceived, barista,
+      logoUrl: boletaLogoUrl(), options: receiptOptions()
+    });
+    if (emitida) return;
+
     const html = buildReceiptHtml({
       mode: 'boleta',
       commercialName: branding.nombreComercial,
@@ -796,13 +856,7 @@ const SalesView = () => {
         fecha,
         barista,
         items,
-        promotions: isReprint ? (sale.promociones || []) : (sale.promotions || []).map(item => ({
-          nombre: item.promotion.nombre,
-          cantidad: item.quantity,
-          precio: item.promotion.precio,
-          descuento: (item.individualAmount - item.promotion.precio) * item.quantity,
-          productos: promotionReceiptProducts(item)
-        })),
+        promotions,
         subtotal,
         total,
         payments,
@@ -1004,7 +1058,7 @@ const SalesView = () => {
         individualAmount: promo.cantidad > 0 ? promo.montoIndividual / promo.cantidad : promo.montoIndividual
       })));
       setEditingVentaId(idVenta);
-      notify.success(`Editando vale #${idVenta}. Modifica y vuelve a generar el vale.`);
+      notify.success(`Editando venta #${idVenta}. Modifica y vuelve a generar la venta.`);
     } catch (err) {
       notify.error(err.message);
     }
@@ -1551,6 +1605,7 @@ const SalesView = () => {
                   No hay comandas pendientes. ¡Todo al día!
                 </span>
               </div>
+
             ) : (
               <div style={{
                 display: 'grid',
@@ -2231,7 +2286,7 @@ const SalesView = () => {
                       if ((cart.length > 0 || promoCart.length > 0) && !faltaCalibracion) e.currentTarget.style.backgroundColor = 'var(--primary-color)';
                     }}
                   >
-                    {cajaEnabled ? (editingVentaId ? 'Actualizar vale' : 'Generar vale') : 'Continuar al Pago'}
+                    {cajaEnabled ? (editingVentaId ? 'Actualizar venta' : 'Generar venta') : 'Continuar al Pago'}
                   </button>}
                   {turnsEnabled && can('ventas.crear') && <button
                     type="button"
@@ -2670,6 +2725,15 @@ const SalesView = () => {
                   ${calculateCartTotal().toLocaleString('es-CL')}
                 </span>
               </div>
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                {['boleta', 'factura'].map(tipo => <button key={tipo} type="button" className={`btn ${tipoDocumento === tipo ? 'btn-primary' : ''}`} onClick={() => setTipoDocumento(tipo)} style={{ flex: 1, textTransform: 'capitalize' }}>{tipo}</button>)}
+              </div>
+              {tipoDocumento === 'factura' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginBottom: 12 }}>
+                {[['rut','RUT'],['razonSocial','Razón social'],['giro','Giro'],['direccion','Dirección'],['comuna','Comuna'],['ciudad','Ciudad'],['correo','Correo']].map(([campo, etiqueta]) =>
+                  <input key={campo} required={!['ciudad','correo'].includes(campo)} type={campo === 'correo' ? 'email' : 'text'} placeholder={etiqueta} value={receptorFactura[campo]} onChange={e => setReceptorFactura(actual => ({ ...actual, [campo]: e.target.value }))} style={{ gridColumn: ['razonSocial','direccion','correo'].includes(campo) ? 'span 2' : undefined, padding: 8, border: '1px solid #cbd5e1', borderRadius: 6 }} />)}
+              </div>}
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, fontSize: '.86rem' }}><input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} /> {tipoDocumento === 'factura' ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}</label>
 
               {/* Active Payment Methods Selection */}
               <div style={{ marginBottom: '16px' }}>
@@ -3239,7 +3303,7 @@ const SalesView = () => {
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
                           <Printer size={10} />
-                          Reimprimir
+                          {cajaEnabled ? 'Reimprimir ticket' : ([33, 34].includes(sale.idTipoDte) ? 'Reimprimir factura' : 'Reimprimir boleta')}
                         </button>}
 
                         {sale.idEstadoVenta === 1 && can('ventas.anular') && (

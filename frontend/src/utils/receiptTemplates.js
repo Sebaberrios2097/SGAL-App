@@ -147,6 +147,24 @@ const buildComandaSection = (idVenta, items = []) => {
     </div>`;
 };
 
+/** Comanda de preparación como documento 80mm independiente (para imprimir aparte de la boleta DTE). */
+export const buildComandaHtml = (idVenta, items = []) => `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <title>Comanda #${idVenta}</title>
+    <style>
+      @page { size: 80mm auto; margin: 0; }
+      body { font-family:${MONO}; width:100%; margin:0 auto; padding:6px 8px; color:#000; box-sizing:border-box; }
+      * { color:#000 !important; font-weight:bold !important; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+      .text-center { text-align:center; }
+      .divider { border-top:1px dashed #000; margin:4px 0; }
+      .item-table { width:100%; border-collapse:collapse; }
+    </style>
+  </head>
+  <body>${buildComandaSection(idVenta, items).replace('<div class="page-break"></div>', '')}</body>
+  </html>`;
+
 /**
  * Construye el HTML completo de un comprobante para impresión térmica.
  *
@@ -169,6 +187,24 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
     customFooter = null, defaultFooter = 'Gracias por su preferencia.',
     contacto = null, includeComanda = false, barcodeValue = null
   } = options;
+
+  if (isVale) {
+    const rows = [...items.map(item => ({ nombre: item.nombreProducto, cantidad: item.quantity, total: item.finalPrice * item.quantity })),
+      ...promotions.map(item => ({ nombre: `Promo: ${item.nombre}`, cantidad: item.cantidad || 1, total: (item.precio || 0) * (item.cantidad || 1) }))]
+      .map(item => `<tr><td>${escapeHtml(item.nombre)}</td><td style="text-align:center">${item.cantidad}</td><td style="text-align:right">${money(item.total)}</td></tr>`).join('');
+    const internalBarcode = barcodeValue ? `<div class="divider"></div><div class="text-center">${code39Svg(barcodeValue)}<div style="font-size:10px;letter-spacing:1px">${escapeHtml(barcodeValue)}</div></div>` : '';
+    return `<!doctype html><html><head><title>Ticket interno #${idVenta}</title><style>
+      @page{size:80mm auto;margin:0}body{font-family:${MONO};font-size:11px;width:100%;margin:0;padding:4px 6px;box-sizing:border-box;color:#000}
+      *{font-weight:bold}.text-center{text-align:center}.divider{border-top:1px dashed #000;margin:3px 0}table{width:100%;border-collapse:collapse}td,th{padding:2px 0}
+    </style></head><body>
+      <div class="text-center" style="font-size:13px">${escapeHtml(commercialName)}</div>
+      ${fecha ? `<div style="margin-top:2px">Fecha: ${escapeHtml(fecha)}</div>` : ''}
+      ${(showSeller && barista) ? `<div style="margin-top:2px">Vendedor: ${escapeHtml(barista)}</div>` : ''}
+      <div class="divider"></div><table><thead><tr><th style="text-align:left">Producto</th><th>Cant.</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="divider"></div><div style="display:flex;justify-content:space-between;font-size:13px"><span>TOTAL</span><span>${money(total)}</span></div>
+      ${internalBarcode}
+    </body></html>`;
+  }
 
   const isPromo = subtotal > total;
   const discount = subtotal - total;
@@ -265,6 +301,111 @@ export const buildReceiptHtml = ({ mode = 'boleta', commercialName = '', logoUrl
       </div>
       ${barcodeHtml}
       ${includeComanda ? buildComandaSection(idVenta, items) : ''}
+    </body>
+    </html>`;
+};
+
+/**
+ * Construye el HTML de una BOLETA ELECTRÓNICA (80mm) con su timbre PDF417. Fusiona el ticket
+ * interno (logo, atendido por, líneas con selecciones/extras/promos, detalle de pago y pie) con
+ * los datos tributarios del DTE (emisor, folio, Neto/IVA/Total y timbre).
+ *
+ * @param {object}  params
+ * @param {object}  params.emisor        { rut, razonSocial, giro, direccion, comuna }
+ * @param {number}  params.folio         Folio del documento.
+ * @param {number}  params.tipoDte       39 (afecta) o 41 (exenta).
+ * @param {string}  params.fecha         Fecha de emisión (ISO).
+ * @param {object}  params.montos        { neto, exento, iva, total }
+ * @param {string=} params.timbreDataUrl Data URL (PNG) del PDF417 del TED.
+ * @param {string=} params.logoUrl       URL del logo de boletas (o null).
+ * @param {object=} params.data          { items, promotions, payments, cashReceived, barista } (ticket completo).
+ * @param {Array=}  params.lineas        Alternativa simple a data.items: [{ nombre, cantidad, precioUnitario, subtotal }].
+ * @param {object=} params.options       { showSeller, showPayment, customFooter, defaultFooter, contacto }
+ */
+export const buildBoletaDteHtml = ({ emisor = {}, folio, tipoDte = 39, fecha, montos = {}, timbreDataUrl = null, logoUrl = null, data = {}, lineas = [], options = {} }) => {
+  const nombreDoc = tipoDte === 41 ? 'BOLETA EXENTA ELECTRÓNICA' : 'BOLETA ELECTRÓNICA';
+  const fechaTxt = fecha ? new Date(fecha).toLocaleString('es-CL') : '';
+  const {
+    items: richItems = [], promotions = [], payments = [], cashReceived = null, barista = null
+  } = data;
+  const {
+    showSeller = true, showPayment = true, customFooter = null,
+    defaultFooter = 'Gracias por su preferencia.', contacto = null
+  } = options;
+
+  // Acepta items enriquecidos (con selecciones/extras) o la forma simple `lineas`.
+  const items = richItems.length ? richItems : (lineas || []).map(l => ({
+    nombreProducto: l.nombre, quantity: l.cantidad,
+    normalPrice: l.precioUnitario, finalPrice: l.precioUnitario, materialSelections: [], extras: []
+  }));
+
+  const logoHtml = logoUrl
+    ? `<div class="text-center" style="margin-bottom:4px;"><img src="${logoUrl}" alt="Logo" style="width:105px; max-width:100%; height:auto; filter:contrast(160%);" /></div>`
+    : '';
+
+  const totalesRows = `
+    ${montos.iva > 0 ? `
+    <tr><td style="font-size:12px; padding:2px 0; font-family:${MONO};">Neto:</td><td></td><td style="text-align:right; font-size:12px; padding:2px 0; font-family:${MONO};">${money(montos.neto)}</td></tr>
+    <tr><td style="font-size:12px; padding:2px 0; font-family:${MONO};">IVA 19%:</td><td></td><td style="text-align:right; font-size:12px; padding:2px 0; font-family:${MONO};">${money(montos.iva)}</td></tr>` : ''}
+    ${montos.exento > 0 ? `<tr><td style="font-size:12px; padding:2px 0; font-family:${MONO};">Exento:</td><td></td><td style="text-align:right; font-size:12px; padding:2px 0; font-family:${MONO};">${money(montos.exento)}</td></tr>` : ''}
+    <tr><td style="font-size:13px; padding:4px 0; font-family:${MONO};"><strong>TOTAL:</strong></td><td></td><td style="text-align:right; font-size:14px; padding:4px 0; font-weight:bold; font-family:${MONO};">${money(montos.total)}</td></tr>`;
+
+  const paymentsHtml = showPayment ? buildPaymentsHtml(payments, cashReceived) : '';
+  const footerText = (customFooter && customFooter.trim()) ? customFooter : defaultFooter;
+
+  const timbreHtml = timbreDataUrl ? `
+    <div class="divider"></div>
+    <div class="text-center" style="margin:8px 0;">
+      <img src="${timbreDataUrl}" alt="Timbre Electrónico SII" style="width:92%; max-width:280px; image-rendering:pixelated;" />
+      <div style="font-family:${MONO}; font-size:10px; margin-top:2px;">Timbre Electrónico SII</div>
+      <div style="font-family:${MONO}; font-size:10px;">Verifique en www.sii.cl</div>
+    </div>` : '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${nombreDoc} N° ${folio}</title>
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body { font-family:${MONO}; font-size:13px; width:100%; margin:0 auto; padding:6px 8px; color:#000; box-sizing:border-box; }
+        * { color:#000 !important; font-weight:bold !important; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+        .text-center { text-align:center; }
+        .divider { border-top:1px dashed #000; margin:5px 0; }
+        .rut-box { border:1.5px solid #000; border-radius:4px; padding:5px; text-align:center; margin:8px 0; font-weight:bold; }
+        table { width:100%; border-collapse:collapse; }
+      </style>
+    </head>
+    <body>
+      ${logoHtml}
+      <div class="text-center" style="font-weight:bold; font-size:14px;">${escapeHtml(emisor.razonSocial || '')}</div>
+      ${emisor.giro ? `<div class="text-center" style="font-size:11px;">${escapeHtml(emisor.giro)}</div>` : ''}
+      ${(emisor.direccion || emisor.comuna) ? `<div class="text-center" style="font-size:11px;">${escapeHtml([emisor.direccion, emisor.comuna].filter(Boolean).join(', '))}</div>` : ''}
+      <div class="rut-box">
+        <div>R.U.T.: ${escapeHtml(emisor.rut || '')}</div>
+        <div>${nombreDoc}</div>
+        <div>N° ${folio}</div>
+      </div>
+      <div style="font-size:12px; font-family:${MONO};">Fecha: ${escapeHtml(fechaTxt)}</div>
+      ${(showSeller && barista) ? `<div style="font-size:12px; font-family:${MONO};">Atendido por: ${escapeHtml(barista)}</div>` : ''}
+      <div class="divider"></div>
+      <table>
+        <thead><tr>
+          <th style="text-align:left; font-size:11px; border-bottom:1px solid #000; font-family:${MONO};">Producto</th>
+          <th style="text-align:center; width:34px; font-size:11px; border-bottom:1px solid #000; font-family:${MONO};">Cant</th>
+          <th style="text-align:right; width:80px; font-size:11px; border-bottom:1px solid #000; font-family:${MONO};">Total</th>
+        </tr></thead>
+        <tbody>${buildItemsRows(items)}${buildPromotionRows(promotions)}</tbody>
+      </table>
+      <div class="divider"></div>
+      <table>${totalesRows}</table>
+      ${paymentsHtml ? `
+        <div class="divider"></div>
+        <p style="margin:2px 0; font-family:${MONO};"><strong>Detalle Pago:</strong></p>
+        ${paymentsHtml}` : ''}
+      <div class="divider"></div>
+      <p class="text-center" style="font-size:11px; font-family:${MONO}; margin:6px 0;">${escapeHtml(footerText)}${contacto ? `<br>${escapeHtml(contacto)}` : ''}</p>
+      ${timbreHtml}
     </body>
     </html>`;
 };

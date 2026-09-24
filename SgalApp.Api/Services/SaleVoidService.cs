@@ -19,19 +19,28 @@ namespace SgalApp.Api.Services
         private readonly SgalContext _context;
         private readonly IPointService _pointService;
         private readonly ISaleLinesService _saleLines;
+        private readonly SgalApp.Api.Services.Dte.IDteService _dte;
         private readonly ILogger<SaleVoidService> _logger;
 
         public SaleVoidService(
             SgalContext context,
             IPointService pointService,
             ISaleLinesService saleLines,
+            SgalApp.Api.Services.Dte.IDteService dte,
             ILogger<SaleVoidService> logger)
         {
             _context = context;
             _pointService = pointService;
             _saleLines = saleLines;
+            _dte = dte;
             _logger = logger;
         }
+
+        private Task<bool> IsBoletasEnabledAsync(CancellationToken cancellationToken) =>
+            _context.SegModulos.AsNoTracking().AnyAsync(module =>
+                module.Codigo == "boletas" && module.Activo
+                && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                    && module.ConfiguracionOrganizacion.Habilitado)), cancellationToken);
 
         public async Task<PointSaleResult<SaleVoidResultDto>> AnularAsync(int idVenta, bool devolverStock, CancellationToken cancellationToken = default)
         {
@@ -106,6 +115,14 @@ namespace SgalApp.Api.Services
 
             await _context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            // Nota de crédito que anula el DTE de la venta. Fuera de la transacción: si falla, la
+            // anulación se mantiene y la NC queda pendiente de reintento.
+            if (await IsBoletasEnabledAsync(cancellationToken))
+            {
+                try { await _dte.EmitirNotaCreditoAsync(idVenta, cancellationToken); }
+                catch (Exception ex) { _logger.LogError(ex, "No se pudo emitir la nota de crédito de la venta {IdVenta}.", idVenta); }
+            }
 
             _logger.LogInformation(
                 "Venta {IdVenta} anulada. Reembolsado con tarjeta: {MontoTarjeta}. Efectivo a devolver en caja: {MontoEfectivo}. Stock devuelto: {DevolverStock}.",

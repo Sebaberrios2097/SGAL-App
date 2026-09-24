@@ -69,6 +69,10 @@ public partial class SiiDteEmision
     [Column("Reintentos")]
     public int Reintentos { get; set; }
 
+    /// <summary>Documento generado con certificado/CAF ficticios; nunca fue válido ante el SII.</summary>
+    [Column("Es_Prueba")]
+    public bool EsPrueba { get; set; }
+
     /// <summary>Para una nota de crédito (61): la emisión del documento que anula.</summary>
     [Column("Id_Emision_Referencia")]
     public int? IdEmisionReferencia { get; set; }

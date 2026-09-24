@@ -46,6 +46,7 @@ IF OBJECT_ID('dbo.SII_Emisor', 'U') IS NULL
         Resolucion_Numero int NULL,
         Resolucion_Fecha date NULL,
         Ambiente varchar(20) NOT NULL CONSTRAINT DF_SII_Emisor_Ambiente DEFAULT ('certificacion'),
+        Fase varchar(20) NOT NULL CONSTRAINT DF_SII_Emisor_Fase DEFAULT ('desarrollo'),
         Libredte_Url nvarchar(250) NULL,
         Certificado_Nombre nvarchar(180) NULL,
         Certificado_Pfx varbinary(max) NULL,
@@ -78,6 +79,7 @@ IF OBJECT_ID('dbo.SII_Dte_Emision', 'U') IS NULL
         Fecha_Actualizacion datetime NOT NULL CONSTRAINT DF_SII_Dte_Emision_Fecha_Actualizacion DEFAULT (GETDATE()),
         Ultimo_Error nvarchar(max) NULL,
         Reintentos int NOT NULL CONSTRAINT DF_SII_Dte_Emision_Reintentos DEFAULT (0),
+        Es_Prueba bit NOT NULL CONSTRAINT DF_SII_Dte_Emision_Es_Prueba DEFAULT (0),
         Id_Emision_Referencia int NULL,
         CONSTRAINT FK_SII_Dte_Emision_Ven_Ventas FOREIGN KEY (Id_Venta)
             REFERENCES dbo.Ven_Ventas (Id_Venta),
@@ -96,6 +98,14 @@ IF NOT EXISTS (
 )
     CREATE UNIQUE INDEX UX_SII_Dte_Emision_Venta_Tipo
         ON dbo.SII_Dte_Emision (Id_Venta, Id_Tipo_DTE);
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.SII_Dte_Emision')
+      AND name = 'UX_SII_Dte_Emision_Tipo_Folio'
+)
+    CREATE UNIQUE INDEX UX_SII_Dte_Emision_Tipo_Folio
+        ON dbo.SII_Dte_Emision (Id_Tipo_DTE, Folio) WHERE Folio IS NOT NULL;
 
 -- Actualización defensiva: si SII_Emisor ya existía de una versión anterior de este script,
 -- agrega las columnas que falten (certificado y SMTP) sin recrear la tabla.
@@ -119,6 +129,30 @@ BEGIN
         ALTER TABLE dbo.SII_Emisor ADD Smtp_Clave_Protegida nvarchar(max) NULL;
     IF COL_LENGTH('dbo.SII_Emisor', 'Correo_Remitente') IS NULL
         ALTER TABLE dbo.SII_Emisor ADD Correo_Remitente nvarchar(150) NULL;
+    IF COL_LENGTH('dbo.SII_Emisor', 'Fase') IS NULL
+        ALTER TABLE dbo.SII_Emisor ADD Fase varchar(20) NOT NULL
+            CONSTRAINT DF_SII_Emisor_Fase DEFAULT ('desarrollo') WITH VALUES;
+
+    IF COL_LENGTH('dbo.SII_Caf_Folios', 'Es_Prueba') IS NULL
+        ALTER TABLE dbo.SII_Caf_Folios ADD Es_Prueba bit NOT NULL
+            CONSTRAINT DF_SII_Caf_Folios_Es_Prueba DEFAULT (0) WITH VALUES;
+
+    IF COL_LENGTH('dbo.SII_Dte_Emision', 'Es_Prueba') IS NULL
+    BEGIN
+        ALTER TABLE dbo.SII_Dte_Emision ADD Es_Prueba bit NOT NULL
+            CONSTRAINT DF_SII_Dte_Emision_Es_Prueba DEFAULT (0) WITH VALUES;
+    END;
+
+    -- SQL dinámico: el lote se compila antes de ejecutar ALTER TABLE. Esto también recupera
+    -- una ejecución anterior que hubiese alcanzado a crear la columna antes de fallar.
+    EXEC sys.sp_executesql N'
+        UPDATE e SET Es_Prueba = 1
+        FROM dbo.SII_Dte_Emision e
+        INNER JOIN dbo.SII_Estados_Boleta s
+            ON s.Id_Estado_Boleta = e.Id_Estado_Boleta
+        WHERE e.Track_Id IS NULL
+          AND s.Nombre_Estado_Boleta = N''Aceptado'';
+    ';
 END
 
 /* Cambio de lote para que las tablas nuevas estén disponibles al sembrar y configurar. */

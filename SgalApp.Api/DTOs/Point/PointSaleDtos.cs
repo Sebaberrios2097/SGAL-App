@@ -26,6 +26,8 @@ namespace SgalApp.Api.DTOs.Point
 
         /// <summary>Descripción opcional que se muestra en la terminal.</summary>
         public string? Descripcion { get; set; }
+        public string TipoDocumento { get; set; } = "boleta";
+        public FacturaReceptorDto? ReceptorFactura { get; set; }
     }
 
     public class PointSaleStartResultDto

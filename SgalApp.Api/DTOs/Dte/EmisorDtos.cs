@@ -33,6 +33,10 @@ public sealed class UpdateEmisorDto
     [Required, StringLength(20)]
     public string Ambiente { get; set; } = "certificacion";
 
+    /// <summary>Fase de puesta en marcha: "desarrollo", "certificacion" o "produccion".</summary>
+    [Required, StringLength(20)]
+    public string Fase { get; set; } = "desarrollo";
+
     [StringLength(250)]
     public string? LibredteUrl { get; set; }
 
@@ -67,6 +71,7 @@ public sealed class EmisorDto
     public int? ResolucionNumero { get; set; }
     public DateOnly? ResolucionFecha { get; set; }
     public string Ambiente { get; set; } = "certificacion";
+    public string Fase { get; set; } = "desarrollo";
     public string? LibredteUrl { get; set; }
     public bool CertificadoCargado { get; set; }
     public string? CertificadoNombre { get; set; }
@@ -77,6 +82,7 @@ public sealed class EmisorDto
     public string? CorreoRemitente { get; set; }
     public bool EnvioAutomaticoCorreo { get; set; }
     public List<CafResumenDto> Folios { get; set; } = [];
+    public DteEstadoPuestaEnMarchaDto EstadoPuestaEnMarcha { get; set; } = new();
 }
 
 /// <summary>Resumen de folios (CAF) cargados por tipo de documento.</summary>
@@ -88,4 +94,23 @@ public sealed class CafResumenDto
     public int FolioHasta { get; set; }
     public int UltimoFolioUtilizado { get; set; }
     public int Disponibles { get; set; }
+    public bool EsPrueba { get; set; }
+}
+
+public sealed class DteEstadoPuestaEnMarchaDto
+{
+    public string Fase { get; set; } = "desarrollo";
+    public string Titulo { get; set; } = "Desarrollo local";
+    public string Descripcion { get; set; } = string.Empty;
+    public bool ConexionLibreDte { get; set; }
+    public bool DatosEmisorCompletos { get; set; }
+    public bool CertificadoRealCargado { get; set; }
+    public bool CafRealesCargados { get; set; }
+    public bool ResolucionConfigurada { get; set; }
+    public bool PuedeEnviarAlSii { get; set; }
+    public int Pendientes { get; set; }
+    public int LocalesPrueba { get; set; }
+    public int Enviados { get; set; }
+    public int Aceptados { get; set; }
+    public int Rechazados { get; set; }
 }

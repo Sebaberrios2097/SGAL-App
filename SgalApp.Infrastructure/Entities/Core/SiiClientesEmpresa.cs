@@ -46,6 +46,9 @@ public partial class SiiClientesEmpresa
     [StringLength(50)]
     public string Ciudad { get; set; } = null!;
 
+    [StringLength(150)]
+    public string? Correo { get; set; }
+
     [InverseProperty("IdClienteEmpresaNavigation")]
     public virtual ICollection<VenVentas> VenVentas { get; set; } = new List<VenVentas>();
 }

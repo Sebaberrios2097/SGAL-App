@@ -28,6 +28,10 @@ public partial class SiiCafFolios
     [Column("Archivo_Xml_Caf")]
     public byte[] ArchivoXmlCaf { get; set; } = null!;
 
+    /// <summary>True cuando el CAF fue generado por LibreDTE para desarrollo y no es válido ante el SII.</summary>
+    [Column("Es_Prueba")]
+    public bool EsPrueba { get; set; }
+
     [ForeignKey("IdTipoDte")]
     [InverseProperty("SiiCafFolios")]
     public virtual SiiTiposDte IdTipoDteNavigation { get; set; } = null!;

@@ -84,6 +84,10 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<SiiDteEmision> SiiDteEmision { get; set; }
 
+    public virtual DbSet<SiiContingenciaDte> SiiContingenciaDte { get; set; }
+
+    public virtual DbSet<SiiContingenciaLote> SiiContingenciaLote { get; set; }
+
     public virtual DbSet<SiiEstadosBoleta> SiiEstadosBoleta { get; set; }
 
     public virtual DbSet<SiiTiposDte> SiiTiposDte { get; set; }
@@ -441,6 +445,12 @@ public partial class SgalContext : DbContext
             entity.HasOne(d => d.IdEmisionReferenciaNavigation).WithMany(p => p.NotasCredito)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_SII_Dte_Emision_Referencia");
+        });
+
+        modelBuilder.Entity<SiiContingenciaDte>(entity =>
+        {
+            entity.HasOne(e => e.IdVentaNavigation).WithMany().OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.IdLoteNavigation).WithMany(l => l.Ventas).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<TurBitacora>(entity =>

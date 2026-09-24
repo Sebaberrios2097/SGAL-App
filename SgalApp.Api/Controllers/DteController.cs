@@ -47,8 +47,8 @@ public sealed class DteController : ControllerBase
 
     /// <summary>
     /// Emite una boleta de PRUEBA (tipo 39) con certificado y folios ficticios de LibreDTE y
-    /// devuelve el PDF. Sirve para verificar la conexión y el flujo de emisión de punta a punta
-    /// sin comprar certificado ni tocar el SII.
+    /// devuelve los datos para imprimir el ticket 80mm con su timbre. Sirve para verificar el
+    /// flujo de emisión de punta a punta sin comprar certificado ni tocar el SII.
     /// </summary>
     [HttpPost("emitir-prueba")]
     [Permission(Permissions.BoletasConfigure)]
@@ -56,8 +56,81 @@ public sealed class DteController : ControllerBase
     {
         try
         {
-            var resultado = await _dteService.EmitirPruebaAsync(cancellationToken);
-            return File(resultado.Pdf, "application/pdf", $"boleta-prueba-{resultado.Folio}.pdf");
+            var boleta = await _dteService.EmitirPruebaAsync(cancellationToken);
+            return Ok(BoletaResponse(boleta));
+        }
+        catch (DteException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>Datos para imprimir el ticket 80mm de una venta ya emitida (folio, montos, TED).</summary>
+    [HttpGet("venta/{idVenta:int}/impresion")]
+    [Permission(Permissions.CajaCollect + "|" + Permissions.SalesDocumentsReprint + "|" + Permissions.BoletasConfigure)]
+    public async Task<IActionResult> ImpresionBoleta(int idVenta, CancellationToken cancellationToken)
+    {
+        var boleta = await _dteService.ObtenerBoletaAsync(idVenta, cancellationToken);
+        if (boleta == null)
+            return NotFound(new { mensaje = "La venta no tiene un documento emitido." });
+        return Ok(BoletaResponse(boleta));
+    }
+
+    [HttpGet("venta/{idVenta:int}/pdf")]
+    [Permission(Permissions.CajaCollect + "|" + Permissions.SalesDocumentsReprint + "|" + Permissions.BoletasConfigure)]
+    public async Task<IActionResult> DescargarFactura(int idVenta, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pdf = await _dteService.ObtenerFacturaPdfAsync(idVenta, cancellationToken);
+            if (pdf is not { Length: > 0 }) return NotFound(new { mensaje = "La venta no tiene una factura emitida." });
+            var folio = await _context.SiiDteEmision.AsNoTracking().Where(e => e.IdVenta == idVenta && (e.IdTipoDte == 33 || e.IdTipoDte == 34)).Select(e => e.Folio).FirstOrDefaultAsync(cancellationToken);
+            Response.Headers.ContentDisposition = $"inline; filename=\"Factura-{folio}.pdf\"";
+            return File(pdf, "application/pdf");
+        }
+        catch (DteException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    private static object BoletaResponse(SgalApp.Api.Services.Dte.BoletaEmitida boleta) => new
+    {
+        boleta.TipoDte,
+        boleta.Folio,
+        boleta.Fecha,
+        Emisor = new
+        {
+            boleta.Emisor.Rut,
+            boleta.Emisor.RazonSocial,
+            boleta.Emisor.Giro,
+            boleta.Emisor.Direccion,
+            boleta.Emisor.Comuna
+        },
+        Lineas = boleta.Lineas.Select(l => new
+        {
+            l.Nombre,
+            l.Cantidad,
+            l.PrecioUnitario,
+            Subtotal = l.Cantidad * l.PrecioUnitario
+        }),
+        Montos = new { boleta.Montos.Neto, boleta.Montos.Exento, boleta.Montos.Iva, boleta.Montos.Total },
+        boleta.Ted
+    };
+
+    /// <summary>
+    /// Emite el documento tributario de una venta ya concretada (decide boleta/factura por el
+    /// receptor) y lo persiste. Pensado para pruebas y reemisión manual; el enganche automático
+    /// en el flujo de venta se agrega aparte.
+    /// </summary>
+    [HttpPost("venta/{idVenta:int}/emitir")]
+    [Permission(Permissions.BoletasConfigure + "|" + Permissions.CajaCollect)]
+    public async Task<IActionResult> EmitirVenta(int idVenta, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var resultado = await _dteService.EmitirPorVentaAsync(idVenta, cancellationToken);
+            return Ok(new { resultado.TipoDte, resultado.Folio, mensaje = "Documento emitido." });
         }
         catch (DteException ex)
         {
@@ -80,7 +153,8 @@ public sealed class DteController : ControllerBase
                 FolioDesde = c.FolioDesde,
                 FolioHasta = c.FolioHasta,
                 UltimoFolioUtilizado = c.UltimoFolioUtilizado,
-                Disponibles = c.FolioHasta - c.UltimoFolioUtilizado
+                Disponibles = c.FolioHasta - c.UltimoFolioUtilizado,
+                EsPrueba = c.EsPrueba
             })
             .ToListAsync();
 
@@ -99,6 +173,7 @@ public sealed class DteController : ControllerBase
             ResolucionNumero = emisor.ResolucionNumero,
             ResolucionFecha = emisor.ResolucionFecha,
             Ambiente = emisor.Ambiente,
+            Fase = emisor.Fase,
             LibredteUrl = emisor.LibredteUrl,
             CertificadoCargado = emisor.CertificadoPfx != null,
             CertificadoNombre = emisor.CertificadoNombre,
@@ -112,16 +187,135 @@ public sealed class DteController : ControllerBase
         });
     }
 
+    [HttpGet("estado-puesta-en-marcha")]
+    [Permission(Permissions.BoletasConfigure)]
+    public async Task<IActionResult> GetEstadoPuestaEnMarcha(CancellationToken cancellationToken)
+    {
+        var emisor = await _context.SiiEmisor.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.IdEmisor == EmisorId, cancellationToken);
+        var fase = emisor?.Fase ?? "desarrollo";
+        var conexion = await _libreDte.PingAsync(cancellationToken);
+        var cafReal = await _context.SiiCafFolios.AsNoTracking()
+            .AnyAsync(c => !c.EsPrueba && c.UltimoFolioUtilizado < c.FolioHasta, cancellationToken);
+        var locales = await _context.SiiDteEmision.AsNoTracking().CountAsync(e => e.EsPrueba, cancellationToken);
+        var estados = await _context.SiiDteEmision.AsNoTracking().Where(e => !e.EsPrueba)
+            .GroupBy(e => e.IdEstadoBoletaNavigation.NombreEstadoBoleta)
+            .Select(g => new { Estado = g.Key, Cantidad = g.Count() })
+            .ToDictionaryAsync(x => x.Estado, x => x.Cantidad, cancellationToken);
+
+        var datosCompletos = emisor != null
+            && !string.IsNullOrWhiteSpace(emisor.Rut)
+            && !string.IsNullOrWhiteSpace(emisor.RazonSocial)
+            && !string.IsNullOrWhiteSpace(emisor.Giro)
+            && !string.IsNullOrWhiteSpace(emisor.Direccion)
+            && !string.IsNullOrWhiteSpace(emisor.Comuna);
+        var resolucion = emisor?.ResolucionNumero != null && emisor.ResolucionFecha != null;
+        var certificado = emisor?.CertificadoPfx is { Length: > 0 };
+
+        return Ok(new DteEstadoPuestaEnMarchaDto
+        {
+            Fase = fase,
+            Titulo = fase switch
+            {
+                "produccion" => "Producción autorizada",
+                "certificacion" => "Certificación ante el SII",
+                _ => "Desarrollo local"
+            },
+            Descripcion = fase switch
+            {
+                "produccion" => "Los documentos se timbran y envían al ambiente productivo del SII.",
+                "certificacion" => "Los documentos se envían al ambiente de certificación del SII.",
+                _ => "La aplicación usa certificado y CAF ficticios. Los documentos no se envían al SII."
+            },
+            ConexionLibreDte = conexion.Ok,
+            DatosEmisorCompletos = datosCompletos,
+            CertificadoRealCargado = certificado,
+            CafRealesCargados = cafReal,
+            ResolucionConfigurada = resolucion,
+            PuedeEnviarAlSii = conexion.Ok && datosCompletos && certificado && cafReal
+                && (fase != "produccion" || resolucion),
+            LocalesPrueba = locales,
+            Pendientes = estados.GetValueOrDefault("Pendiente"),
+            Enviados = estados.GetValueOrDefault("Enviado"),
+            Aceptados = estados.GetValueOrDefault("Aceptado") + estados.GetValueOrDefault("Aceptado con reparos"),
+            Rechazados = estados.GetValueOrDefault("Rechazado")
+        });
+    }
+
+    [HttpPost("procesar-pendientes")]
+    [Permission(Permissions.BoletasConfigure)]
+    public async Task<IActionResult> ProcesarPendientes(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _dteService.ProcesarPendientesSiiAsync(cancellationToken);
+            return Ok(new { mensaje = "Cola SII procesada." });
+        }
+        catch (DteException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    [HttpGet("contingencias")]
+    [Permission(Permissions.BoletasConfigure)]
+    public async Task<IActionResult> GetContingencias(CancellationToken cancellationToken)
+    {
+        var pendientes = await _context.SiiContingenciaDte.AsNoTracking()
+            .Where(c => c.Estado == "pendiente")
+            .GroupBy(c => c.IdTipoDte)
+            .Select(g => new
+            {
+                tipoDte = g.Key,
+                cantidad = g.Count(),
+                montoTotal = g.Sum(c => c.IdVentaNavigation.MontoTotal),
+                desde = g.Min(c => c.IdVentaNavigation.FechaVenta),
+                hasta = g.Max(c => c.IdVentaNavigation.FechaVenta)
+            }).ToListAsync(cancellationToken);
+        var ultimosLotes = await _context.SiiContingenciaLote.AsNoTracking()
+            .OrderByDescending(l => l.FechaEmision).Take(10)
+            .Select(l => new { l.IdLote, l.IdTipoDte, l.Folio, l.Estado, l.CantidadVentas, l.MontoTotal, l.Desde, l.Hasta, l.FechaEmision })
+            .ToListAsync(cancellationToken);
+        return Ok(new { pendientes, ultimosLotes });
+    }
+
+    [HttpPost("contingencias/regularizar")]
+    [Permission(Permissions.BoletasConfigure)]
+    public async Task<IActionResult> RegularizarContingencias(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var lotes = await _dteService.RegularizarContingenciaAsync(cancellationToken);
+            return Ok(new { mensaje = lotes.Count == 0 ? "No hay ventas pendientes." : "Contingencia regularizada.", lotes });
+        }
+        catch (DteException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
     [HttpPut("emisor")]
     [Permission(Permissions.BoletasConfigure)]
     public async Task<IActionResult> UpdateEmisor([FromBody] UpdateEmisorDto dto)
     {
         if (dto.Ambiente is not ("certificacion" or "produccion"))
             return BadRequest(new { mensaje = "El ambiente debe ser 'certificacion' o 'produccion'." });
+        if (dto.Fase is not ("desarrollo" or "certificacion" or "produccion"))
+            return BadRequest(new { mensaje = "La fase debe ser 'desarrollo', 'certificacion' o 'produccion'." });
 
         var emisor = await _context.SiiEmisor.FirstOrDefaultAsync(e => e.IdEmisor == EmisorId);
         var esNuevo = emisor == null;
         emisor ??= new SiiEmisor { IdEmisor = EmisorId };
+
+        if (dto.Fase is "certificacion" or "produccion")
+        {
+            if (emisor.CertificadoPfx is not { Length: > 0 })
+                return BadRequest(new { mensaje = "Cargue un certificado digital real antes de cambiar de fase." });
+            if (!await _context.SiiCafFolios.AnyAsync(c => !c.EsPrueba && c.UltimoFolioUtilizado < c.FolioHasta))
+                return BadRequest(new { mensaje = "Cargue al menos un CAF real con folios disponibles antes de cambiar de fase." });
+        }
+        if (dto.Fase == "produccion" && (dto.ResolucionNumero == null || dto.ResolucionFecha == null))
+            return BadRequest(new { mensaje = "Configure la resolución de autorización del SII antes de pasar a producción." });
 
         emisor.Rut = dto.Rut.Trim();
         emisor.RazonSocial = dto.RazonSocial.Trim();
@@ -132,7 +326,8 @@ public sealed class DteController : ControllerBase
         emisor.Acteco = dto.Acteco;
         emisor.ResolucionNumero = dto.ResolucionNumero;
         emisor.ResolucionFecha = dto.ResolucionFecha;
-        emisor.Ambiente = dto.Ambiente;
+        emisor.Ambiente = dto.Fase == "produccion" ? "produccion" : "certificacion";
+        emisor.Fase = dto.Fase;
         emisor.LibredteUrl = string.IsNullOrWhiteSpace(dto.LibredteUrl) ? null : dto.LibredteUrl.Trim();
         emisor.SmtpHost = dto.SmtpHost?.Trim();
         emisor.SmtpPuerto = dto.SmtpPuerto;
@@ -167,6 +362,15 @@ public sealed class DteController : ControllerBase
 
         using var ms = new MemoryStream();
         await certificado.CopyToAsync(ms, cancellationToken);
+
+        try
+        {
+            await _libreDte.CargarCertificadoAsync(ms.ToArray(), clave, cancellationToken);
+        }
+        catch (DteException ex)
+        {
+            return BadRequest(new { mensaje = $"El certificado o su clave no son válidos: {ex.Message}" });
+        }
 
         emisor.CertificadoPfx = ms.ToArray();
         emisor.CertificadoClaveProtegida = _protector.Protect(clave);
@@ -219,12 +423,14 @@ public sealed class DteController : ControllerBase
                 FolioDesde = info.FolioDesde,
                 FolioHasta = info.FolioHasta,
                 UltimoFolioUtilizado = info.FolioDesde - 1,
-                ArchivoXmlCaf = bytes
+                ArchivoXmlCaf = bytes,
+                EsPrueba = false
             });
         }
         else
         {
             existente.ArchivoXmlCaf = bytes;
+            existente.EsPrueba = false;
         }
 
         await _context.SaveChangesAsync(cancellationToken);

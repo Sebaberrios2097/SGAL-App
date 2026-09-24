@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SgalApp.Api.DTOs;
 using SgalApp.Api.DTOs.Point;
 using SgalApp.Api.Services;
+using SgalApp.Api.Services.Dte;
 using SgalApp.Api.Security;
 
 namespace SgalApp.Api.Controllers
@@ -18,19 +19,38 @@ namespace SgalApp.Api.Controllers
         private readonly IPointSaleService _pointSales;
         private readonly ISaleVoidService _saleVoid;
         private readonly IPermissionService _permissions;
+        private readonly IDteService _dte;
+        private readonly ILogger<SaleController> _logger;
 
         public SaleController(
             SgalContext context,
             ISaleLinesService saleLines,
             IPointSaleService pointSales,
             ISaleVoidService saleVoid,
-            IPermissionService permissions)
+            IPermissionService permissions,
+            IDteService dte,
+            ILogger<SaleController> logger)
         {
             _context = context;
             _saleLines = saleLines;
             _pointSales = pointSales;
             _saleVoid = saleVoid;
             _permissions = permissions;
+            _dte = dte;
+            _logger = logger;
+        }
+
+        private Task<bool> IsBoletasEnabledAsync() => _context.SegModulos.AsNoTracking().AnyAsync(module =>
+            module.Codigo == "boletas" && module.Activo
+            && (module.EsNucleo || (module.ConfiguracionOrganizacion != null
+                && module.ConfiguracionOrganizacion.Habilitado)));
+
+        /// <summary>Emite el DTE de una venta ya concretada sin romper el flujo si LibreDTE falla.</summary>
+        private async Task TryEmitirDteAsync(int idVenta)
+        {
+            if (!await IsBoletasEnabledAsync()) return;
+            try { await _dte.EmitirPorVentaAsync(idVenta); }
+            catch (Exception ex) { _logger.LogError(ex, "No se pudo emitir el DTE de la venta {IdVenta}.", idVenta); }
         }
 
         [HttpPost]
@@ -91,6 +111,21 @@ namespace SgalApp.Api.Controllers
                     MontoIva = 0
                 };
 
+                if (dto.TipoDocumento == "factura")
+                {
+                    var receptor = dto.ReceptorFactura;
+                    if (receptor == null || new[] { receptor.Rut, receptor.RazonSocial, receptor.Giro, receptor.Direccion, receptor.Comuna }.Any(string.IsNullOrWhiteSpace))
+                        return BadRequest(new { mensaje = "Complete los datos tributarios para emitir factura." });
+                    var cliente = await _context.SiiClientesEmpresa.FirstOrDefaultAsync(c => c.RutEmpresa == receptor.Rut.Trim());
+                    cliente ??= new SiiClientesEmpresa { RutEmpresa = receptor.Rut.Trim() };
+                    cliente.RazonSocial = receptor.RazonSocial.Trim(); cliente.Giro = receptor.Giro.Trim();
+                    cliente.DireccionLegal = receptor.Direccion.Trim(); cliente.Comuna = receptor.Comuna.Trim();
+                    cliente.Ciudad = receptor.Ciudad?.Trim() ?? string.Empty; cliente.Correo = receptor.Correo?.Trim();
+                    if (cliente.IdClienteEmpresa == 0) _context.SiiClientesEmpresa.Add(cliente);
+                    await _context.SaveChangesAsync();
+                    sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
+                }
+
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
@@ -138,7 +173,7 @@ namespace SgalApp.Api.Controllers
                     await transaction.CommitAsync();
                     return Ok(new
                     {
-                        mensaje = "Vale generado. Pendiente de cobro en caja.",
+                        mensaje = "Venta generada. Pendiente de cobro en caja.",
                         idVenta = sale.IdVenta,
                         montoTotal = totalBruto,
                         pendiente = true
@@ -200,6 +235,9 @@ namespace SgalApp.Api.Controllers
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                // Venta directa (sin módulo Caja): se emite el DTE tras el commit.
+                await TryEmitirDteAsync(sale.IdVenta);
 
                 return Ok(new
                 {
@@ -326,6 +364,8 @@ namespace SgalApp.Api.Controllers
                     v.IdVenta,
                     v.FechaVenta,
                     v.MontoTotal,
+                    v.IdTipoDte,
+                    v.FolioDte,
                     v.IdEstadoVenta,
                     v.IdEstadoVentaNavigation.NombreEstadoVenta,
                     v.FechaComandaTerminada,
@@ -392,6 +432,8 @@ namespace SgalApp.Api.Controllers
                     v.IdVenta,
                     v.FechaVenta,
                     v.MontoTotal,
+                    v.IdTipoDte,
+                    v.FolioDte,
                     v.IdEstadoVenta,
                     v.IdEstadoVentaNavigation.NombreEstadoVenta,
                     v.FechaComandaTerminada,

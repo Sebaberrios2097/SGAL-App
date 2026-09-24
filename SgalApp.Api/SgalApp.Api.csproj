@@ -16,6 +16,8 @@
     </PackageReference>
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <ItemGroup>

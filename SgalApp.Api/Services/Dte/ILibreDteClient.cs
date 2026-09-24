@@ -28,4 +28,17 @@ public interface ILibreDteClient
 
     /// <summary>Renderiza el documento firmado (base64) a PDF y devuelve los bytes del PDF.</summary>
     Task<byte[]> RenderizarPdfAsync(string documentXmlBase64, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Arma el sobre (EnvioDTE/EnvioBOLETA) y lo envía al SII; devuelve el Track ID. Solo debe
+    /// usarse en certificación/producción (requiere certificado real; el SII valida). Contrato del
+    /// envío final por validar contra maullin cuando exista el certificado.
+    /// </summary>
+    Task<long?> EnviarAlSiiAsync(string documentXmlBase64, DteCertificado certificado,
+        string rut, string razonSocial, int? resolucionNumero, DateOnly? resolucionFecha,
+        int ambiente, CancellationToken cancellationToken = default);
+
+    /// <summary>Consulta al SII el estado de un envío previamente aceptado con Track ID.</summary>
+    Task<DteEstadoSiiResult> ConsultarEstadoSiiAsync(long trackId, DteCertificado certificado,
+        string rut, int ambiente, CancellationToken cancellationToken = default);
 }

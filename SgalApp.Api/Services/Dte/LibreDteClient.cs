@@ -22,6 +22,9 @@ public sealed class LibreDteClient : ILibreDteClient
         public const string CrearCafFalso = "/api/billing/identifier/caf_faker/create";
         public const string Build = "/api/billing/document/builder/build";
         public const string Render = "/api/billing/document/renderer/render";
+        public const string CrearSobre = "/api/billing/document/dispatcher/create";
+        public const string EnviarSii = "/api/billing/integration/sii_dte/sendXmlDocument";
+        public const string EstadoSii = "/api/billing/integration/sii_dte/checkXmlDocumentSentStatus";
     }
 
     public LibreDteClient(HttpClient http, ILogger<LibreDteClient> logger)
@@ -115,6 +118,92 @@ public sealed class LibreDteClient : ILibreDteClient
         if (string.IsNullOrEmpty(content))
             throw new DteException("El renderizado de LibreDTE no incluyó contenido PDF.");
         return Convert.FromBase64String(content);
+    }
+
+    public async Task<long?> EnviarAlSiiAsync(string documentXmlBase64, DteCertificado certificado,
+        string rut, string razonSocial, int? resolucionNumero, DateOnly? resolucionFecha,
+        int ambiente, CancellationToken cancellationToken = default)
+    {
+        var certObj = new { certificate = certificado.Certificate, privateKey = certificado.PrivateKey };
+
+        // 1. Armar el sobre (EnvioDTE / EnvioBOLETA). Validado localmente.
+        using var sobre = await PostAsync(Endpoints.CrearSobre, new
+        {
+            bag = new
+            {
+                xmlDocument = documentXmlBase64,
+                certificate = certObj,
+                emisor = new
+                {
+                    rut,
+                    razon_social = razonSocial,
+                    autorizacion_dte = new
+                    {
+                        fecha_resolucion = resolucionFecha?.ToString("yyyy-MM-dd") ?? "2014-08-22",
+                        numero_resolucion = resolucionNumero ?? 0
+                    }
+                }
+            }
+        }, cancellationToken);
+
+        // 2. Enviar el sobre al SII. NOTA: requiere certificado real; el contrato exacto de esta
+        // llamada debe verificarse contra maullin cuando exista el certificado.
+        using var envio = await PostAsync(Endpoints.EnviarSii, new
+        {
+            request = new { certificate = certObj, options = new { environment = ambiente } },
+            doc = sobre.RootElement.GetProperty("xml").GetString(),
+            company = rut,
+            compress = false
+        }, cancellationToken);
+
+        return BuscarTrackId(envio.RootElement);
+    }
+
+    public async Task<DteEstadoSiiResult> ConsultarEstadoSiiAsync(long trackId, DteCertificado certificado,
+        string rut, int ambiente, CancellationToken cancellationToken = default)
+    {
+        var certObj = new { certificate = certificado.Certificate, privateKey = certificado.PrivateKey };
+        using var respuesta = await PostAsync(Endpoints.EstadoSii, new
+        {
+            request = new { certificate = certObj, options = new { environment = ambiente } },
+            trackId,
+            company = rut
+        }, cancellationToken);
+
+        var json = respuesta.RootElement.GetRawText();
+        var texto = json.ToUpperInvariant();
+        var estado = texto.Contains("RECHAZ", StringComparison.Ordinal) ? "Rechazado"
+            : texto.Contains("REPARO", StringComparison.Ordinal) ? "Aceptado con reparos"
+            : texto.Contains("ACEPT", StringComparison.Ordinal) ? "Aceptado"
+            : "Enviado";
+        return new DteEstadoSiiResult { Estado = estado, RespuestaJson = json };
+    }
+
+    /// <summary>Busca recursivamente un track id (trackid/track_id/trackId) en la respuesta.</summary>
+    private static long? BuscarTrackId(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in element.EnumerateObject())
+            {
+                var name = prop.Name.Replace("_", "").ToLowerInvariant();
+                if (name is "trackid" && prop.Value.ValueKind is JsonValueKind.Number && prop.Value.TryGetInt64(out var t))
+                    return t;
+                if (name is "trackid" && prop.Value.ValueKind is JsonValueKind.String && long.TryParse(prop.Value.GetString(), out var ts))
+                    return ts;
+                var nested = BuscarTrackId(prop.Value);
+                if (nested.HasValue) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = BuscarTrackId(item);
+                if (nested.HasValue) return nested;
+            }
+        }
+        return null;
     }
 
     private static DteCertificado LeerCertificado(JsonElement data)

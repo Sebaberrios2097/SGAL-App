@@ -447,6 +447,27 @@ body {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.dte-guide-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+}
+
+@media (max-width: 720px) {
+  .dte-guide-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .dte-guide-nav {
+    display: none;
+  }
+
+  .dte-guide-body {
+    overflow-y: visible !important;
+    padding: 22px 18px !important;
+  }
+}
+
 @media (max-width: 600px) {
   .modal-content {
     padding: 20px;

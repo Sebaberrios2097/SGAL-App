@@ -78,6 +78,8 @@ builder.Services.AddHttpClient<IPointService, PointService>((sp, client) =>
 });
 
 builder.Services.AddScoped<IDteService, DteService>();
+builder.Services.AddScoped<IFacturaPdfService, FacturaPdfService>();
+builder.Services.AddHostedService<DteSiiBackgroundService>();
 
 builder.Services.AddHttpClient<ILibreDteClient, LibreDteClient>((sp, client) =>
 {
