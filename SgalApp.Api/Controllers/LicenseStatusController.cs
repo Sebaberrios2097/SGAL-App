@@ -8,7 +8,8 @@ namespace SgalApp.Api.Controllers;
 
 [ApiController]
 [Route("api/license")]
-public class LicenseStatusController(LicenseState state, IOptions<LicensingOptions> options) : ControllerBase
+public class LicenseStatusController(LicenseState state, IOptions<LicensingOptions> options,
+    ILicenseClient client) : ControllerBase
 {
     /// <summary>Estado de la licencia para el frontend (banner de prueba / pantalla de bloqueo).</summary>
     [HttpGet("status")]
@@ -28,5 +29,20 @@ public class LicenseStatusController(LicenseState state, IOptions<LicensingOptio
             modulosCompletos = state.ModulosCompletos,
             funcionalidades = state.Funcionalidades
         });
+    }
+
+    /// <summary>Fuerza una sincronización inmediata con la central.</summary>
+    [HttpPost("refresh")]
+    [Authorize]
+    public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
+    {
+        if (!options.Value.Enabled)
+            return BadRequest(new { mensaje = "El licenciamiento central no está habilitado." });
+
+        var updated = await client.ValidarAsync(cancellationToken);
+        return updated
+            ? Ok(new { mensaje = "Licencia, módulos y funcionalidades sincronizados." })
+            : StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { mensaje = "No fue posible sincronizar con la License API." });
     }
 }

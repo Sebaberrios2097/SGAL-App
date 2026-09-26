@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -27,13 +28,19 @@ public sealed class LicenseClient(
     ILogger<LicenseClient> logger) : ILicenseClient
 {
     private readonly LicensingOptions _options = options.Value;
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
-    private string CachePath()
+    private string StorageDirectory()
     {
-        var dir = Path.Combine(env.ContentRootPath, "license-cache");
+        var dir = string.IsNullOrWhiteSpace(_options.StoragePath)
+            ? Path.Combine(env.ContentRootPath, "license-data")
+            : _options.StoragePath;
         Directory.CreateDirectory(dir);
-        return Path.Combine(dir, "token.jwt");
+        return dir;
     }
+
+    private string CachePath() => Path.Combine(StorageDirectory(), "token.jwt");
+    private string IdentityPath() => Path.Combine(StorageDirectory(), "identity.json");
 
     public async Task CargarDesdeCacheAsync(CancellationToken cancellationToken = default)
     {
@@ -54,11 +61,16 @@ public sealed class LicenseClient(
 
     public async Task<bool> ValidarAsync(CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiBaseUrl)
-            || !Guid.TryParse(_options.InstallationId, out var installationId)
-            || string.IsNullOrWhiteSpace(_options.LicenseKey))
+        await _refreshLock.WaitAsync(cancellationToken);
+        try { return await ValidarCoreAsync(cancellationToken); }
+        finally { _refreshLock.Release(); }
+    }
+
+    private async Task<bool> ValidarCoreAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.ApiBaseUrl))
         {
-            logger.LogWarning("Licencia habilitada pero mal configurada (ApiBaseUrl/InstallationId/LicenseKey).");
+            logger.LogWarning("Licencia habilitada pero ApiBaseUrl no está configurada.");
             return false;
         }
 
@@ -66,10 +78,16 @@ public sealed class LicenseClient(
         {
             var client = httpClientFactory.CreateClient(nameof(LicenseClient));
             client.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+            var identity = await ResolverIdentidadAsync(client, cancellationToken);
+            if (identity == null)
+            {
+                logger.LogWarning("No fue posible activar la instalación. Configure Licensing:ActivationCode.");
+                return false;
+            }
             var payload = new
             {
-                installationId,
-                licenseKey = _options.LicenseKey,
+                installationId = identity.InstallationId,
+                licenseKey = identity.LicenseKey,
                 appVersion = "1.0.0",
                 clientTime = DateTime.UtcNow
             };
@@ -100,6 +118,45 @@ public sealed class LicenseClient(
             logger.LogWarning(ex, "No se pudo contactar la License API; se opera con el token cacheado (gracia).");
             return false;
         }
+    }
+
+    private async Task<StoredIdentity?> ResolverIdentidadAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        if (Guid.TryParse(_options.InstallationId, out var configuredId)
+            && !string.IsNullOrWhiteSpace(_options.LicenseKey))
+            return new StoredIdentity(configuredId, _options.LicenseKey.Trim());
+
+        var path = IdentityPath();
+        if (File.Exists(path))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(path, cancellationToken);
+                var stored = JsonSerializer.Deserialize<StoredIdentity>(json);
+                if (stored != null && stored.InstallationId != Guid.Empty
+                    && !string.IsNullOrWhiteSpace(stored.LicenseKey))
+                    return stored;
+            }
+            catch (Exception ex) { logger.LogWarning(ex, "No se pudo leer la identidad persistida de licencia."); }
+        }
+
+        if (string.IsNullOrWhiteSpace(_options.ActivationCode)) return null;
+        var code = _options.ActivationCode.Trim();
+        var response = await client.PostAsJsonAsync(
+            $"{_options.ApiBaseUrl.TrimEnd('/')}/api/license/activate",
+            new { activationCode = code }, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("La License API rechazó la activación inicial: {Code}.", (int)response.StatusCode);
+            return null;
+        }
+
+        var activation = await response.Content.ReadFromJsonAsync<ActivateResponse>(cancellationToken);
+        if (activation == null || activation.InstallationId == Guid.Empty) return null;
+        var identity = new StoredIdentity(activation.InstallationId, code);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(identity), cancellationToken);
+        logger.LogInformation("Instalación activada y su identidad quedó persistida.");
+        return identity;
     }
 
     /// <summary>Espejo de módulos: sobrescribe Org_Modulos.Habilitado según el token (núcleo siempre activo).</summary>
@@ -201,4 +258,6 @@ public sealed class LicenseClient(
     }
 
     private sealed record ValidateResponse(string Token, string Status, DateTime? LicenseExpiresAt, string[] Modules, string Plan, int GraceDays);
+    private sealed record ActivateResponse(Guid InstallationId);
+    private sealed record StoredIdentity(Guid InstallationId, string LicenseKey);
 }

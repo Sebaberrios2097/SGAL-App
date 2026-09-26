@@ -16,7 +16,9 @@ public sealed class LicenseRefreshHostedService(
         await client.CargarDesdeCacheAsync(stoppingToken);
         await client.ValidarAsync(stoppingToken); // Intento inicial (best-effort).
 
-        var period = TimeSpan.FromHours(Math.Max(1, options.Value.RevalidateHours));
+        var period = options.Value.RevalidateMinutes > 0
+            ? TimeSpan.FromMinutes(Math.Max(1, options.Value.RevalidateMinutes))
+            : TimeSpan.FromHours(Math.Max(1, options.Value.RevalidateHours));
         using var timer = new PeriodicTimer(period);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {

@@ -16,6 +16,7 @@ services:
       LibreDte__TimeoutSeconds: ${LIBREDTE_TIMEOUT_SECONDS:-60}
     volumes:
       - api-data-protection:/app/dp-keys
+      - api-license-data:/app/license-data
     extra_hosts:
       # Permite alcanzar un SQL Server instalado en el propio host, si aplica.
       - "host.docker.internal:host-gateway"
@@ -59,3 +60,4 @@ networks:
 
 volumes:
   api-data-protection:
+  api-license-data:

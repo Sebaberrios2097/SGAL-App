@@ -1,4 +1,4 @@
-import { Boxes, Save } from 'lucide-react';
+import { Boxes, RefreshCw, Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ModuleCatalog from '../components/ModuleCatalog';
 import { notify } from '../components/NotificationCenter';
@@ -24,6 +24,7 @@ const ModuleSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [licenseEnabled, setLicenseEnabled] = useState(false);
+  const [syncingLicense, setSyncingLicense] = useState(false);
   const [turnsRequireReconciliation, setTurnsRequireReconciliation] = useState(true);
   const [turnsAllowMultipleActive, setTurnsAllowMultipleActive] = useState(false);
   const [logbookIncludesCalibration, setLogbookIncludesCalibration] = useState(true);
@@ -94,6 +95,19 @@ const ModuleSettings = () => {
       .catch(() => {});
   }, []);
 
+  const syncLicense = async () => {
+    setSyncingLicense(true);
+    try {
+      const response = await fetch('/api/license/refresh', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.mensaje || 'No fue posible sincronizar la licencia.');
+      await refreshConfiguration();
+      await load();
+      notify.success(data.mensaje || 'Licencia sincronizada.');
+    } catch (exception) { notify.error(exception.message); }
+    finally { setSyncingLicense(false); }
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -161,7 +175,12 @@ const ModuleSettings = () => {
 
   return <div className="animate-fade-in">
     <div className="page-header"><h2 className="page-title">Módulos de la instalación</h2><Boxes color="var(--primary-color)" /></div>
-    {licenseEnabled && <div className="card" style={{ background: '#eff6ff', borderLeft: '4px solid var(--primary-color)', marginBottom: 12, fontSize: '.9rem' }}>Los módulos de esta instalación se administran desde tu <strong>licencia</strong>; los cambios aquí no se aplican. Puedes seguir ajustando las configuraciones operativas.</div>}
+    {licenseEnabled && <div className="card" style={{ background: '#eff6ff', borderLeft: '4px solid var(--primary-color)', marginBottom: 12, fontSize: '.9rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <span>Los módulos de esta instalación se administran desde tu <strong>licencia</strong>; los cambios aquí no se aplican. Puedes seguir ajustando las configuraciones operativas.</span>
+      <button type="button" className="btn btn-secondary" disabled={syncingLicense} onClick={syncLicense}>
+        <RefreshCw size={16} /> {syncingLicense ? 'Sincronizando…' : 'Sincronizar ahora'}
+      </button>
+    </div>}
     {loading ? <div className="card">Cargando módulos…</div> : <>
       <p style={{ color: 'var(--text-muted)', margin: '-4px 0 24px', maxWidth: 760 }}>
         Defina las áreas disponibles para esta instalación. Las dependencias se activan automáticamente y los módulos nucleares permanecen siempre disponibles.

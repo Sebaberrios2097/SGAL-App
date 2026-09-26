@@ -21,11 +21,20 @@ public class LicensingOptions
     /// <summary>Código de activación de esta instalación (entregado por el panel).</summary>
     public string LicenseKey { get; set; } = string.Empty;
 
+    /// <summary>Código único usado solo para el alta inicial automática.</summary>
+    public string ActivationCode { get; set; } = string.Empty;
+
     /// <summary>Clave pública ES256 (PEM) para verificar la firma del token.</summary>
     public string PublicKeyPem { get; set; } = string.Empty;
 
     /// <summary>Cada cuántas horas revalidar contra la License API.</summary>
     public int RevalidateHours { get; set; } = 12;
+
+    /// <summary>Intervalo dinámico de sincronización. Tiene prioridad sobre RevalidateHours.</summary>
+    public int RevalidateMinutes { get; set; } = 5;
+
+    /// <summary>Volumen persistente para identidad y token cacheado.</summary>
+    public string StoragePath { get; set; } = string.Empty;
 
     public int TimeoutSeconds { get; set; } = 30;
 }
