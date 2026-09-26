@@ -122,6 +122,13 @@ public static class Permissions
     public const string ReturnablesConfigure = "caja.retornables.configurar";
     public const string ReturnablesRedeem = "caja.retornables.canjear";
 
+    public const string ClientsView = "clientes.ver";
+    public const string ClientsCreate = "clientes.crear";
+    public const string ClientsEdit = "clientes.editar";
+    public const string ClientsStatusEdit = "clientes.estado.modificar";
+    public const string ClientsExport = "clientes.exportar";
+    public const string ClientsAnonymize = "clientes.anonimizar";
+
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";
     public const string LogbookConsumptionsVoid = "bitacora.consumos.anular";

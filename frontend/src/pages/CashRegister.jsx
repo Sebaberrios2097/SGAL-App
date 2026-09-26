@@ -13,6 +13,7 @@ import { buildReceiptHtml, buildReturnableVoucherHtml, printReceipt } from '../u
 import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
 import DteCheckoutFields from '../components/DteCheckoutFields';
+import ClienteSelect from '../components/ClienteSelect';
 import Spinner from '../components/Spinner';
 import { productImageUrl } from '../utils/productImage';
 import { sortPosProducts } from '../utils/posOrdering';
@@ -148,6 +149,7 @@ const CashRegister = () => {
   const [descuentoPct, setDescuentoPct] = useState(0);
   const [tipoDocumento, setTipoDocumento] = useState('boleta');
   const [receptorFactura, setReceptorFactura] = useState({ ...EMPTY_INVOICE_RECIPIENT });
+  const [idClienteVenta, setIdClienteVenta] = useState(null);
   const esFacturaSeleccionada = isInvoiceDocument(tipoDocumento);
   const [submitting, setSubmitting] = useState(false);
   // Cobro con tarjeta en la terminal (Point): { idVenta, idOrden, estado, mensaje, ... }
@@ -702,7 +704,7 @@ const CashRegister = () => {
   const finalizarCobro = async (valeCobrado, pagos, recibidoValor) => {
     const res = await fetch(`/api/cash-register/${valeCobrado.idVenta}/collect`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos, tipoDocumento, receptorFactura: esFacturaSeleccionada ? receptorFactura : null })
+      body: JSON.stringify({ porcentajeDescuento: pctDescuento(), metodosPago: pagos, tipoDocumento, receptorFactura: esFacturaSeleccionada ? receptorFactura : null, idCliente: idClienteVenta })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.mensaje || 'No fue posible cobrar el vale.');
@@ -745,6 +747,7 @@ const CashRegister = () => {
     resetPago();
     setTipoDocumento('boleta');
     setReceptorFactura({ ...EMPTY_INVOICE_RECIPIENT });
+    setIdClienteVenta(null);
     loadPending();
   };
 
@@ -783,7 +786,8 @@ const CashRegister = () => {
             montoTarjeta: tarjetaMonto,
             porcentajeDescuento: pctDescuento(),
             tipoDocumento,
-            receptorFactura: esFacturaSeleccionada ? receptorFactura : null
+            receptorFactura: esFacturaSeleccionada ? receptorFactura : null,
+            idCliente: idClienteVenta
           })
         });
         const data = await res.json();
@@ -1114,6 +1118,8 @@ const CashRegister = () => {
         <DteCheckoutFields part="recipient" documentType={tipoDocumento} onDocumentTypeChange={setTipoDocumento}
           recipient={receptorFactura} onRecipientChange={setReceptorFactura}
           canEmitExempt={can('ventas.emitir_exento')} disabled={submitting || Boolean(pointPay)} />
+
+        <ClienteSelect value={idClienteVenta} onChange={setIdClienteVenta} disabled={submitting || Boolean(pointPay)} />
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={isSplit} onChange={toggleSplit} /> Pago dividido

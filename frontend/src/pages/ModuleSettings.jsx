@@ -23,6 +23,7 @@ const ModuleSettings = () => {
   const [modules, setModules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [licenseEnabled, setLicenseEnabled] = useState(false);
   const [turnsRequireReconciliation, setTurnsRequireReconciliation] = useState(true);
   const [turnsAllowMultipleActive, setTurnsAllowMultipleActive] = useState(false);
   const [logbookIncludesCalibration, setLogbookIncludesCalibration] = useState(true);
@@ -85,7 +86,13 @@ const ModuleSettings = () => {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch('/api/license/status')
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => setLicenseEnabled(Boolean(data?.enabled)))
+      .catch(() => {});
+  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -149,10 +156,12 @@ const ModuleSettings = () => {
     || cajaRequireReconciliation !== baseline.cajaRequireReconciliation
     || cajaTipsEnabled !== baseline.cajaTipsEnabled
   );
-  const isDirty = modulesDirty || ventasSettingsDirty || cajaSettingsDirty;
+  // Con licencia central, el catálogo es informativo: solo los ajustes operativos se guardan aquí.
+  const isDirty = (!licenseEnabled && modulesDirty) || ventasSettingsDirty || cajaSettingsDirty;
 
   return <div className="animate-fade-in">
     <div className="page-header"><h2 className="page-title">Módulos de la instalación</h2><Boxes color="var(--primary-color)" /></div>
+    {licenseEnabled && <div className="card" style={{ background: '#eff6ff', borderLeft: '4px solid var(--primary-color)', marginBottom: 12, fontSize: '.9rem' }}>Los módulos de esta instalación se administran desde tu <strong>licencia</strong>; los cambios aquí no se aplican. Puedes seguir ajustando las configuraciones operativas.</div>}
     {loading ? <div className="card">Cargando módulos…</div> : <>
       <p style={{ color: 'var(--text-muted)', margin: '-4px 0 24px', maxWidth: 760 }}>
         Defina las áreas disponibles para esta instalación. Las dependencias se activan automáticamente y los módulos nucleares permanecen siempre disponibles.
@@ -160,6 +169,7 @@ const ModuleSettings = () => {
       <ModuleCatalog
         modules={modules}
         onChange={setModules}
+        readOnly={licenseEnabled}
         dirtyByCode={{ ventas: ventasSettingsDirty, caja: cajaSettingsDirty }}
         settingsByCode={{
           caja: <>
@@ -291,7 +301,11 @@ const ModuleSettings = () => {
           {isDirty
             ? <strong className="module-save-bar-unsaved"><span className="module-unsaved-dot" /> Cambios sin guardar</strong>
             : <strong>{modules.filter(module => module.habilitado).length} módulos habilitados</strong>}
-          <span>{isDirty ? 'Guarda para aplicar los cambios a la instalación.' : 'Los cambios se aplican a toda la instalación.'}</span>
+          <span>{isDirty
+            ? 'Guarda para aplicar los ajustes operativos a la instalación.'
+            : licenseEnabled
+              ? 'Los módulos reflejan la licencia central; sus ajustes operativos siguen siendo locales.'
+              : 'Los cambios se aplican a toda la instalación.'}</span>
         </div>
         <button type="button" className="btn btn-primary" disabled={saving || !isDirty} onClick={save}><Save size={17} /> {saving ? 'Guardando…' : 'Guardar configuración'}</button>
       </div>

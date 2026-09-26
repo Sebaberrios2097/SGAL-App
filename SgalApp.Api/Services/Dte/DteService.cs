@@ -143,7 +143,12 @@ public sealed class DteService : IDteService
         }
         var (cafBase64, folio, _) = reserva;
 
-        var parsedData = ConstruirParsedData(tipoDte, folio, emisor, receptor, BuildDetalle(lineas));
+        // Reconcilia el documento con lo realmente cobrado (VenVentas.MontoTotal): las líneas van a
+        // precio lleno, pero el total baja por descuento global, promociones y cortesía, y sube por
+        // el recargo de envases. El delta se declara como DscRcgGlobal para que MntTotal cuadre.
+        int ajusteGlobal = venta.MontoTotal > 0 ? lineas.Sum(l => l.Cantidad * l.Precio) - venta.MontoTotal : 0;
+        var parsedData = ConstruirParsedData(tipoDte, folio, emisor, receptor, BuildDetalle(lineas),
+            ajusteGlobal: ajusteGlobal, ajusteSobreExento: todoExento);
         var build = await _client.ConstruirAsync(parsedData, cafBase64, certificado, cancellationToken);
 
         var montos = ExtraerTotales(build.DocumentXml);
@@ -253,7 +258,11 @@ public sealed class DteService : IDteService
             }
         };
 
-        var parsedData = ConstruirParsedData(tipoNc, folio, emisor, receptor, BuildDetalle(lineas), referencias);
+        // La NC anula el mismo monto que el documento original: se reconcilia igual contra MontoTotal.
+        int ajusteGlobal = venta.MontoTotal > 0 ? lineas.Sum(l => l.Cantidad * l.Precio) - venta.MontoTotal : 0;
+        bool todoExentoNc = lineas.All(l => l.Exento);
+        var parsedData = ConstruirParsedData(tipoNc, folio, emisor, receptor, BuildDetalle(lineas), referencias,
+            ajusteGlobal: ajusteGlobal, ajusteSobreExento: todoExentoNc);
         var build = await _client.ConstruirAsync(parsedData, cafBase64, certificado, cancellationToken);
         var montos = ExtraerTotales(build.DocumentXml);
         var (estadoId, trackId) = await ResolverEnvioSiiAsync(emisorEntity, emisor, build.DocumentXml, certificado, cancellationToken);
@@ -623,8 +632,26 @@ public sealed class DteService : IDteService
             ? new { NmbItem = l.Nombre, QtyItem = l.Cantidad, PrcItem = l.Precio, IndExe = 1 }
             : new { NmbItem = l.Nombre, QtyItem = l.Cantidad, PrcItem = l.Precio })).ToArray();
 
+    /// <summary>
+    /// Nodo DscRcgGlobal (descuento/recargo global) que cuadra el documento con el total cobrado.
+    /// <paramref name="ajuste"/> = Σ(líneas) − VenVentas.MontoTotal: &gt;0 descuento (absorbe descuento
+    /// global, promociones y cortesía); &lt;0 recargo (absorbe el recargo de envases neto). Así el
+    /// MntTotal del DTE siempre iguala lo realmente cobrado, sin tocar el precio de las líneas.
+    /// <paramref name="aplicaExento"/> marca IndExeDR=1 cuando el ajuste recae sobre montos exentos.
+    /// </summary>
+    private static object[]? BuildDscRcgGlobal(int ajuste, bool aplicaExento)
+    {
+        if (ajuste == 0) return null;
+        string tpoMov = ajuste > 0 ? "D" : "R";
+        int valor = Math.Abs(ajuste);
+        return aplicaExento
+            ? [new { NroLinDR = 1, TpoMov = tpoMov, TpoValor = "$", ValorDR = valor, IndExeDR = 1 }]
+            : [new { NroLinDR = 1, TpoMov = tpoMov, TpoValor = "$", ValorDR = valor }];
+    }
+
     private static object ConstruirParsedData(
-        int tipoDte, int folio, DteEmisorData emisor, DteReceptorData receptor, object[] detalle, object[]? referencias = null)
+        int tipoDte, int folio, DteEmisorData emisor, DteReceptorData receptor, object[] detalle,
+        object[]? referencias = null, int ajusteGlobal = 0, bool ajusteSobreExento = false)
     {
         object receptorObj = string.IsNullOrWhiteSpace(receptor.Giro)
             ? new
@@ -661,6 +688,9 @@ public sealed class DteService : IDteService
             },
             ["Detalle"] = detalle
         };
+        var dscRcgGlobal = BuildDscRcgGlobal(ajusteGlobal, ajusteSobreExento);
+        if (dscRcgGlobal != null)
+            parsed["DscRcgGlobal"] = dscRcgGlobal;
         if (referencias is { Length: > 0 })
             parsed["Referencia"] = referencias;
         return parsed;

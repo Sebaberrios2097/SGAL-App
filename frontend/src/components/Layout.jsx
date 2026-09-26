@@ -33,6 +33,7 @@ import {
     X
 } from 'lucide-react';
 import { notify } from './NotificationCenter';
+import LicenseNotice from './LicenseNotice';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -75,11 +76,12 @@ const Layout = () => {
     || canOperateCaja);
   const hasAdministrativePanel = salesEnabled;
   const hasQuickNavigation = canOperateTurns || canOperateCaja;
-  const hasOperationNavigation = salesEnabled && canAny(
+  const clientesEnabled = isModuleEnabled('clientes');
+  const hasOperationNavigation = (salesEnabled && canAny(
     'turnos.propios.ver', 'bitacora.propia.ver', 'configuracion_inventario.cortesia.ver',
     'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver',
     'ventas.promociones.ver', 'operacion_diaria.ver'
-  );
+  )) || (clientesEnabled && can('clientes.ver'));
   const hasInventoryNavigation = canAny('inventario.productos.ver', 'inventario.categorias.ver')
     || (salesEnabled && canAny('inventario.descuentos.ver', 'ventas.promociones.ver'))
     || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'));
@@ -98,6 +100,15 @@ const Layout = () => {
     || hasPurchasesNavigation || hasAccessNavigation || hasSystemNavigation;
 
   const [activeTurnInfo, setActiveTurnInfo] = useState({ hasActiveTurn: false, belongsToCurrentUser: false });
+  const [lowStockCount, setLowStockCount] = useState(0);
+
+  useEffect(() => {
+    if (!can('inventario.productos.ver')) return;
+    fetch('/api/inventory-dashboard/low-stock')
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => setLowStockCount(data?.total ?? 0))
+      .catch(() => {});
+  }, [location.pathname]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -272,6 +283,7 @@ const Layout = () => {
       >
         <Icon size={18} style={{ flexShrink: 0 }} />
         <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{item.label}</span>
+        {item.badge ? <span style={{ flexShrink: 0, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{item.badge}</span> : null}
         <ChevronRight size={14} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.4 }} />
       </Link>
     );
@@ -401,6 +413,8 @@ const Layout = () => {
               {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
               {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
               {turnsEnabled && can('operacion_diaria.ver') && renderNavItem({ label: 'Operación diaria', path: '/admin/daily-operations', icon: CalendarDays })}
+              {clientesEnabled && can('clientes.ver') && renderNavItem({ label: 'Clientes', path: '/clientes', icon: Users })}
+              {canAny('inicio.dashboard.ver', 'inventario.productos.ver', 'ordenes_compra.ver') && renderNavItem({ label: 'Reportes', path: '/reports', icon: BarChart3 })}
             </> })}
 
           {renderNavGroup({ id: 'inventario', label: 'Inventario', icon: Boxes, visible: hasInventoryNavigation, children: <>
@@ -408,6 +422,7 @@ const Layout = () => {
               {salesEnabled && can('inventario.descuentos.ver') && renderNavItem({ label: 'Ofertas y descuentos', path: '/inventory', to: '/inventory?tab=offers', tab: 'offers', icon: Tags, exact: true })}
               {salesEnabled && can('ventas.promociones.ver') && renderNavItem({ label: 'Promociones', path: '/inventory', to: '/inventory?tab=promotions', tab: 'promotions', icon: Gift, exact: true })}
               {(can('inventario.productos.ver') || (materialsEnabled && can('configuracion_inventario.materias_primas.ver'))) && renderNavItem({ label: 'Control de inventario', path: '/inventory/control', icon: Boxes })}
+              {can('inventario.productos.ver') && renderNavItem({ label: 'Alertas de stock', path: '/inventory/low-stock', icon: ShieldAlert, badge: lowStockCount || undefined })}
               {can('inventario.categorias.ver') && renderNavItem({ label: 'Categorías de producto', path: '/settings/product-categories', icon: Layers })}
             </> })}
 
@@ -522,6 +537,7 @@ const Layout = () => {
 
       {/* Page Content wrapper */}
       <main className="main-content">
+        <LicenseNotice />
         <Outlet />
       </main>
     </div>

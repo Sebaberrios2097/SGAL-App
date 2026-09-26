@@ -19,6 +19,9 @@ namespace SgalApp.Api.DTOs
         public bool EsConsumoEmpleado { get; set; }
         public string TipoDocumento { get; set; } = "boleta";
         public FacturaReceptorDto? ReceptorFactura { get; set; }
+
+        /// <summary>Cliente del CRM asignado a la venta (opcional, independiente del receptor de factura).</summary>
+        public int? IdCliente { get; set; }
     }
 
     public class SalePaymentMethodDto
@@ -103,6 +106,9 @@ namespace SgalApp.Api.DTOs
         public decimal PorcentajeDescuento { get; set; }
         public string TipoDocumento { get; set; } = "boleta";
         public FacturaReceptorDto? ReceptorFactura { get; set; }
+
+        /// <summary>Cliente del CRM asignado al cobrar con tarjeta (opcional).</summary>
+        public int? IdCliente { get; set; }
     }
 
     /// <summary>Cobro en caja de un vale pendiente: descuento y métodos de pago.</summary>
@@ -114,6 +120,9 @@ namespace SgalApp.Api.DTOs
         public decimal PorcentajeDescuento { get; set; }
         public string TipoDocumento { get; set; } = "boleta";
         public FacturaReceptorDto? ReceptorFactura { get; set; }
+
+        /// <summary>Cliente del CRM asignado al cobrar (opcional).</summary>
+        public int? IdCliente { get; set; }
     }
 
     public sealed class CashSaleVoidDto

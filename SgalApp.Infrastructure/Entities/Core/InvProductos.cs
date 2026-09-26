@@ -37,6 +37,10 @@ public partial class InvProductos
 
     public int? Stock { get; set; }
 
+    /// <summary>Umbral de bajo stock propio del producto; NULL usa el default global de la organización.</summary>
+    [Column("Stock_Minimo")]
+    public int? StockMinimo { get; set; }
+
     /// <summary>El producto es un pack de otro producto (no tiene stock propio).</summary>
     [Column("Es_Pack")]
     public bool EsPack { get; set; }

@@ -10,6 +10,9 @@ namespace SgalApp.Api.DTOs
         public string? DescripcionProducto { get; set; }
         public int Precio { get; set; }
         public int? Stock { get; set; }
+
+        /// <summary>Umbral de bajo stock del producto (NULL = usar el default global).</summary>
+        public int? StockMinimo { get; set; }
         public bool RequiereReceta { get; set; }
         public string? ImagenBase64 { get; set; }
 

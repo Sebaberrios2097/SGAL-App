@@ -22,6 +22,10 @@ public class OrgConfiguracion
     [Column("Texto_Pie_Documentos"), StringLength(250)]
     public string? TextoPieDocumentos { get; set; }
 
+    /// <summary>Umbral de bajo stock por defecto de la instalación, usado cuando el producto no define el suyo.</summary>
+    [Column("Stock_Minimo_Default")]
+    public int StockMinimoDefault { get; set; } = 5;
+
     [Column("Contacto_Publico"), StringLength(160)]
     public string? ContactoPublico { get; set; }
 

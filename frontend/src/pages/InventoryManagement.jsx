@@ -70,6 +70,7 @@ const InventoryManagement = () => {
     descripcionProducto: '',
     precio: '',
     stock: '',
+    stockMinimo: '',
     requiereReceta: false,
     aceptaIngredientesExtra: false,
     esPack: false,
@@ -206,6 +207,7 @@ const InventoryManagement = () => {
       descripcionProducto: '',
       precio: '',
       stock: '',
+      stockMinimo: '',
       requiereReceta: false,
       aceptaIngredientesExtra: false,
       esPack: false,
@@ -228,6 +230,7 @@ const InventoryManagement = () => {
       descripcionProducto: prod.descripcionProducto || '',
       precio: prod.precio,
       stock: prod.stock !== null && prod.stock !== undefined ? prod.stock : '',
+      stockMinimo: prod.stockMinimo ?? '',
       requiereReceta: Boolean(prod.requiereReceta),
       aceptaIngredientesExtra: Boolean(prod.aceptaIngredientesExtra),
       esPack: Boolean(prod.esPack),
@@ -269,6 +272,7 @@ const InventoryManagement = () => {
       descripcionProducto: productForm.descripcionProducto || null,
       precio: parseInt(productForm.precio),
       stock: (productForm.esPack || productForm.requiereReceta) ? null : (productForm.stock !== '' ? parseInt(productForm.stock) : null),
+      stockMinimo: (productForm.esPack || productForm.requiereReceta) ? null : (productForm.stockMinimo !== '' ? parseInt(productForm.stockMinimo) : null),
       requiereReceta: productForm.requiereReceta,
       aceptaIngredientesExtra: productForm.aceptaIngredientesExtra,
       esPack: productForm.esPack,
@@ -570,7 +574,7 @@ const InventoryManagement = () => {
             { key: 'precio', header: 'Precio Original', sortValue: p => p.precio, cell: prod => <span style={{ fontWeight: 600 }}>${prod.precio.toLocaleString('es-CL')}</span> },
             materialsEnabled && { key: 'receta', header: 'Receta', cell: prod => prod.requiereReceta ? <span className={`badge ${prod.tieneRecetaConfigurada ? 'badge-success' : 'badge-warning'}`}>{prod.tieneRecetaConfigurada ? 'Configurada' : 'Pendiente'}</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>No requiere</span> },
             { key: 'stock', header: 'Stock', sortValue: p => (p.stock ?? -1), cell: prod => prod.stock !== null ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= 5 ? '#b91c1c' : 'var(--text-main)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: prod.stock <= (prod.stockMinimo ?? 5) ? '#b91c1c' : 'var(--text-main)' }}>
                 <Package size={14} /><span>{prod.stock}</span>
                 {prod.esPack && <span className="badge" style={{ fontSize: '0.66rem', background: '#eef2ff', color: '#4338ca' }} title={`Pack de ${prod.cantidadPack}× ${prod.nombreProductoBase || ''}`}>pack ×{prod.cantidadPack}</span>}
               </div>
@@ -717,6 +721,19 @@ const InventoryManagement = () => {
                       disabled={(materialsEnabled && productForm.requiereReceta) || productForm.esPack}
                     />
                   </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>Stock mínimo <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(alerta de bajo stock; vacío usa el umbral por defecto)</span></label>
+                  <input
+                    type="number"
+                    value={(productForm.esPack || productForm.requiereReceta) ? '' : productForm.stockMinimo}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, stockMinimo: e.target.value }))}
+                    style={inputStyle}
+                    min={0}
+                    placeholder="Umbral por defecto"
+                    disabled={(materialsEnabled && productForm.requiereReceta) || productForm.esPack}
+                  />
                 </div>
 
                 {/* Pack: el producto representa N unidades de un producto base */}

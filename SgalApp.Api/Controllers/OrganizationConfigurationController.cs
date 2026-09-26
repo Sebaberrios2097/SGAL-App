@@ -5,6 +5,8 @@ using SgalApp.Infrastructure.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using SgalApp.Api.Configuration;
 using SgalApp.Api.DTOs;
 using SgalApp.Api.Security;
 
@@ -12,7 +14,7 @@ namespace SgalApp.Api.Controllers;
 
 [ApiController]
 [Route("api/organization-configuration")]
-public sealed class OrganizationConfigurationController(SgalContext context) : ControllerBase
+public sealed class OrganizationConfigurationController(SgalContext context, IOptions<LicensingOptions> licensing) : ControllerBase
 {
     private const int SingletonId = 1;
     private const long MaxLogoBytes = 2 * 1024 * 1024;
@@ -719,6 +721,11 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
     [Permission(Permissions.SystemModulesManage)]
     public async Task<IActionResult> UpdateModules(UpdateOrganizationModulesDto dto)
     {
+        // Con licenciamiento activo, los módulos los define el token de la License API (Org_Modulos
+        // es un espejo que se sincroniza en cada check-in). Se ignoran los cambios de módulos aquí,
+        // pero los ajustes operativos (turnos/POS/caja) sí se aplican.
+        if (!licensing.Value.Enabled)
+        {
         var requested = dto.CodigosHabilitados
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim().ToLowerInvariant())
@@ -817,6 +824,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                     .SetProperty(recipe => recipe.Estado, false)
                     .SetProperty(recipe => recipe.FechaModificacion, DateTime.Now));
         }
+        } // fin del bloque de módulos (solo cuando el licenciamiento está apagado)
 
         if (dto.TurnosRequierenCuadratura.HasValue)
         {

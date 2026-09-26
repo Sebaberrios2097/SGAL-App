@@ -139,6 +139,15 @@ namespace SgalApp.Api.Services
                 sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
             }
 
+            if (dto.IdCliente is > 0)
+            {
+                var clienteExiste = await _context.VenClientes
+                    .AnyAsync(c => c.IdCliente == dto.IdCliente && !c.Anonimizado, cancellationToken);
+                if (!clienteExiste)
+                    return PointSaleResult<PointSaleStartResultDto>.Fallo("El cliente seleccionado no existe.");
+                sale.IdCliente = dto.IdCliente;
+            }
+
             _context.VenVentas.Add(sale);
             await _context.SaveChangesAsync(cancellationToken); // Generates IdVenta
 

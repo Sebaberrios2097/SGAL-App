@@ -28,6 +28,9 @@ namespace SgalApp.Api.DTOs.Point
         public string? Descripcion { get; set; }
         public string TipoDocumento { get; set; } = "boleta";
         public FacturaReceptorDto? ReceptorFactura { get; set; }
+
+        /// <summary>Cliente del CRM asignado a la venta (opcional).</summary>
+        public int? IdCliente { get; set; }
     }
 
     public class PointSaleStartResultDto

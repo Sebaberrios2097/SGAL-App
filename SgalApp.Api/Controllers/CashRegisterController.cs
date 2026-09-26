@@ -570,6 +570,15 @@ namespace SgalApp.Api.Controllers
             }
             else sale.IdClienteEmpresa = null;
 
+            if (dto.IdCliente is > 0)
+            {
+                var clienteExiste = await _context.VenClientes
+                    .AnyAsync(c => c.IdCliente == dto.IdCliente && !c.Anonimizado);
+                if (!clienteExiste)
+                    return BadRequest(new { mensaje = "El cliente seleccionado no existe." });
+                sale.IdCliente = dto.IdCliente;
+            }
+
             await _saleLines.SetExemptAsync(sale.IdVenta, esExento);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -716,6 +725,15 @@ namespace SgalApp.Api.Controllers
                 sale.IdClienteEmpresa = cliente.IdClienteEmpresa;
             }
             else sale.IdClienteEmpresa = null;
+
+            if (dto.IdCliente is > 0)
+            {
+                var clienteExiste = await _context.VenClientes
+                    .AnyAsync(c => c.IdCliente == dto.IdCliente && !c.Anonimizado, cancellationToken);
+                if (!clienteExiste)
+                    return BadRequest(new { mensaje = "El cliente seleccionado no existe." });
+                sale.IdCliente = dto.IdCliente;
+            }
 
             await _saleLines.SetExemptAsync(sale.IdVenta, esExento, cancellationToken);
             sale.MontoNeto = esExento ? 0 : (int)Math.Round(total / 1.19);

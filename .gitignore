@@ -10,6 +10,9 @@
 *.userosscache
 *.sln.docstates
 
+# Token de licencia cacheado (credencial por instalación)
+SgalApp.Api/license-cache/
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

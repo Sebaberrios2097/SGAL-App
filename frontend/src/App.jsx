@@ -26,6 +26,9 @@ import TurnsDashboard from './pages/TurnsDashboard';
 import PurchaseOrders from './pages/PurchaseOrders';
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import ProviderManagement from './pages/ProviderManagement';
+import ClienteManagement from './pages/ClienteManagement';
+import LowStockAlerts from './pages/LowStockAlerts';
+import Reports from './pages/Reports';
 import BrandingSettings from './pages/BrandingSettings';
 import BoletasSettings from './pages/BoletasSettings';
 import ModuleSettings from './pages/ModuleSettings';
@@ -252,6 +255,8 @@ function App() {
             <Route path="roles/:id/permissions" element={<PermissionRoute permission="roles.permisos.asignar"><RolePermissions /></PermissionRoute>} />
             <Route path="inventory" element={<PermissionRoute anyOf={['inventario.productos.ver','inventario.categorias.ver','inventario.descuentos.ver','ventas.promociones.ver']}><InventoryManagement /></PermissionRoute>} />
             <Route path="inventory/control" element={<PermissionRoute anyOf={['inventario.productos.ver','configuracion_inventario.materias_primas.ver']}><InventoryDashboard /></PermissionRoute>} />
+            <Route path="inventory/low-stock" element={<PermissionRoute permission="inventario.productos.ver"><LowStockAlerts /></PermissionRoute>} />
+            <Route path="reports" element={<PermissionRoute anyOf={['inicio.dashboard.ver','inventario.productos.ver','ordenes_compra.ver']}><Reports /></PermissionRoute>} />
             <Route path="inventory/products/:idProducto/recipe" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.editar"><RecipeManagement /></PermissionRoute></ModuleRoute>} />
             <Route path="recipes" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="recetas.ver"><RecipeList /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/extra-ingredients" element={<ModuleRoute required={['recetas']}><PermissionRoute permission="ingredientes_extra.ver"><ExtraIngredients /></PermissionRoute></ModuleRoute>} />
@@ -262,6 +267,7 @@ function App() {
             <Route path="purchase-orders/receptions/:id" element={<PermissionRoute permission="ordenes_compra.recibir"><PurchaseOrderReceptions /></PermissionRoute>} />
             <Route path="purchase-orders/:id" element={<PermissionRoute permission="ordenes_compra.ver"><PurchaseOrderDetail /></PermissionRoute>} />
             <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
+            <Route path="clientes" element={<ModuleRoute required={['clientes']}><PermissionRoute permission="clientes.ver"><ClienteManagement /></PermissionRoute></ModuleRoute>} />
             <Route path="admin/turn-records" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute></ModuleRoute>} />
             <Route path="admin/turns-dashboard" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute></ModuleRoute>} />
             <Route path="admin/daily-operations" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="operacion_diaria.ver"><DailyOperations /></PermissionRoute></ModuleRoute>} />

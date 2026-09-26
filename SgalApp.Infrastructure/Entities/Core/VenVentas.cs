@@ -46,6 +46,10 @@ public partial class VenVentas
     [Column("Id_Cliente_Empresa")]
     public int? IdClienteEmpresa { get; set; }
 
+    /// <summary>Cliente del CRM asignado a la venta (independiente del receptor de factura).</summary>
+    [Column("Id_Cliente")]
+    public int? IdCliente { get; set; }
+
     [Column("Id_Estado_Boleta")]
     public int? IdEstadoBoleta { get; set; }
 
@@ -89,6 +93,10 @@ public partial class VenVentas
     [ForeignKey("IdClienteEmpresa")]
     [InverseProperty("VenVentas")]
     public virtual SiiClientesEmpresa? IdClienteEmpresaNavigation { get; set; }
+
+    [ForeignKey("IdCliente")]
+    [InverseProperty("VenVentas")]
+    public virtual VenClientes? IdClienteNavigation { get; set; }
 
     [ForeignKey("IdEstadoBoleta")]
     [InverseProperty("VenVentas")]

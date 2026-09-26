@@ -36,6 +36,7 @@ import { buildReceiptHtml, buildComandaHtml } from '../utils/receiptTemplates';
 import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
 import DteCheckoutFields from '../components/DteCheckoutFields';
+import ClienteSelect from '../components/ClienteSelect';
 import Spinner from '../components/Spinner';
 import { productImageUrl } from '../utils/productImage';
 import { sortPosProducts } from '../utils/posOrdering';
@@ -210,6 +211,7 @@ const SalesView = () => {
   const [tipoDocumento, setTipoDocumento] = useState('boleta');
   const [imprimirDte, setImprimirDte] = useState(true);
   const [receptorFactura, setReceptorFactura] = useState({ ...EMPTY_INVOICE_RECIPIENT });
+  const [idClienteVenta, setIdClienteVenta] = useState(null);
   const esFacturaSeleccionada = isInvoiceDocument(tipoDocumento);
   // Consumo de empleado: modal de confirmación y de resultado (estilizados).
   const [showConsumoConfirm, setShowConsumoConfirm] = useState(false);
@@ -423,6 +425,7 @@ const SalesView = () => {
           promociones,
           porcentajeDescuento: descuentoPctEfectivo()
           ,tipoDocumento, receptorFactura: esFacturaSeleccionada ? receptorFactura : null
+          ,idCliente: idClienteVenta
         })
       });
 
@@ -523,6 +526,7 @@ const SalesView = () => {
     }, 300);
     setTipoDocumento('boleta'); setImprimirDte(true);
     setReceptorFactura({ ...EMPTY_INVOICE_RECIPIENT });
+    setIdClienteVenta(null);
   };
 
   // Con el módulo Caja: el vendedor genera la orden como vale (sin cobro) y la envía
@@ -2830,6 +2834,10 @@ const SalesView = () => {
                 <DteCheckoutFields documentType={tipoDocumento} onDocumentTypeChange={setTipoDocumento}
                   recipient={receptorFactura} onRecipientChange={setReceptorFactura}
                   canEmitExempt={can('ventas.emitir_exento')} disabled={submittingSale} />
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <ClienteSelect value={idClienteVenta} onChange={setIdClienteVenta} disabled={submittingSale} />
               </div>
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, fontSize: '.86rem' }}><input type="checkbox" checked={imprimirDte} onChange={e => setImprimirDte(e.target.checked)} /> {esFacturaSeleccionada ? 'Abrir factura para imprimir' : 'Imprimir boleta al cobrar'}</label>
 

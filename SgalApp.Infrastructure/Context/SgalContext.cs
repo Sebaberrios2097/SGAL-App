@@ -114,6 +114,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<TurTurnoDesgloseEfectivo> TurTurnoDesgloseEfectivo { get; set; }
 
+    public virtual DbSet<VenClientes> VenClientes { get; set; }
+
     public virtual DbSet<VenDetalleVenta> VenDetalleVenta { get; set; }
 
     public virtual DbSet<VenDetalleVentaMateriales> VenDetalleVentaMateriales { get; set; }
@@ -622,6 +624,11 @@ public partial class SgalContext : DbContext
         modelBuilder.Entity<VenVentas>(entity =>
         {
             entity.HasOne(d => d.IdClienteEmpresaNavigation).WithMany(p => p.VenVentas).HasConstraintName("FK_Ven_Ventas_SII_Clientes_Empresa");
+
+            entity.HasOne(d => d.IdClienteNavigation).WithMany(p => p.VenVentas)
+                .HasForeignKey(d => d.IdCliente)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_Ven_Ventas_Cliente");
 
             entity.HasOne(d => d.IdEstadoBoletaNavigation).WithMany(p => p.VenVentas).HasConstraintName("FK_Ven_Ventas_SII_Estados_Boleta");
 

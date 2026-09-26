@@ -68,6 +68,7 @@ namespace SgalApp.Api.Controllers
                     p.DescripcionProducto,
                     p.Precio,
                     p.Stock,
+                    p.StockMinimo,
                     p.EsPack,
                     p.IdProductoBase,
                     p.CantidadPack,
@@ -125,6 +126,7 @@ namespace SgalApp.Api.Controllers
                     p.DescripcionProducto,
                     p.Precio,
                     Stock = stockMostrado,
+                    p.StockMinimo,
                     p.EsPack,
                     p.IdProductoBase,
                     p.NombreProductoBase,
@@ -238,6 +240,7 @@ namespace SgalApp.Api.Controllers
                 DescripcionProducto = dto.DescripcionProducto,
                 Precio = dto.Precio,
                 Stock = dto.EsPack ? null : (dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? null : 0))),
+                StockMinimo = dto.EsPack || dto.RequiereReceta ? null : dto.StockMinimo,
                 EsPack = dto.EsPack,
                 IdProductoBase = dto.EsPack ? dto.IdProductoBase : null,
                 CantidadPack = dto.EsPack ? dto.CantidadPack : null,
@@ -339,6 +342,7 @@ namespace SgalApp.Api.Controllers
             product.DescripcionProducto = dto.DescripcionProducto;
             product.Precio = dto.Precio;
             product.Stock = dto.EsPack ? null : (dto.RequiereReceta ? null : (dto.Stock ?? (materialsEnabled ? product.Stock : 0)));
+            product.StockMinimo = dto.EsPack || dto.RequiereReceta ? null : dto.StockMinimo;
             product.EsPack = dto.EsPack;
             product.IdProductoBase = dto.EsPack ? dto.IdProductoBase : null;
             product.CantidadPack = dto.EsPack ? dto.CantidadPack : null;

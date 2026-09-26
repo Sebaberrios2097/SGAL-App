@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using SgalApp.Api.Configuration;
 using SgalApp.Api.Services;
 using SgalApp.Api.Services.Dte;
+using SgalApp.Api.Services.Licensing;
 using SgalApp.Api.Security;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -63,6 +64,14 @@ builder.Services.AddScoped<ISaleVoidService, SaleVoidService>();
 builder.Services.AddScoped<IPurchaseOrderExportService, PurchaseOrderExportService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
+// Licenciamiento (opt-in vía Licensing:Enabled). Valida contra la License API central y aplica
+// acceso + módulos según el token firmado; mientras esté apagado la app funciona igual que hoy.
+builder.Services.Configure<LicensingOptions>(builder.Configuration.GetSection(LicensingOptions.SectionName));
+builder.Services.AddSingleton<LicenseState>();
+builder.Services.AddHttpClient(nameof(LicenseClient));
+builder.Services.AddSingleton<ILicenseClient, LicenseClient>();
+builder.Services.AddHostedService<LicenseRefreshHostedService>();
+
 builder.Services.AddHttpClient<IPointService, PointService>((sp, client) =>
 {
     var pointOptions = sp.GetRequiredService<IOptions<MercadoPagoPointOptions>>().Value;
@@ -118,6 +127,9 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Bloquea las operaciones si la licencia no otorga acceso (inactivo si Licensing:Enabled = false).
+app.UseMiddleware<LicenseGateMiddleware>();
 
 app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));

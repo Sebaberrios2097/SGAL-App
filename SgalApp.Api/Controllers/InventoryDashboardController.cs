@@ -15,6 +15,8 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
     public async Task<IActionResult> GetOverview()
     {
         var since = DateTime.Today.AddDays(-30);
+        var defaultMinimo = await context.OrgConfiguracion.AsNoTracking()
+            .Select(c => (int?)c.StockMinimoDefault).FirstOrDefaultAsync() ?? 5;
         var materialsEnabled = await context.SegModulos.AsNoTracking().AnyAsync(module =>
             module.Codigo == "recetas" && module.Activo
             && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)));
@@ -42,7 +44,7 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
         var productsRaw = await context.InvProductos.AsNoTracking()
             .Where(p => p.Activo)
             .OrderBy(p => p.NombreProducto)
-            .Select(p => new { p.IdProducto, p.NombreProducto, Categoria = p.IdCategoriaProductoNavigation.NombreCategoriaProducto, p.Stock, p.Precio, p.RequiereReceta })
+            .Select(p => new { p.IdProducto, p.NombreProducto, Categoria = p.IdCategoriaProductoNavigation.NombreCategoriaProducto, p.Stock, p.StockMinimo, p.Precio, p.RequiereReceta })
             .ToListAsync();
         var products = productsRaw.Select(p =>
         {
@@ -55,7 +57,7 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
                 Entradas30Dias = productEntries.GetValueOrDefault(p.IdProducto),
                 Salidas30Dias = productExits.GetValueOrDefault(p.IdProducto),
                 PorRecibir = productPending.GetValueOrDefault(p.IdProducto),
-                Estado = !controlled ? "sin_control" : stock <= 0 ? "agotado" : stock <= 5 ? "bajo" : "disponible"
+                Estado = !controlled ? "sin_control" : stock <= 0 ? "agotado" : stock <= (p.StockMinimo ?? defaultMinimo) ? "bajo" : "disponible"
             };
         }).ToList();
 
@@ -131,6 +133,42 @@ public class InventoryDashboardController(SgalContext context) : ControllerBase
             Products = products,
             Materials = materialsEnabled ? materials.Cast<object>().ToList() : [],
             RecentEntries = recentOrders
+        });
+    }
+
+    /// <summary>
+    /// Productos en o bajo su umbral de bajo stock (Stock_Minimo del producto, o el default global
+    /// de la organización si el producto no define el suyo). Alimenta el badge y el panel de alertas.
+    /// </summary>
+    [HttpGet("low-stock")]
+    [Permission(Permissions.ProductsView)]
+    public async Task<IActionResult> GetLowStock()
+    {
+        var defaultMinimo = await context.OrgConfiguracion.AsNoTracking()
+            .Select(c => (int?)c.StockMinimoDefault).FirstOrDefaultAsync() ?? 5;
+
+        var productos = await context.InvProductos.AsNoTracking()
+            .Where(p => p.Activo && !p.EsPack && p.RequiereReceta != true && p.Stock != null
+                && p.Stock <= (p.StockMinimo ?? defaultMinimo))
+            .OrderBy(p => p.Stock).ThenBy(p => p.NombreProducto)
+            .Select(p => new
+            {
+                p.IdProducto,
+                p.NombreProducto,
+                Categoria = p.IdCategoriaProductoNavigation.NombreCategoriaProducto,
+                Stock = p.Stock ?? 0,
+                Minimo = p.StockMinimo ?? defaultMinimo,
+                Estado = (p.Stock ?? 0) <= 0 ? "agotado" : "bajo"
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            Total = productos.Count,
+            Agotados = productos.Count(x => x.Estado == "agotado"),
+            Bajos = productos.Count(x => x.Estado == "bajo"),
+            DefaultMinimo = defaultMinimo,
+            Productos = productos
         });
     }
 }
