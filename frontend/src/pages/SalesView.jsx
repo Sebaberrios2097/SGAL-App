@@ -18,12 +18,13 @@ import {
     Printer,
     RefreshCw,
     RotateCcw,
+    Search,
     ShoppingBag,
     Trash2,
     User
 } from 'lucide-react';
 import { notify, useNotificationMessage } from '../components/NotificationCenter';
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +36,9 @@ import { buildReceiptHtml, buildComandaHtml } from '../utils/receiptTemplates';
 import { tryPrintBoletaDte } from '../utils/dteBoleta';
 import PromotionSelector from '../components/PromotionSelector';
 import DteCheckoutFields from '../components/DteCheckoutFields';
+import Spinner from '../components/Spinner';
+import { productImageUrl } from '../utils/productImage';
+import { sortPosProducts } from '../utils/posOrdering';
 import { EMPTY_INVOICE_RECIPIENT, isInvoiceDocument, isInvoiceRecipientComplete } from '../utils/dteDocuments';
 
 // "Tarjeta" es una opción transitoria de la interfaz. El backend registra
@@ -54,6 +58,47 @@ const COMANDA_PENDING = '#f59e0b';        // ámbar para comandas pendientes
 const COMANDAS_POLL_MS = 12000;
 // Alineado con MercadoPagoPoint:ExpirationTime (PT5M) del backend.
 const POINT_AVISO_DEMORA_MS = 5 * 60 * 1000;
+
+const ProductCard = memo(({ product, priceInfo, selectedQuantity, blockSale, canAdd, onAdd }) => {
+  const selected = selectedQuantity > 0;
+  return (
+    <div
+      className={`pos-product-card${selected ? ' is-selected' : ''}`}
+      onClick={() => canAdd && !blockSale && onAdd(product)}
+      style={{
+        backgroundColor: selected ? 'rgba(var(--primary-rgb), .06)' : '#ffffff',
+        border: `2px solid ${selected ? 'var(--primary-color)' : '#e2e8f0'}`,
+        borderRadius: '12px', padding: '11px', display: 'flex', flexDirection: 'column', position: 'relative',
+        cursor: (blockSale || !canAdd) ? 'not-allowed' : 'pointer',
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+        boxShadow: selected ? '0 0 0 3px rgba(var(--primary-rgb), .12)' : '0 2px 8px rgba(0,0,0,0.02)',
+        opacity: blockSale ? 0.5 : 1, userSelect: 'none', contentVisibility: 'auto', containIntrinsicSize: '180px 230px'
+      }}
+    >
+      {selected && <span className="pos-product-selected-badge"><Check size={13} /> {selectedQuantity}</span>}
+      <div style={{ width: '100%', height: '110px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: '10px' }}>
+        {product.tieneImagen
+          ? <img src={productImageUrl(product)} alt={product.nombreProducto} loading="lazy" decoding="async" width="180" height="110" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <Coffee size={28} color="#94a3b8" />}
+      </div>
+      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', minHeight: '34px', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: '6px' }}>
+        {product.nombreProducto}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: blockSale ? '#b91c1c' : 'var(--text-muted)', fontWeight: 600, marginBottom: '8px' }}>
+        <Package size={12} /><span>{product.stock !== null ? `Stock: ${product.stock}` : 'Usa Receta'}</span>
+      </div>
+      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {priceInfo.hasDiscount ? <>
+          <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 700 }}>Oferta -{priceInfo.discountPct}%</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#15803d' }}>${priceInfo.finalPrice.toLocaleString('es-CL')}</span>
+            <span style={{ fontSize: '0.75rem', textDecoration: 'line-through', color: 'var(--text-muted)' }}>${priceInfo.originalPrice.toLocaleString('es-CL')}</span>
+          </div>
+        </> : <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>${product.precio.toLocaleString('es-CL')}</span>}
+      </div>
+    </div>
+  );
+});
 const buildAlternativeGroups = (product) => {
   const groups = new Map();
 
@@ -125,7 +170,9 @@ const describirRechazoPoint = (estadoOrden) => {
 const SalesView = () => {
   const { user, can, canAny } = useAuth();
   const { branding, getLogoUrl, hasLogo, getBackgroundStyle, isModuleEnabled, logbookIncludesCalibration,
-    receiptShowSeller, receiptShowPayment, receiptCustomFooter, receiptShowBarcode } = useOrganization();
+    receiptShowSeller, receiptShowPayment, receiptCustomFooter, receiptShowBarcode,
+    posGroupByCategory, posSortField, posSortDirection, posShowSearch, posShowCategories,
+    posAllowSaleWithoutStock } = useOrganization();
 
   // Opciones de personalización del comprobante compartidas por ambas impresiones.
   const receiptOptions = () => ({
@@ -145,6 +192,7 @@ const SalesView = () => {
   useDocumentTitle('Punto de Venta (POS)');
   const pointAvailability = usePointAvailability();
   const [loading, setLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [error, setError] = useNotificationMessage('error');
   const [success, setSuccess] = useNotificationMessage('success');
 
@@ -207,7 +255,11 @@ const SalesView = () => {
   const [promoCart, setPromoCart] = useState([]);
   const [catalogTab, setCatalogTab] = useState('products');
   const [extrasCatalog, setExtrasCatalog] = useState([]); // ingredientes extra activos (global)
-  const [cart, setCart] = useState([]); // { product, quantity, finalPrice }
+  const [cart, setCart] = useState([]); // { product, quantity, finalPrice, envasesRecibidos }
+  // Productos retornables (id -> { precioEnvase, medioPago }) para preguntar por el envase al agregar.
+  const [returnableMap, setReturnableMap] = useState(() => new Map());
+  // Modal de envase: { product, resolve }. resolve(true)=trajo, resolve(false)=no trajo, resolve('cancel').
+  const [envasePrompt, setEnvasePrompt] = useState(null);
   // Si != null, el carrito corresponde a un vale reescaneado que se está modificando.
   const [editingVentaId, setEditingVentaId] = useState(null);
   const [cartOpen, setCartOpen] = useState(false); // panel de carrito deslizable (móvil)
@@ -217,6 +269,7 @@ const SalesView = () => {
   const [extrasEditor, setExtrasEditor] = useState(null); // { index } de la línea editada
   const [extraChoices, setExtraChoices] = useState([]); // ids de extras seleccionados en el editor
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [productQuery, setProductQuery] = useState('');
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
@@ -262,13 +315,15 @@ const SalesView = () => {
   };
 
   const fetchCatalog = async () => {
+    setCatalogLoading(true);
     try {
-      const [prodRes, catRes, discRes, promoRes, extraRes] = await Promise.all([
+      const [prodRes, catRes, discRes, promoRes, extraRes, returnableRes] = await Promise.all([
         fetch('/api/product'),
         fetch('/api/category'),
         fetch('/api/discount'),
         fetch('/api/promotion'),
-        materialsEnabled ? fetch('/api/extra-ingredient/active') : null
+        materialsEnabled ? fetch('/api/extra-ingredient/active') : null,
+        fetch('/api/returnables/pos')
       ]);
 
       if (prodRes.ok && catRes.ok && discRes.ok) {
@@ -277,11 +332,19 @@ const SalesView = () => {
         setDiscounts(await discRes.json());
       }
       if (promoRes.ok) setPromotions(await promoRes.json());
+      // Mapa de retornables para el modal de envase (si falla, simplemente no se pregunta).
+      if (returnableRes?.ok) {
+        const returnableData = await returnableRes.json();
+        setReturnableMap(new Map((Array.isArray(returnableData) ? returnableData : [])
+          .map(x => [x.idProducto, { precioEnvase: x.precioEnvase, medioPago: x.medioPago }])));
+      } else setReturnableMap(new Map());
       // El catálogo de extras es opcional: si falla, los productos simplemente no ofrecerán extras.
       if (extraRes?.ok) setExtrasCatalog(await extraRes.json());
       else setExtrasCatalog([]);
     } catch (e) {
       console.error('Error loading catalog', e);
+    } finally {
+      setCatalogLoading(false);
     }
   };
 
@@ -298,6 +361,7 @@ const SalesView = () => {
     const items = cart.map(item => ({
       idProducto: item.product.idProducto,
       cantidad: item.quantity,
+      envasesRecibidos: item.envasesRecibidos || 0,
       seleccionesMateriales: (item.materialSelections || []).map(selection => ({
         idMateriaPrimaBase: selection.idMateriaPrimaBase,
         idMateriaPrimaSeleccionada: selection.idMateriaPrimaSeleccionada
@@ -401,6 +465,7 @@ const SalesView = () => {
       const items = cart.map(item => ({
         idProducto: item.product.idProducto,
         cantidad: item.quantity,
+        envasesRecibidos: item.envasesRecibidos || 0,
         seleccionesMateriales: (item.materialSelections || []).map(selection => ({
           idMateriaPrimaBase: selection.idMateriaPrimaBase,
           idMateriaPrimaSeleccionada: selection.idMateriaPrimaSeleccionada
@@ -435,7 +500,8 @@ const SalesView = () => {
     paymentAllocations: { ...paymentAllocations },
     cashReceived: cashReceived,
     subtotal: cart.reduce((acc, item) => acc + ((item.normalPrice ?? item.product.precio) * item.quantity), 0)
-      + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0),
+      + promoCart.reduce((acc, item) => acc + item.individualAmount * item.quantity, 0)
+      + calculateCartEnvases(),
     total: calculateCartTotal(), tipoDocumento, imprimirDte
   });
 
@@ -469,6 +535,7 @@ const SalesView = () => {
     const items = cart.map(item => ({
       idProducto: item.product.idProducto,
       cantidad: item.quantity,
+      envasesRecibidos: item.envasesRecibidos || 0,
       seleccionesMateriales: (item.materialSelections || []).map(selection => ({
         idMateriaPrimaBase: selection.idMateriaPrimaBase,
         idMateriaPrimaSeleccionada: selection.idMateriaPrimaSeleccionada
@@ -497,7 +564,9 @@ const SalesView = () => {
         normalPrice: item.normalPrice,
         finalPrice: item.finalPrice,
         materialSelections: item.materialSelections,
-        extras: item.extras
+        extras: item.extras,
+        containerCharge: (returnableMap.get(item.product.idProducto)?.precioEnvase || 0) * Math.max(0, item.quantity - (item.envasesRecibidos || 0)),
+        missingContainers: Math.max(0, item.quantity - (item.envasesRecibidos || 0))
       }));
       const subtotalBruto = cart.reduce((acc, item) => acc + (item.normalPrice * item.quantity), 0);
       const html = buildReceiptHtml({
@@ -721,7 +790,9 @@ const SalesView = () => {
       normalPrice: item.normalPrice,
       finalPrice: item.finalPrice,
       materialSelections: item.materialSelections,
-      extras: item.extras
+      extras: item.extras,
+      containerCharge: (returnableMap.get(item.product.idProducto)?.precioEnvase || 0) * Math.max(0, item.quantity - (item.envasesRecibidos || 0)),
+      missingContainers: Math.max(0, item.quantity - (item.envasesRecibidos || 0))
     }));
 
     const payments = Object.keys(saleData.paymentAllocations)
@@ -740,10 +811,15 @@ const SalesView = () => {
       productos: promotionReceiptProducts(item)
     }));
 
+    // La boleta tributaria (DTE) no incluye el depósito de envases (canje reembolsable);
+    // sus totales salen del DTE, que se arma solo con las líneas de producto. El depósito se
+    // declara aparte en la boleta (transparencia) mediante containerDeposit.
+    const dteItems = items.map(({ containerCharge, missingContainers, ...rest }) => rest);
+    const containerDeposit = items.reduce((sum, i) => sum + (i.containerCharge || 0), 0);
     // Si el módulo Boletas emitió el DTE, se imprime la boleta con timbre + la comanda aparte.
     const emitida = await tryPrintBoletaDte({
-      idVenta: saleData.idVenta, items, promotions, payments,
-      cashReceived: saleData.cashReceived, barista: saleData.barista,
+      idVenta: saleData.idVenta, items: dteItems, promotions, payments,
+      cashReceived: saleData.cashReceived, barista: saleData.barista, containerDeposit,
       logoUrl: boletaLogoUrl(), options: receiptOptions()
     });
     if (emitida) {
@@ -803,7 +879,9 @@ const SalesView = () => {
           extras: (item.ingredientesExtra || []).map(extra => ({
             nombre: extra.nombre,
             precio: extra.precio
-          }))
+          })),
+          containerCharge: item.recargoEnvases || 0,
+          missingContainers: Math.max(0, (item.cantidad || 0) - (item.envasesRecibidos || 0))
         }))
       : sale.cart.map(item => ({
           nombreProducto: item.product.nombreProducto,
@@ -811,11 +889,13 @@ const SalesView = () => {
           normalPrice: item.normalPrice,
           finalPrice: item.finalPrice,
           materialSelections: item.materialSelections,
-          extras: item.extras
+          extras: item.extras,
+          containerCharge: (returnableMap.get(item.product.idProducto)?.precioEnvase || 0) * Math.max(0, item.quantity - (item.envasesRecibidos || 0)),
+          missingContainers: Math.max(0, item.quantity - (item.envasesRecibidos || 0))
         }));
 
     const subtotal = isReprint
-      ? items.reduce((acc, item) => acc + (item.normalPrice * item.quantity), 0)
+      ? items.reduce((acc, item) => acc + (item.normalPrice * item.quantity) + (item.containerCharge || 0), 0)
         + (sale.promociones || []).reduce((acc, promo) => acc + promo.montoIndividual, 0)
       : sale.subtotal;
     const total = isReprint ? sale.montoTotal : sale.total;
@@ -847,9 +927,12 @@ const SalesView = () => {
     }
 
     // Boleta con timbre si la venta tiene DTE emitido; si no, el ticket interno.
+    // La boleta tributaria no incluye el depósito de envases (canje reembolsable), pero lo declara aparte.
+    const dteItems = items.map(({ containerCharge, missingContainers, ...rest }) => rest);
+    const containerDeposit = items.reduce((sum, i) => sum + (i.containerCharge || 0), 0);
     const emitida = await tryPrintBoletaDte({
-      idVenta: sale.idVenta, items, promotions, payments,
-      cashReceived: isReprint ? null : sale.cashReceived, barista,
+      idVenta: sale.idVenta, items: dteItems, promotions, payments,
+      cashReceived: isReprint ? null : sale.cashReceived, barista, containerDeposit,
       logoUrl: boletaLogoUrl(), options: receiptOptions()
     });
     if (emitida) return;
@@ -989,36 +1072,33 @@ const SalesView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, activeTurn?.idTurno, turnsEnabled]);
 
-  // Get active discount for a product
-  const getProductPriceInfo = (prod) => {
-    const activeDisc = discounts.find(d => {
-      if (d.idProducto !== prod.idProducto || !d.activo) return false;
-      const now = new Date();
-      const start = new Date(d.fechaInicioDescuento);
-      const end = d.fechaTerminoDescuento ? new Date(d.fechaTerminoDescuento) : null;
-      return now >= start && (!end || now <= end);
+  // Índice de precios calculado una sola vez por carga de productos/descuentos.
+  // Antes cada tarjeta recorría todos los descuentos en cada cambio del carrito.
+  const productPrices = useMemo(() => {
+    const now = Date.now();
+    const discountByProduct = new Map();
+    discounts.forEach(discount => {
+      const start = new Date(discount.fechaInicioDescuento).getTime();
+      const end = discount.fechaTerminoDescuento ? new Date(discount.fechaTerminoDescuento).getTime() : null;
+      if (discount.activo && now >= start && (!end || now <= end)) discountByProduct.set(discount.idProducto, discount);
     });
-
-    if (activeDisc) {
-      const discountVal = (prod.precio * activeDisc.porcentajeDescuento) / 100;
-      const finalPrice = Math.round(prod.precio - discountVal);
-      return {
+    return new Map(products.map(product => {
+      const discount = discountByProduct.get(product.idProducto);
+      if (!discount) return [product.idProducto, { hasDiscount: false, finalPrice: product.precio }];
+      return [product.idProducto, {
         hasDiscount: true,
-        originalPrice: prod.precio,
-        finalPrice,
-        discountPct: activeDisc.porcentajeDescuento
-      };
-    }
-
-    return {
-      hasDiscount: false,
-      finalPrice: prod.precio
-    };
-  };
+        originalPrice: product.precio,
+        finalPrice: Math.round(product.precio - (product.precio * discount.porcentajeDescuento) / 100),
+        discountPct: discount.porcentajeDescuento
+      }];
+    }));
+  }, [discounts, products]);
+  const getProductPriceInfo = useCallback(prod => productPrices.get(prod.idProducto)
+    || { hasDiscount: false, finalPrice: prod.precio }, [productPrices]);
 
   // Cart operations
   const handleAddToCart = (prod) => {
-    if (prod.stock !== null && prod.stock <= 0) return; // Out of stock
+    if (prod.stock !== null && prod.stock <= 0 && !posAllowSaleWithoutStock) return; // Sin stock (salvo que se permita vender sin stock)
 
     const alternativeGroups = materialsEnabled ? buildAlternativeGroups(prod) : [];
     if (alternativeGroups.length > 0) {
@@ -1031,6 +1111,12 @@ const SalesView = () => {
 
     addConfiguredProductToCart(prod, []);
   };
+
+  // Callback estable para que React.memo no vuelva a renderizar todas las tarjetas
+  // cuando cambia únicamente el carrito.
+  const addProductRef = useRef(handleAddToCart);
+  addProductRef.current = handleAddToCart;
+  const handleCatalogProductAdd = useCallback(product => addProductRef.current(product), []);
 
   // Reescaneo del ticket interno: carga los productos de ese vale al carrito para modificarlo.
   const loadVentaIntoCart = async (idVenta) => {
@@ -1052,6 +1138,7 @@ const SalesView = () => {
           normalPrice: d.precioNormal,
           materialSelections,
           extras,
+          envasesRecibidos: d.envasesRecibidos || 0,
           selectionSignature: getLineSignature(materialSelections, extras)
         };
       });
@@ -1091,10 +1178,24 @@ const SalesView = () => {
   // Activo solo en la vista de venta y sin modales de por medio, para no interferir.
   const scannerEnabled = viewMode === 'venta' && (!turnsEnabled || Boolean(activeTurn))
     && !showCheckoutModal && !showConsumoConfirm && !showHistoryModal && !pointPayment
-    && !productToCustomize && !extrasEditor;
+    && !productToCustomize && !extrasEditor && !envasePrompt;
   useBarcodeScanner(handleBarcodeScan, { enabled: scannerEnabled });
 
-  const addConfiguredProductToCart = (prod, materialSelections) => {
+  // Abre el modal de envase y espera la respuesta del vendedor.
+  const askEnvase = (product) => new Promise(resolve => setEnvasePrompt({ product, resolve }));
+  const answerEnvase = (value) => { const resolve = envasePrompt?.resolve; setEnvasePrompt(null); resolve?.(value); };
+
+  // Para un producto retornable pregunta si trajo el envase; para el resto no interrumpe.
+  // Devuelve { proceed, traido } — proceed=false si el vendedor cancela.
+  const resolveEnvase = async (prod) => {
+    const info = returnableMap.get(prod.idProducto);
+    if (!info) return { proceed: true, traido: null };
+    const answer = await askEnvase({ idProducto: prod.idProducto, nombreProducto: prod.nombreProducto, precioEnvase: info.precioEnvase });
+    if (answer === 'cancel') return { proceed: false };
+    return { proceed: true, traido: answer === true };
+  };
+
+  const addConfiguredProductToCart = async (prod, materialSelections) => {
     const selectionSignature = getLineSignature(materialSelections, []);
     const priceInfo = getProductPriceInfo(prod);
     const surcharge = getSelectionSurcharge(materialSelections);
@@ -1102,14 +1203,24 @@ const SalesView = () => {
       item.product.idProducto === prod.idProducto && item.selectionSignature === selectionSignature
     );
 
+    if (existingIndex > -1 && cart[existingIndex].product.stock !== null
+      && cart[existingIndex].quantity >= cart[existingIndex].product.stock && !posAllowSaleWithoutStock) {
+      notify.warning('No hay suficiente stock disponible.');
+      return;
+    }
+
+    // Producto retornable: preguntar por el envase de esta unidad (siempre, incluso si ya está en el carrito).
+    const env = await resolveEnvase(prod);
+    if (!env.proceed) return;
+    const recibidoInc = env.traido === true ? 1 : 0;
+
     if (existingIndex > -1) {
-      const currentQty = cart[existingIndex].quantity;
-      if (prod.stock !== null && currentQty >= prod.stock) {
-        notify.warning('No hay suficiente stock disponible.');
-        return;
-      }
       const updated = [...cart];
-      updated[existingIndex].quantity += 1;
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: updated[existingIndex].quantity + 1,
+        envasesRecibidos: (updated[existingIndex].envasesRecibidos || 0) + recibidoInc
+      };
       setCart(updated);
     } else {
       setCart([...cart, {
@@ -1119,6 +1230,7 @@ const SalesView = () => {
         normalPrice: prod.precio + surcharge,
         materialSelections,
         extras: [],
+        envasesRecibidos: recibidoInc,
         selectionSignature
       }]);
     }
@@ -1153,11 +1265,11 @@ const SalesView = () => {
     const updated = [...cart];
     if (twinIndex > -1) {
       const combinedQty = updated[twinIndex].quantity + line.quantity;
-      if (line.product.stock !== null && combinedQty > line.product.stock) {
+      if (line.product.stock !== null && combinedQty > line.product.stock && !posAllowSaleWithoutStock) {
         notify.warning('No hay suficiente stock disponible para combinar estas líneas.');
         return;
       }
-      updated[twinIndex] = { ...updated[twinIndex], quantity: combinedQty };
+      updated[twinIndex] = { ...updated[twinIndex], quantity: combinedQty, envasesRecibidos: (updated[twinIndex].envasesRecibidos || 0) + (line.envasesRecibidos || 0) };
       updated.splice(index, 1);
     } else {
       updated[index] = {
@@ -1192,21 +1304,34 @@ const SalesView = () => {
     setMaterialChoices({});
   };
 
-  const handleUpdateQty = (index, delta) => {
-    const updated = [...cart];
-    const item = updated[index];
+  const handleUpdateQty = async (index, delta) => {
+    const item = cart[index];
+    if (!item) return;
     const newQty = item.quantity + delta;
 
     if (newQty <= 0) {
+      const updated = [...cart];
       updated.splice(index, 1);
-    } else {
-      if (item.product.stock !== null && newQty > item.product.stock) {
-        notify.warning('No hay suficiente stock disponible.');
-        return;
-      }
-      item.quantity = newQty;
+      setCart(updated);
+      return;
     }
-    setCart(updated);
+    if (item.product.stock !== null && newQty > item.product.stock && !posAllowSaleWithoutStock) {
+      notify.warning('No hay suficiente stock disponible.');
+      return;
+    }
+    // Al subir cantidad de un retornable se vuelve a preguntar por el envase de esa unidad.
+    if (delta > 0 && returnableMap.has(item.product.idProducto)) {
+      const env = await resolveEnvase(item.product);
+      if (!env.proceed) return;
+      setCart(prev => prev.map((line, i) => i === index
+        ? { ...line, quantity: line.quantity + 1, envasesRecibidos: (line.envasesRecibidos || 0) + (env.traido ? 1 : 0) }
+        : line));
+      return;
+    }
+    setCart(prev => prev.map((line, i) => {
+      if (i !== index) return line;
+      return { ...line, quantity: newQty, envasesRecibidos: Math.min(line.envasesRecibidos || 0, newQty) };
+    }));
   };
 
   const handleRemoveFromCart = (index) => {
@@ -1224,8 +1349,17 @@ const SalesView = () => {
     return next;
   });
 
+  // Depósito de envases del carrito: (unidades sin envase) × precio del envase, por cada retornable.
+  const calculateCartEnvases = () => cart.reduce((total, item) => {
+    const info = returnableMap.get(item.product.idProducto);
+    if (!info) return total;
+    const cobrables = Math.max(0, item.quantity - (item.envasesRecibidos || 0));
+    return total + cobrables * (info.precioEnvase || 0);
+  }, 0);
+
   const calculateCartSubtotal = () => cart.reduce((total, item) => total + (item.finalPrice * item.quantity), 0)
-    + promoCart.reduce((total, item) => total + item.promotion.precio * item.quantity, 0);
+    + promoCart.reduce((total, item) => total + item.promotion.precio * item.quantity, 0)
+    + calculateCartEnvases();
 
   // Porcentaje efectivo (acotado al máximo del usuario) y monto de descuento.
   const descuentoPctEfectivo = () => Math.min(Math.max(Number(descuentoPct) || 0, 0), maxDescuento);
@@ -1234,14 +1368,21 @@ const SalesView = () => {
   // Total a cobrar ya con el descuento aplicado. El resto del flujo (pagos, impresión) lo usa tal cual.
   const calculateCartTotal = () => calculateCartSubtotal() - getDescuentoMonto();
 
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = useMemo(() => products.filter(p => {
     if (!p.activo) return false;
+    const q = posShowSearch ? productQuery.trim().toLowerCase() : '';
+    if (q && !p.nombreProducto.toLowerCase().includes(q)) return false;
     if (categoryFilter === 'all') return true;
     return p.idCategoriaProducto === parseInt(categoryFilter);
-  });
+  }), [products, posShowSearch, productQuery, categoryFilter]);
 
-  // Agrupa los productos filtrados por categoría, respetando el orden del catálogo.
-  const productGroups = (() => {
+  // Presentación del catálogo según la configuración del Punto de venta:
+  // agrupado por categoría, o lista única ordenada por el campo elegido.
+  const productGroups = useMemo(() => {
+    if (!posGroupByCategory) {
+      const sorted = sortPosProducts(filteredProducts, posSortField, posSortDirection);
+      return sorted.length ? [{ id: 'all', name: null, items: sorted }] : [];
+    }
     const groups = new Map();
     categories.filter(c => c.activo).forEach(c => groups.set(c.idCategoriaProducto, {
       id: c.idCategoriaProducto,
@@ -1255,122 +1396,14 @@ const SalesView = () => {
       else sinCategoria.items.push(p);
     });
     return [...groups.values(), sinCategoria].filter(g => g.items.length > 0);
-  })();
+  }, [categories, filteredProducts, posGroupByCategory, posSortField, posSortDirection]);
 
-  const renderProductCard = (prod) => {
-    const priceInfo = getProductPriceInfo(prod);
-    const isOutOfStock = prod.stock !== null && prod.stock <= 0;
-
-    return (
-      <div
-        key={prod.idProducto}
-        onClick={() => canAny('ventas.crear', 'ventas.crear_point') && !isOutOfStock && handleAddToCart(prod)}
-        style={{
-          backgroundColor: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '12px',
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          cursor: (isOutOfStock || !canAny('ventas.crear', 'ventas.crear_point')) ? 'not-allowed' : 'pointer',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-          opacity: isOutOfStock ? 0.5 : 1,
-          userSelect: 'none'
-        }}
-        onMouseEnter={(e) => {
-          if (!isOutOfStock) {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 14px rgba(0, 0, 0, 0.05)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isOutOfStock) {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.02)';
-          }
-        }}
-      >
-        {/* Product Thumbnail */}
-        <div style={{
-          width: '100%',
-          height: '110px',
-          borderRadius: '8px',
-          backgroundColor: '#f1f5f9',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          marginBottom: '10px'
-        }}>
-          {prod.imagenBase64 ? (
-            <img
-              src={`data:image/png;base64,${prod.imagenBase64}`}
-              alt={prod.nombreProducto}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            <Coffee size={28} color="#94a3b8" />
-          )}
-        </div>
-
-        {/* Product Name */}
-        <div style={{
-          fontSize: '0.85rem',
-          fontWeight: '700',
-          color: 'var(--text-main)',
-          minHeight: '34px',
-          lineHeight: '1.25',
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          marginBottom: '6px'
-        }}>
-          {prod.nombreProducto}
-        </div>
-
-        {/* Stock indicator */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          fontSize: '0.72rem',
-          color: isOutOfStock ? '#b91c1c' : 'var(--text-muted)',
-          fontWeight: '600',
-          marginBottom: '8px'
-        }}>
-          <Package size={12} />
-          <span>
-            {prod.stock !== null ? `Stock: ${prod.stock}` : 'Usa Receta'}
-          </span>
-        </div>
-
-        {/* Price Section */}
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {priceInfo.hasDiscount ? (
-            <>
-              <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: '700' }}>
-                Oferta -{priceInfo.discountPct}%
-              </span>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                <span style={{ fontSize: '0.95rem', fontWeight: '800', color: '#15803d' }}>
-                  ${priceInfo.finalPrice.toLocaleString('es-CL')}
-                </span>
-                <span style={{ fontSize: '0.75rem', textDecoration: 'line-through', color: 'var(--text-muted)' }}>
-                  ${priceInfo.originalPrice.toLocaleString('es-CL')}
-                </span>
-              </div>
-            </>
-          ) : (
-            <span style={{ fontSize: '0.95rem', fontWeight: '800', color: 'var(--text-main)' }}>
-              ${prod.precio.toLocaleString('es-CL')}
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  };
+  const cartQuantityByProduct = useMemo(() => {
+    const quantities = new Map();
+    cart.forEach(item => quantities.set(item.product.idProducto,
+      (quantities.get(item.product.idProducto) || 0) + item.quantity));
+    return quantities;
+  }, [cart]);
 
   // Receta (ingredientes fijos) de una línea de comanda, si el producto la usa.
   const renderComandaRecipe = (item) => {
@@ -1852,8 +1885,22 @@ const SalesView = () => {
                 <button type="button" onClick={() => setCatalogTab('products')} className={`btn ${catalogTab === 'products' ? 'btn-primary' : ''}`}>Productos</button>
                 <button type="button" onClick={() => setCatalogTab('promotions')} className={`btn ${catalogTab === 'promotions' ? 'btn-primary' : ''}`}><Gift size={16} /> Promociones</button>
               </div>
+              {/* Buscador de productos (configurable) */}
+              {catalogTab === 'products' && posShowSearch && <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexShrink: 0,
+                border: '1px solid #cbd5e1', borderRadius: '10px', padding: '8px 12px', background: '#fff'
+              }}>
+                <Search size={17} color="var(--text-muted)" />
+                <input
+                  value={productQuery}
+                  onChange={e => setProductQuery(e.target.value)}
+                  placeholder="Buscar producto…"
+                  style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', background: 'transparent' }}
+                />
+                {productQuery && <button type="button" onClick={() => setProductQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}><X size={16} /></button>}
+              </div>}
               {/* Category Filter Pills */}
-              {catalogTab === 'products' && <div style={{
+              {catalogTab === 'products' && posShowCategories && <div style={{
                 display: 'flex',
                 gap: '10px',
                 marginBottom: '20px',
@@ -1902,28 +1949,40 @@ const SalesView = () => {
               {/* Catalog Grid */}
               {catalogTab === 'promotions' ? (
                 <PromotionSelector promotions={promotions} onAdd={addPromotionToCart} />
+              ) : catalogLoading ? (
+                <Spinner label="Cargando productos…" style={{ flex: 1, padding: '40px' }} />
               ) : filteredProducts.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center', flex: 1, padding: '40px', color: 'var(--text-muted)' }}>
                   <Coffee size={40} style={{ opacity: 0.5 }} />
-                  <span style={{ marginTop: '12px' }}>No hay productos activos en esta categoría</span>
+                  <span style={{ marginTop: '12px' }}>{posShowSearch && productQuery.trim() ? 'No se encontraron productos.' : 'No hay productos activos en esta categoría'}</span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '20px' }}>
                   {productGroups.map(group => (
                     <div key={group.id}>
-                      {/* Separador de categoría */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                      {/* Separador de categoría (solo en vista agrupada) */}
+                      {group.name && <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                         <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)', margin: 0, whiteSpace: 'nowrap' }}>
                           {group.name}
                         </h3>
                         <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
-                      </div>
+                      </div>}
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
                         gap: '16px'
                       }}>
-                        {group.items.map(prod => renderProductCard(prod))}
+                        {group.items.map(prod => (
+                          <ProductCard
+                            key={prod.idProducto}
+                            product={prod}
+                            priceInfo={productPrices.get(prod.idProducto) || { hasDiscount: false, finalPrice: prod.precio }}
+                            selectedQuantity={cartQuantityByProduct.get(prod.idProducto) || 0}
+                            blockSale={prod.stock !== null && prod.stock <= 0 && !posAllowSaleWithoutStock}
+                            canAdd={canAny('ventas.crear', 'ventas.crear_point')}
+                            onAdd={handleCatalogProductAdd}
+                          />
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -2015,10 +2074,11 @@ const SalesView = () => {
                           overflow: 'hidden',
                           flexShrink: 0
                         }}>
-                          {item.product.imagenBase64 ? (
+                          {item.product.tieneImagen ? (
                             <img
-                              src={`data:image/png;base64,${item.product.imagenBase64}`}
+                              src={productImageUrl(item.product)}
                               alt={item.product.nombreProducto}
+                              loading="lazy"
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                           ) : (
@@ -2064,6 +2124,18 @@ const SalesView = () => {
                               ))}
                             </span>
                           )}
+                          {returnableMap.has(item.product.idProducto) && (() => {
+                            const info = returnableMap.get(item.product.idProducto);
+                            const traidos = item.envasesRecibidos || 0;
+                            const cobrables = Math.max(0, item.quantity - traidos);
+                            return (
+                              <span style={{ display: 'block', marginTop: '3px', fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.3, color: cobrables > 0 ? '#b45309' : '#15803d' }}>
+                                {cobrables > 0
+                                  ? `Envase: ${cobrables} × +$${(info.precioEnvase || 0).toLocaleString('es-CL')}${traidos > 0 ? ` · ${traidos} traído(s)` : ''}`
+                                  : 'Envase: todos traídos'}
+                              </span>
+                            );
+                          })()}
                           {materialsEnabled && item.product.aceptaIngredientesExtra && extrasCatalog.length > 0 && (
                             <button
                               type="button"
@@ -2337,6 +2409,27 @@ const SalesView = () => {
             <span>${calculateCartTotal().toLocaleString('es-CL')}</span>
           </button>}
         </>
+      )}
+
+      {/* MODAL: confirmación de envase para productos retornables */}
+      {envasePrompt && (
+        <div className="modal-overlay" style={{ zIndex: 1200 }}>
+          <div className="modal-content" style={{ maxWidth: '420px', padding: '26px', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 999, background: 'rgba(var(--primary-rgb), .1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+              <Package size={28} color="var(--primary-color)" />
+            </div>
+            <h3 style={{ margin: '0 0 6px' }}>¿El cliente trajo el envase?</h3>
+            <p style={{ margin: '0 0 4px', fontWeight: 800 }}>{envasePrompt.product.nombreProducto}</p>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: '0.86rem', lineHeight: 1.4 }}>
+              Si no lo trae, se agrega el depósito de <strong>${Number(envasePrompt.product.precioEnvase || 0).toLocaleString('es-CL')}</strong> por el envase.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => answerEnvase(true)}><Check size={16} /> Sí, lo trajo</button>
+              <button type="button" className="btn btn-danger" style={{ flex: 1 }} onClick={() => answerEnvase(false)}>No · +${Number(envasePrompt.product.precioEnvase || 0).toLocaleString('es-CL')}</button>
+            </div>
+            <button type="button" className="btn" style={{ marginTop: 10, width: '100%' }} onClick={() => answerEnvase('cancel')}>Cancelar</button>
+          </div>
+        </div>
       )}
 
       {/* MODAL: elección excluyente de materias primas de la receta */}

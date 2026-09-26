@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import PageHeader from '../components/PageHeader';
 import Promotions from './Promotions';
+import { productImageUrl } from '../utils/productImage';
 
 const InventoryManagement = () => {
   const { can } = useAuth();
@@ -233,7 +234,7 @@ const InventoryManagement = () => {
       idProductoBase: prod.idProductoBase ?? '',
       cantidadPack: prod.cantidadPack ?? ''
     });
-    setImagePreview(prod.imagenBase64 ? `data:image/png;base64,${prod.imagenBase64}` : null);
+    setImagePreview(prod.tieneImagen ? productImageUrl(prod) : null);
     setImageBytes(null); // Keep unchanged unless modified
     setError('');
     setSuccess('');
@@ -555,7 +556,7 @@ const InventoryManagement = () => {
           columns={[
             { key: 'imagen', header: 'Imagen', width: '60px', cell: prod => (
               <div style={{ width: '44px', height: '44px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--panel-border)', overflow: 'hidden' }}>
-                {prod.imagenBase64 ? <img src={`data:image/png;base64,${prod.imagenBase64}`} alt={prod.nombreProducto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Coffee size={20} color="var(--text-muted)" />}
+                {prod.tieneImagen ? <img src={productImageUrl(prod)} alt={prod.nombreProducto} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Coffee size={20} color="var(--text-muted)" />}
               </div>
             ) },
             { key: 'producto', header: 'Producto', sortValue: p => p.nombreProducto, cell: prod => (

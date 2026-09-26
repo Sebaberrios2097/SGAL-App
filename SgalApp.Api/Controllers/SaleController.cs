@@ -54,17 +54,22 @@ namespace SgalApp.Api.Controllers
         }
 
         [HttpPost]
-        [Permission(Permissions.SalesCreate)]
+        [Permission(Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate)]
         public async Task<IActionResult> CreateSale([FromBody] SaleCreateDto dto)
         {
             if (dto == null || ((dto.Items?.Count ?? 0) == 0 && (dto.Promociones?.Count ?? 0) == 0))
                 return BadRequest(new { mensaje = "La venta debe contener al menos un producto o promoción." });
             if (dto.EsConsumoEmpleado && (dto.Promociones?.Count ?? 0) > 0)
                 return BadRequest(new { mensaje = "Las promociones no se aplican a consumos de empleado." });
+            var userId = User.GetUserId();
+            var requiredPermission = dto.EsConsumoEmpleado
+                ? Permissions.LogbookConsumptionsCreate
+                : Permissions.SalesCreate;
+            if (!await _permissions.HasPermissionAsync(userId, requiredPermission)) return Forbid();
             if (!DteDocumentSelection.IsSupported(dto.TipoDocumento))
                 return BadRequest(new { mensaje = "Seleccione un tipo de documento válido." });
             var esExento = DteDocumentSelection.IsExempt(dto.TipoDocumento);
-            if (esExento && !await _permissions.HasPermissionAsync(User.GetUserId(), Permissions.SalesEmitExempt))
+            if (esExento && !await _permissions.HasPermissionAsync(userId, Permissions.SalesEmitExempt))
                 return StatusCode(StatusCodes.Status403Forbidden, new { mensaje = "No tiene permiso para emitir documentos exentos." });
 
             var turnsEnabled = await AreTurnsEnabledAsync();
@@ -76,7 +81,7 @@ namespace SgalApp.Api.Controllers
                 turn = await _context.TurTurno.FindAsync(dto.IdTurno.Value);
                 if (turn == null || turn.IdEstadoTurno != 1)
                     return BadRequest(new { mensaje = "El turno especificado no existe o no se encuentra abierto." });
-                if (turn.IdUsuario != User.GetUserId()) return Forbid();
+                if (turn.IdUsuario != userId) return Forbid();
             }
             else if (dto.EsConsumoEmpleado)
             {
@@ -107,7 +112,7 @@ namespace SgalApp.Api.Controllers
                 var sale = new VenVentas
                 {
                     IdTurno = idTurno,
-                    IdUsuario = User.GetUserId(),
+                    IdUsuario = userId,
                     IdBitacora = idBitacora,
                     IdEstadoVenta = EstadosVenta.Terminada,
                     FechaVenta = DateTime.Now,
@@ -115,6 +120,7 @@ namespace SgalApp.Api.Controllers
                     MontoNeto = 0,
                     MontoIva = 0
                 };
+                sale.CorrelativoDiario = await OperationalDayService.NextSaleSequenceAsync(_context, sale.FechaVenta);
 
                 if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
                 {
@@ -129,7 +135,7 @@ namespace SgalApp.Api.Controllers
                 await _context.SaveChangesAsync(); // Generates IdVenta
 
                 var lines = dto.EsConsumoEmpleado
-                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], idTurno, true, User.GetUserId(), default)
+                    ? await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], idTurno, true, userId, default)
                     : await _saleLines.BuildAsync(sale.IdVenta, dto.Items ?? [], dto.Promociones, idTurno);
                 if (!lines.EsValido)
                 {

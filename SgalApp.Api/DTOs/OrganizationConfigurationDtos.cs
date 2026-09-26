@@ -48,8 +48,24 @@ public sealed class UpdateOrganizationBrandingDto
 public sealed class UpdateOrganizationModulesDto
 {
     public List<string> CodigosHabilitados { get; set; } = [];
+    public List<string> CodigosModulosConTodasFuncionalidades { get; set; } = [];
+    public List<string> CodigosFuncionalidadesHabilitadas { get; set; } = [];
     public bool? TurnosRequierenCuadratura { get; set; }
+    public bool? TurnosPermitirMultiplesActivos { get; set; }
     public bool? BitacoraIncluyeCalibracion { get; set; }
+    // Ajustes del módulo Punto de venta.
+    public bool? PosAgruparPorCategoria { get; set; }
+    public string? PosOrdenProductos { get; set; }
+    public string? PosOrdenDireccion { get; set; }
+    public bool? PosMostrarBuscador { get; set; }
+    public bool? PosMostrarCategorias { get; set; }
+    public bool? PosPermitirVentaSinStock { get; set; }
+    // Ajustes del módulo Caja.
+    public bool? CajaMostrarBotonesEfectivo { get; set; }
+    public bool? CajaRequiereCuadratura { get; set; }
+    public bool? CajaPropinasHabilitadas { get; set; }
+    public string? JornadaHoraApertura { get; set; }
+    public string? JornadaHoraCierre { get; set; }
 }
 
 public sealed class ModuleCatalogItemDto
@@ -61,6 +77,7 @@ public sealed class ModuleCatalogItemDto
     public bool Habilitado { get; set; }
     public List<string> Dependencias { get; set; } = [];
     public int CantidadPermisos { get; set; }
+    public bool TodasFuncionalidadesHabilitadas { get; set; } = true;
     public List<ModuleFeatureDto> Funcionalidades { get; set; } = [];
 }
 
@@ -71,6 +88,7 @@ public sealed class ModuleFeatureDto
     public string? Descripcion { get; set; }
     public string Grupo { get; set; } = string.Empty;
     public bool EsCritico { get; set; }
+    public bool Habilitada { get; set; } = true;
 }
 
 public sealed class UpdateLogoLocationsDto

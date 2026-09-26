@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Building2, FileText, Mail, MapPin, Pencil, Plus, Receipt, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Building2, ChevronDown, FileText, Mail, MapPin, Pencil, Plus, Receipt, X } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import { EMPTY_INVOICE_RECIPIENT, isInvoiceDocument, isInvoiceRecipientComplete } from '../utils/dteDocuments';
 
 const DOCUMENTS = [
-  { value: 'boleta', label: 'Boleta', detail: 'Afecta · tipo 39', icon: Receipt },
-  { value: 'boleta_exenta', label: 'Boleta exenta', detail: 'Sin IVA · tipo 41', icon: Receipt, exempt: true },
-  { value: 'factura', label: 'Factura', detail: 'Afecta · tipo 33', icon: FileText, invoice: true },
-  { value: 'factura_exenta', label: 'Factura exenta', detail: 'Sin IVA · tipo 34', icon: FileText, invoice: true, exempt: true }
+  { value: 'boleta', label: 'Boleta Afecta', icon: Receipt },
+  { value: 'boleta_exenta', label: 'Boleta Exenta', icon: Receipt, exempt: true },
+  { value: 'factura', label: 'Factura Afecta', icon: FileText, invoice: true },
+  { value: 'factura_exenta', label: 'Factura Exenta', icon: FileText, invoice: true, exempt: true }
 ];
 
 const FIELDS = [
@@ -20,7 +20,12 @@ const FIELDS = [
   ['correo', 'Correo', 'facturacion@empresa.cl', false]
 ];
 
-export default function DteCheckoutFields({ documentType, onDocumentTypeChange, recipient, onRecipientChange, canEmitExempt = false, disabled = false }) {
+// `part` permite renderizar solo una sección: 'document' (selector de documento) o
+// 'recipient' (datos del receptor de factura). Sin `part` se muestran ambas (comportamiento normal).
+export default function DteCheckoutFields({ documentType, onDocumentTypeChange, recipient, onRecipientChange, canEmitExempt = false, disabled = false, collapsible = false, part }) {
+  // Modo compacto: el selector se comporta como un desplegable (DDL) con las cards.
+  const [docExpanded, setDocExpanded] = useState(false);
+  const docRef = useRef(null);
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [loadingClients, setLoadingClients] = useState(false);
@@ -38,6 +43,16 @@ export default function DteCheckoutFields({ documentType, onDocumentTypeChange, 
       setClientModalOpen(false);
     }
   }, [isInvoice]);
+
+  // Cierra el desplegable de documento al hacer clic fuera o presionar Escape.
+  useEffect(() => {
+    if (!docExpanded) return undefined;
+    const onClick = event => { if (docRef.current && !docRef.current.contains(event.target)) setDocExpanded(false); };
+    const onKey = event => { if (event.key === 'Escape') setDocExpanded(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey); };
+  }, [docExpanded]);
 
   useEffect(() => {
     setSelectedClientId(recipient?.idClienteEmpresa ? String(recipient.idClienteEmpresa) : '');
@@ -110,40 +125,93 @@ export default function DteCheckoutFields({ documentType, onDocumentTypeChange, 
     setClientModalOpen(false);
   };
 
+  const showDocument = part !== 'recipient';
+  const showRecipient = part !== 'document';
+  // Cuando solo se pide el receptor pero no es factura, no hay nada que mostrar.
+  if (part === 'recipient' && !isInvoice) return null;
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {showDocument && (
       <div>
-        <div style={{ fontSize: '.76rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-          Documento tributario
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 7 }}>
-          {DOCUMENTS.map(option => {
-            const selected = documentType === option.value;
-            const unavailable = disabled || (option.exempt && !canEmitExempt);
-            const Icon = option.icon;
-            return (
-              <button key={option.value} type="button" disabled={unavailable}
-                title={option.exempt && !canEmitExempt ? 'Tu rol no tiene permiso para emitir documentos exentos.' : undefined}
-                onClick={() => onDocumentTypeChange(option.value)}
+        {part !== 'document' && (
+          <div style={{ fontSize: '.76rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Documento tributario
+          </div>
+        )}
+        {collapsible ? (() => {
+          const selectedDoc = DOCUMENTS.find(option => option.value === documentType) || DOCUMENTS[0];
+          return (
+            <div ref={docRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+              {/* Disparador del desplegable: muestra solo el nombre del documento seleccionado */}
+              <button type="button" disabled={disabled} onClick={() => setDocExpanded(open => !open)}
+                aria-haspopup="listbox" aria-expanded={docExpanded}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, padding: '9px 10px',
-                  borderRadius: 9, textAlign: 'left', cursor: unavailable ? 'not-allowed' : 'pointer',
-                  border: selected ? '1.5px solid var(--primary-color)' : '1px solid var(--panel-border)',
-                  background: selected ? 'rgba(var(--primary-rgb), .07)' : '#fff',
-                  color: selected ? 'var(--primary-color)' : 'var(--text-main)', opacity: unavailable ? .48 : 1
+                  width: 'max-content', maxWidth: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9,
+                  textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .6 : 1,
+                  border: '1.5px solid var(--primary-color)', background: 'rgba(var(--primary-rgb), .07)'
                 }}>
-                <Icon size={17} />
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '.82rem' }}>{option.label}</strong>
-                  <small style={{ display: 'block', fontSize: '.68rem', color: 'var(--text-muted)' }}>{option.detail}</small>
-                </span>
+                <strong style={{ minWidth: 0, fontSize: '.85rem', color: 'var(--primary-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedDoc.label}</strong>
+                <ChevronDown size={17} color="var(--primary-color)" style={{ flexShrink: 0, transition: 'transform .18s', transform: docExpanded ? 'rotate(180deg)' : 'none' }} />
               </button>
-            );
-          })}
-        </div>
+              {docExpanded && (
+                <div role="listbox" style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30, width: 'max-content', minWidth: '100%', maxWidth: 'min(260px, 80vw)',
+                  display: 'grid', gap: 6, padding: 6, borderRadius: 11, background: '#fff',
+                  border: '1px solid var(--panel-border)', boxShadow: '0 14px 34px rgba(15, 23, 42, .18)'
+                }}>
+                  {DOCUMENTS.map(option => {
+                    const selected = documentType === option.value;
+                    const unavailable = option.exempt && !canEmitExempt;
+                    const Icon = option.icon;
+                    return (
+                      <button key={option.value} type="button" role="option" aria-selected={selected} disabled={unavailable}
+                        title={option.exempt && !canEmitExempt ? 'Tu rol no tiene permiso para emitir documentos exentos.' : undefined}
+                        onClick={() => { onDocumentTypeChange(option.value); setDocExpanded(false); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, padding: '10px 10px',
+                          borderRadius: 9, textAlign: 'left', cursor: unavailable ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                          border: selected ? '1.5px solid var(--primary-color)' : '1px solid var(--panel-border)',
+                          background: selected ? 'rgba(var(--primary-rgb), .07)' : '#fff',
+                          color: selected ? 'var(--primary-color)' : 'var(--text-main)', opacity: unavailable ? .48 : 1
+                        }}>
+                        <Icon size={16} style={{ flexShrink: 0 }} />
+                        <strong style={{ fontSize: '.83rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.label}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })() : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 7 }}>
+            {DOCUMENTS.map(option => {
+              const selected = documentType === option.value;
+              const unavailable = disabled || (option.exempt && !canEmitExempt);
+              const Icon = option.icon;
+              return (
+                <button key={option.value} type="button" disabled={unavailable}
+                  title={option.exempt && !canEmitExempt ? 'Tu rol no tiene permiso para emitir documentos exentos.' : undefined}
+                  onClick={() => onDocumentTypeChange(option.value)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, padding: '10px 10px',
+                    borderRadius: 9, textAlign: 'left', cursor: unavailable ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                    border: selected ? '1.5px solid var(--primary-color)' : '1px solid var(--panel-border)',
+                    background: selected ? 'rgba(var(--primary-rgb), .07)' : '#fff',
+                    color: selected ? 'var(--primary-color)' : 'var(--text-main)', opacity: unavailable ? .48 : 1
+                  }}>
+                  <Icon size={16} style={{ flexShrink: 0 }} />
+                  <strong style={{ fontSize: '.82rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.label}</strong>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+      )}
 
-      {isInvoice && (
+      {showRecipient && isInvoice && (
         <div style={{ border: '1px solid var(--panel-border)', borderRadius: 11, padding: 12, background: 'var(--bg-light)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
             <Building2 size={16} color="var(--primary-color)" />
@@ -193,7 +261,7 @@ export default function DteCheckoutFields({ documentType, onDocumentTypeChange, 
         </div>
       )}
 
-      {clientModalOpen && (
+      {showRecipient && clientModalOpen && (
         <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setClientModalOpen(false); }}
           style={{ position: 'fixed', inset: 0, zIndex: 1400, background: 'rgba(15, 23, 42, .56)', padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div role="dialog" aria-modal="true" aria-labelledby="dte-client-modal-title"

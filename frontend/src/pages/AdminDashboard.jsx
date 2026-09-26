@@ -8,6 +8,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
+import { useOrganization } from '../context/OrganizationContext';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const shortMoney = value => Math.abs(value) >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
@@ -52,6 +53,7 @@ const axisProps = { fontSize: 11, stroke: '#94a3b8', tickLine: false };
 const tooltipStyle = { fontSize: '0.8rem', borderRadius: '10px', border: '1px solid var(--panel-border)' };
 
 const AdminDashboard = () => {
+  const { cajaTipsEnabled } = useOrganization();
   const today = useMemo(() => new Date(), []);
   const [preset, setPreset] = useState('30d');
   const [customFrom, setCustomFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29)));
@@ -129,7 +131,7 @@ const AdminDashboard = () => {
         <MetricCard icon={Scale} label="Resultado" value={money(data.resultado)} detail="Ingresos − Egresos" color={data.resultado >= 0 ? '#0d8a4d' : '#dc2626'} />
         <MetricCard icon={ShoppingBag} label="Ventas" value={Number(data.cantidadVentas).toLocaleString('es-CL')} detail="Operaciones" color="#2563eb" />
         <MetricCard icon={ReceiptText} label="Ticket promedio" value={money(Math.round(data.ticketPromedio))} detail="Por venta" color="#0d8a4d" />
-        <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />
+        {cajaTipsEnabled && <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />}
         {data.turnsEnabled && <MetricCard icon={Wallet} label="Diferencia de caja" value={money(data.diferenciaCajaTotal)} detail="Sobrante/faltante" color={data.diferenciaCajaTotal === 0 ? '#0d8a4d' : '#dc2626'} />}
         {data.turnsEnabled && <MetricCard icon={CalendarDays} label="Turnos" value={data.cantidadTurnos} detail="En el período" color="#6d28d9" />}
       </div>

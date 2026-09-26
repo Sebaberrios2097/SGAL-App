@@ -182,6 +182,7 @@ namespace SgalApp.Api.Controllers
                     {
                         IdModulo = module.IdModulo,
                         Habilitado = enabled,
+                        TodasFuncionalidades = true,
                         FechaActualizacion = DateTime.UtcNow
                     });
                 else

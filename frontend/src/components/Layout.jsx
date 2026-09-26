@@ -17,6 +17,7 @@ import {
     Menu,
     Palette,
     PackageCheck,
+    PackageOpen,
     Puzzle,
     Receipt,
     Ruler,
@@ -40,12 +41,12 @@ import BrandLogo from './BrandLogo';
 
 const sidebarGroupForPath = (pathname) => {
   if (pathname === '/turn' || pathname === '/sales' || pathname === '/cash-register' || pathname.startsWith('/logbook/')) return 'rapido';
-  if (pathname === '/dashboard' || pathname.startsWith('/turn-') || pathname.startsWith('/turn/') || pathname.startsWith('/admin/turn')) return 'operacion';
+  if (pathname === '/dashboard' || pathname.startsWith('/turn-') || pathname.startsWith('/turn/') || pathname.startsWith('/admin/')) return 'operacion';
   if (pathname === '/inventory' || pathname === '/inventory/control' || pathname === '/settings/product-categories') return 'inventario';
   if (pathname.startsWith('/recipes') || pathname.startsWith('/inventory/products/') || ['/settings/raw-materials', '/settings/extra-ingredients', '/settings/units', '/settings/material-categories', '/settings/brands'].some(path => pathname.startsWith(path))) return 'recetas';
   if (pathname.startsWith('/purchase-orders') || pathname.startsWith('/providers')) return 'compras';
   if (pathname.startsWith('/employees') || pathname.startsWith('/roles')) return 'accesos';
-  if (pathname.startsWith('/settings/organization') || pathname.startsWith('/settings/modules') || pathname.startsWith('/settings/pos-machines') || pathname.startsWith('/settings/boletas')) return 'sistema';
+  if (pathname.startsWith('/settings/organization') || pathname.startsWith('/settings/modules') || pathname.startsWith('/settings/pos-machines') || pathname.startsWith('/settings/boletas') || pathname.startsWith('/settings/returnables')) return 'sistema';
   return 'operacion';
 };
 
@@ -70,13 +71,14 @@ const Layout = () => {
   const canOperateTurns = turnsEnabled && (
     canAny('turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar')
     || (logbookEnabled && can('bitacora.propia.ver'))
-    || (salesEnabled && can('ventas.operar')));
+    || (salesEnabled && can('ventas.operar'))
+    || canOperateCaja);
   const hasAdministrativePanel = salesEnabled;
   const hasQuickNavigation = canOperateTurns || canOperateCaja;
   const hasOperationNavigation = salesEnabled && canAny(
     'turnos.propios.ver', 'bitacora.propia.ver', 'configuracion_inventario.cortesia.ver',
     'inicio.dashboard.ver', 'registros_turnos.ver', 'registros_turnos.dashboard.ver',
-    'ventas.promociones.ver'
+    'ventas.promociones.ver', 'operacion_diaria.ver'
   );
   const hasInventoryNavigation = canAny('inventario.productos.ver', 'inventario.categorias.ver')
     || (salesEnabled && canAny('inventario.descuentos.ver', 'ventas.promociones.ver'))
@@ -90,6 +92,7 @@ const Layout = () => {
   const hasAccessNavigation = canAny('usuarios.ver', 'roles.ver');
   const hasSystemNavigation = canAny('configuracion_sistema.marca.ver', 'configuracion_sistema.modulos.administrar')
     || (boletasEnabled && can('configuracion_sistema.boletas.configurar'))
+    || (cajaEnabled && can('caja.retornables.configurar'))
     || Boolean(user?.esDesarrollador);
   const hasModuleGroups = hasOperationNavigation || hasInventoryNavigation || hasRecipesNavigation
     || hasPurchasesNavigation || hasAccessNavigation || hasSystemNavigation;
@@ -131,8 +134,8 @@ const Layout = () => {
 
   useEffect(() => {
     const refreshTurn = () => {
-      if (!user || !canOperateTurns) return;
-      if (user && canOperateTurns) {
+      if (!user) return;
+      if (canOperateTurns) {
         fetch(`/api/turn/active?idUsuario=${user.idUsuario}`)
         .then(res => res.json())
         .then(setActiveTurnInfo)
@@ -144,11 +147,12 @@ const Layout = () => {
     return () => window.removeEventListener('turn-status-changed', refreshTurn);
   }, [user, canOperateTurns, location.pathname]);
 
-  const isLogoutBlocked = activeTurnInfo.hasActiveTurn && activeTurnInfo.belongsToCurrentUser;
+  const ownsVendorTurn = activeTurnInfo.hasActiveTurn && activeTurnInfo.belongsToCurrentUser;
+  const isLogoutBlocked = ownsVendorTurn;
 
   const handleLogout = async () => {
     if (isLogoutBlocked) {
-      notify.warning('No puede cerrar sesión mientras tenga un turno abierto. Por favor, finalice su turno en la pantalla de ventas.');
+      notify.warning('No puede cerrar sesión mientras tenga un turno abierto. Ciérrelo desde la pantalla de Turno.');
       return;
     }
     await logout();
@@ -355,7 +359,7 @@ const Layout = () => {
           {hasQuickNavigation && <>
             {renderSectionTitle('Acceso rápido')}
               {canOperateTurns && renderNavItem({ label: 'Turno', path: '/turn', icon: Clock, exact: true })}
-              {canOperateCaja && renderNavItem({ label: 'Caja', path: '/cash-register', icon: Wallet })}
+              {ownsVendorTurn && canOperateCaja && renderNavItem({ label: 'Caja', path: '/cash-register', icon: Wallet })}
               {activeTurnInfo.hasActiveTurn && (
                 activeTurnInfo.belongsToCurrentUser ? (
                   <>
@@ -396,6 +400,7 @@ const Layout = () => {
               {can('configuracion_inventario.cortesia.ver') && renderNavItem({ label: 'Cortesía', path: '/turn/courtesy', icon: Gift })}
               {turnsEnabled && can('registros_turnos.ver') && renderNavItem(navItemsModule2[5])}
               {turnsEnabled && can('registros_turnos.dashboard.ver') && renderNavItem({ label: 'Panel de turnos', path: '/admin/turns-dashboard', icon: BarChart3 })}
+              {turnsEnabled && can('operacion_diaria.ver') && renderNavItem({ label: 'Operación diaria', path: '/admin/daily-operations', icon: CalendarDays })}
             </> })}
 
           {renderNavGroup({ id: 'inventario', label: 'Inventario', icon: Boxes, visible: hasInventoryNavigation, children: <>
@@ -430,6 +435,7 @@ const Layout = () => {
               {can('configuracion_sistema.marca.ver') && renderNavItem({ label: 'Identidad de empresa', path: '/settings/organization', icon: Palette })}
               {can('configuracion_sistema.modulos.administrar') && renderNavItem({ label: 'Módulos', path: '/settings/modules', icon: Puzzle })}
               {boletasEnabled && can('configuracion_sistema.boletas.configurar') && renderNavItem({ label: 'Boletas (SII)', path: '/settings/boletas', icon: Receipt })}
+              {cajaEnabled && can('caja.retornables.configurar') && renderNavItem({ label: 'Productos retornables', path: '/settings/returnables', icon: PackageOpen })}
               {user?.esDesarrollador && renderNavItem({ label: 'Máquinas POS', path: '/settings/pos-machines', icon: CreditCard })}
             </> })}
         </nav>

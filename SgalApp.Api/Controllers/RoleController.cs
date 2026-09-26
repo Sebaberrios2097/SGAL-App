@@ -219,11 +219,15 @@ namespace SgalApp.Api.Controllers
             var modules = await _context.SegModulos.AsNoTracking()
                 .Where(x => x.Activo
                     && (x.EsNucleo || (x.ConfiguracionOrganizacion != null && x.ConfiguracionOrganizacion.Habilitado))
-                    && x.Permisos.Any(p => p.Activo)).OrderBy(x => x.Orden)
+                    && x.Permisos.Any(p => p.Activo
+                        && (x.ConfiguracionOrganizacion == null || x.ConfiguracionOrganizacion.TodasFuncionalidades
+                            || p.ConfiguracionOrganizacion != null))).OrderBy(x => x.Orden)
                 .Select(x => new
                 {
                     x.IdModulo, x.Codigo, x.Nombre,
-                    Permisos = x.Permisos.Where(p => p.Activo).OrderBy(p => p.Nombre)
+                    Permisos = x.Permisos.Where(p => p.Activo
+                            && (x.ConfiguracionOrganizacion == null || x.ConfiguracionOrganizacion.TodasFuncionalidades
+                                || p.ConfiguracionOrganizacion != null)).OrderBy(p => p.Nombre)
                         .Select(p => new { p.IdPermiso, p.Codigo, p.Nombre, p.Descripcion, p.EsCritico })
                 }).ToListAsync();
             return Ok(modules);
@@ -259,7 +263,11 @@ namespace SgalApp.Api.Controllers
                 return NotFound(new { Mensaje = "Rol no encontrado" });
 
             var requested = dto.PermissionIds.Distinct().ToHashSet();
-            var existingPermissionIds = await _context.SegPermisos.Where(x => x.Activo && requested.Contains(x.IdPermiso))
+            var existingPermissionIds = await _context.SegPermisos.Where(x => x.Activo && requested.Contains(x.IdPermiso)
+                    && x.Modulo.Activo
+                    && (x.Modulo.EsNucleo || (x.Modulo.ConfiguracionOrganizacion != null && x.Modulo.ConfiguracionOrganizacion.Habilitado))
+                    && (x.Modulo.ConfiguracionOrganizacion == null || x.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                        || x.ConfiguracionOrganizacion != null))
                 .Select(x => x.IdPermiso).ToListAsync();
             if (existingPermissionIds.Count != requested.Count)
                 return BadRequest(new { Mensaje = "Uno o más permisos no existen o están inactivos." });
@@ -307,7 +315,11 @@ namespace SgalApp.Api.Controllers
 
             // Permisos activos: los grants a permisos legacy desactivados se dejan intactos.
             var activePermissionIds = (await _context.SegPermisos.AsNoTracking()
-                .Where(p => p.Activo).Select(p => p.IdPermiso).ToListAsync()).ToHashSet();
+                .Where(p => p.Activo && p.Modulo.Activo
+                    && (p.Modulo.EsNucleo || (p.Modulo.ConfiguracionOrganizacion != null && p.Modulo.ConfiguracionOrganizacion.Habilitado))
+                    && (p.Modulo.ConfiguracionOrganizacion == null || p.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                        || p.ConfiguracionOrganizacion != null))
+                .Select(p => p.IdPermiso).ToListAsync()).ToHashSet();
 
             var grants = await _context.SegPermisosXRol.Where(x => x.IdRolUsuario == id).ToListAsync();
             foreach (var grant in grants)

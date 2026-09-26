@@ -31,6 +31,8 @@ namespace SgalApp.Api.DTOs
     {
         public int IdProducto { get; set; }
         public int Cantidad { get; set; }
+        /// <summary>Envases vacíos entregados por el cliente para esta línea.</summary>
+        public int EnvasesRecibidos { get; set; }
         public List<SaleMaterialSelectionDto> SeleccionesMateriales { get; set; } = new();
 
         /// <summary>Ingredientes extra elegidos para esta línea (uno de cada uno, tipo sí/no).</summary>
@@ -112,6 +114,12 @@ namespace SgalApp.Api.DTOs
         public decimal PorcentajeDescuento { get; set; }
         public string TipoDocumento { get; set; } = "boleta";
         public FacturaReceptorDto? ReceptorFactura { get; set; }
+    }
+
+    public sealed class CashSaleVoidDto
+    {
+        [System.ComponentModel.DataAnnotations.StringLength(300)]
+        public string? Motivo { get; set; }
     }
 
     public sealed class FacturaReceptorDto

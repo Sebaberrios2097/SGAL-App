@@ -27,4 +27,5 @@ public class SegPermiso
     [ForeignKey(nameof(IdModulo))]
     public SegModulo Modulo { get; set; } = null!;
     public ICollection<SegPermisoRol> Roles { get; set; } = new List<SegPermisoRol>();
+    public OrgPermiso? ConfiguracionOrganizacion { get; set; }
 }

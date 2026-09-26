@@ -10,6 +10,9 @@ public class OrgModulo
 
     public bool Habilitado { get; set; }
 
+    [Column("Todas_Funcionalidades")]
+    public bool TodasFuncionalidades { get; set; } = true;
+
     [Column("Fecha_Actualizacion")]
     public DateTime FechaActualizacion { get; set; }
 

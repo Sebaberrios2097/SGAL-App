@@ -1,5 +1,5 @@
 import {
-  Boxes, Check, ChevronRight, CircleHelp, Folder, LockKeyhole, Puzzle, ShieldCheck, X
+  Boxes, Check, ChevronRight, CircleHelp, Folder, LockKeyhole, Puzzle, ShieldCheck, SlidersHorizontal, X
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
@@ -111,8 +111,9 @@ const groupFeatures = (module, features) => {
   });
 };
 
-const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCode = {} }) => {
+const ModuleCatalog = ({ modules, onChange, readOnly = false, settingsByCode = {}, dirtyByCode = {} }) => {
   const [detail, setDetail] = useState(null);
+  const [settings, setSettings] = useState(null);
   const namesByCode = useMemo(
     () => Object.fromEntries(modules.map(module => [module.codigo, module.nombre])),
     [modules]
@@ -142,9 +143,38 @@ const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCod
     }
     onChange(modules.map(module => ({
       ...module,
-      habilitado: module.esNucleo || enabled.has(module.codigo)
+      habilitado: module.esNucleo || enabled.has(module.codigo),
+      ...(!module.habilitado && enabled.has(module.codigo) ? {
+        todasFuncionalidadesHabilitadas: true,
+        funcionalidades: featuresFor(module).map(feature => ({ ...feature, habilitada: true }))
+      } : {})
     })));
   };
+
+  const updateFeatureSelection = (code, updater) => {
+    if (readOnly) return;
+    let updatedDetail = null;
+    const next = modules.map(module => {
+      if (module.codigo !== code) return module;
+      updatedDetail = updater(module);
+      return updatedDetail;
+    });
+    onChange(next);
+    if (updatedDetail) setDetail(updatedDetail);
+  };
+
+  const setAllFeatures = (module, allEnabled) => updateFeatureSelection(module.codigo, current => ({
+    ...current,
+    todasFuncionalidadesHabilitadas: allEnabled,
+    funcionalidades: featuresFor(current).map(feature => ({ ...feature, habilitada: allEnabled || feature.habilitada }))
+  }));
+
+  const toggleFeature = (module, featureCode) => updateFeatureSelection(module.codigo, current => ({
+    ...current,
+    todasFuncionalidadesHabilitadas: false,
+    funcionalidades: featuresFor(current).map(feature =>
+      feature.codigo === featureCode ? { ...feature, habilitada: !feature.habilitada } : feature)
+  }));
 
   const renderGroup = (title, description, items, core) => (
     <section className="module-group" key={title}>
@@ -187,14 +217,22 @@ const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCod
                 Requiere {module.dependencias.map(code => namesByCode[code] || code).join(', ')}
               </div>
             )}
-            {module.habilitado && configurationByCode[module.codigo] && (
-              <div className="module-inline-configuration">
-                {configurationByCode[module.codigo]}
-              </div>
-            )}
-            <button type="button" className="module-detail-button" onClick={() => setDetail(module)}>
-              Ver funcionalidades <ChevronRight size={15} />
-            </button>
+            <div className="module-card-actions">
+              <button type="button" className="module-detail-button" onClick={() => setDetail(module)}>
+                Ver funcionalidades <ChevronRight size={15} />
+              </button>
+              {module.habilitado && settingsByCode[module.codigo] && (
+                <button
+                  type="button"
+                  className={`module-settings-button ${dirtyByCode[module.codigo] ? 'has-unsaved' : ''}`}
+                  onClick={() => setSettings(module)}
+                  title={dirtyByCode[module.codigo] ? 'Tiene cambios sin guardar' : undefined}
+                >
+                  <SlidersHorizontal size={15} /> Ajustes
+                  {dirtyByCode[module.codigo] && <span className="module-unsaved-dot" />}
+                </button>
+              )}
+            </div>
           </article>
         ))}
       </div>
@@ -236,14 +274,32 @@ const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCod
             </div>
           )}
           <h3>Funcionalidades y accesos incluidos <span className="module-feature-count">{detailFeatures.length}</span></h3>
+          {detail.habilitado && detailFeatures.length > 0 && !readOnly && (
+            <div className="module-feature-mode">
+              <label className="module-inline-option">
+                <input type="radio" name={`feature-mode-${detail.codigo}`}
+                  checked={detail.todasFuncionalidadesHabilitadas !== false}
+                  onChange={() => setAllFeatures(detail, true)} />
+                <span><strong>Todas las funcionalidades</strong><small>Todo el módulo queda disponible para asignarlo a los roles.</small></span>
+              </label>
+              <label className="module-inline-option">
+                <input type="radio" name={`feature-mode-${detail.codigo}`}
+                  checked={detail.todasFuncionalidadesHabilitadas === false}
+                  onChange={() => setAllFeatures(detail, false)} />
+                <span><strong>Seleccionar funcionalidades</strong><small>Activa únicamente las capacidades que necesita esta instalación.</small></span>
+              </label>
+            </div>
+          )}
           <div className="module-feature-groups">
             {detailGroups.length ? detailGroups.map(([group, features]) => (
               <section className="module-feature-group" key={group}>
                 <div className="module-feature-group-heading"><Folder size={16} /><strong>{group}</strong><span>{features.length}</span></div>
                 <div className="module-feature-list">
                   {features.map(feature => (
-                    <div className="module-feature" key={feature.codigo}>
-                      <span><Check size={14} /></span>
+                    <div className={`module-feature ${feature.habilitada === false ? 'is-disabled' : ''}`} key={feature.codigo}>
+                      {detail.habilitado && detail.todasFuncionalidadesHabilitadas === false && !readOnly
+                        ? <input type="checkbox" checked={feature.habilitada !== false} onChange={() => toggleFeature(detail, feature.codigo)} />
+                        : <span><Check size={14} /></span>}
                       <div><strong>{feature.nombre}</strong>{feature.descripcion && <p>{feature.descripcion}</p>}{feature.esCritico && <small>Acción sensible</small>}</div>
                     </div>
                   ))}
@@ -256,6 +312,34 @@ const ModuleCatalog = ({ modules, onChange, readOnly = false, configurationByCod
             {!detail.esNucleo && !readOnly && <button type="button" className="btn btn-primary" onClick={() => { toggle(detail.codigo); setDetail(null); }}>
               {detail.habilitado ? 'Deshabilitar módulo' : 'Habilitar módulo'}
             </button>}
+          </div>
+        </section>
+      </div>
+    )}
+
+    {settings && settingsByCode[settings.codigo] && (
+      <div className="module-modal-backdrop" role="presentation" onMouseDown={() => setSettings(null)}>
+        <section
+          className="module-modal module-modal--compact"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="module-settings-title"
+          onMouseDown={event => event.stopPropagation()}
+        >
+          <button type="button" className="module-modal-close" aria-label="Cerrar" onClick={() => setSettings(null)}><X size={20} /></button>
+          <div className="module-modal-hero">
+            <div className="module-option-icon"><SlidersHorizontal size={26} /></div>
+            <div>
+              <span className="module-modal-eyebrow">Ajustes del módulo</span>
+              <h2 id="module-settings-title">{settings.nombre}</h2>
+            </div>
+          </div>
+          <div className="module-settings-body">
+            {settingsByCode[settings.codigo]}
+          </div>
+          <div className="module-modal-footer">
+            <span>Los cambios se aplican al guardar la configuración.</span>
+            <button type="button" className="btn btn-primary" onClick={() => setSettings(null)}>Listo</button>
           </div>
         </section>
       </div>

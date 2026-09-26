@@ -128,6 +128,7 @@ namespace SgalApp.Api.Services
                 MontoNeto = 0,
                 MontoIva = 0
             };
+            sale.CorrelativoDiario = await OperationalDayService.NextSaleSequenceAsync(_context, sale.FechaVenta, cancellationToken);
 
             if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
             {
@@ -313,6 +314,8 @@ namespace SgalApp.Api.Services
             registro.MarcaTarjeta = payment?.PaymentMethod?.Id ?? registro.MarcaTarjeta;
             registro.Cuotas = payment?.PaymentMethod?.Installments ?? registro.Cuotas;
             registro.MontoPagado = ParseMonto(payment?.PaidAmount ?? order.TotalPaidAmount) ?? registro.MontoPagado;
+            // Nunca se descarta una propina que la terminal ya haya cobrado: la bandera de
+            // configuración controla su disponibilidad visual, no la integridad contable.
             registro.MontoPropina = ParseMonto(payment?.TipAmount) ?? registro.MontoPropina;
             registro.FechaActualizacion = DateTime.Now;
 

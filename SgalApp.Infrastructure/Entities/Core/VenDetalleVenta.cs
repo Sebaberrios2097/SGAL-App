@@ -29,6 +29,13 @@ public partial class VenDetalleVenta
 
     public int Subtotal { get; set; }
 
+    [Column("Envases_Recibidos")]
+    public int EnvasesRecibidos { get; set; }
+    [Column("Precio_Envase")]
+    public int PrecioEnvase { get; set; }
+    [Column("Recargo_Envases")]
+    public int RecargoEnvases { get; set; }
+
     [Column("Ind_Exento")]
     public bool? IndExento { get; set; }
 

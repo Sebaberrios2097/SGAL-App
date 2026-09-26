@@ -43,6 +43,8 @@ namespace SgalApp.Api.Services
         /// <summary>Descuento total por promociones (suma de valor individual − precio de promo).
         /// <see cref="Total"/> ya contiene el precio promocional neto.</summary>
         public int DescuentoPromociones { get; init; }
+        public int RecargoEnvases { get; init; }
+        public int RecargoEnvasesSoloEfectivo { get; init; }
 
         public bool EsValido => Error == null;
     }
@@ -78,6 +80,9 @@ namespace SgalApp.Api.Services
         Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, int? idTurno, CancellationToken cancellationToken = default);
 
         Task<SaleLinesResult> ReplaceLinesAsync(int idVenta, IEnumerable<SaleItemDto> items, IEnumerable<SalePromoInstanceDto>? promociones, int? idTurno, CancellationToken cancellationToken = default);
+
+        Task<SaleLinesResult> ReplaceLinesAsConsumptionAsync(int idVenta, IEnumerable<SaleItemDto> items,
+            int idTurno, int idUsuario, CancellationToken cancellationToken = default);
     }
 
     public class SaleLinesService : ISaleLinesService
@@ -119,6 +124,8 @@ namespace SgalApp.Api.Services
 
             int total = normalResult.Total;
             int descuentoPromociones = 0;
+            int recargoEnvases = normalResult.RecargoEnvases;
+            int recargoEnvasesEfectivo = normalResult.RecargoEnvasesSoloEfectivo;
             var ahora = DateTime.Now;
 
             foreach (var instancia in promociones ?? [])
@@ -190,6 +197,11 @@ namespace SgalApp.Api.Services
                     detalle.IdVentaPromocionNavigation = ventaPromo;
 
                 total += precioPromoTotal;
+                // El precio promocional reemplaza solo el valor de productos; los depósitos de
+                // envases siguen siendo reembolsables y se cobran por separado.
+                total += promoLines.RecargoEnvases;
+                recargoEnvases += promoLines.RecargoEnvases;
+                recargoEnvasesEfectivo += promoLines.RecargoEnvasesSoloEfectivo;
                 descuentoPromociones += descuento;
             }
 
@@ -197,7 +209,9 @@ namespace SgalApp.Api.Services
             {
                 Total = total,
                 MontoCortesia = normalResult.MontoCortesia,
-                DescuentoPromociones = descuentoPromociones
+                DescuentoPromociones = descuentoPromociones,
+                RecargoEnvases = recargoEnvases,
+                RecargoEnvasesSoloEfectivo = recargoEnvasesEfectivo
             };
         }
 
@@ -205,6 +219,12 @@ namespace SgalApp.Api.Services
         {
             int total = 0;
             int montoCortesia = 0;
+            int recargoEnvasesTotal = 0;
+            int recargoEnvasesEfectivo = 0;
+            var returnableDefaults = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == 1)
+                .Select(x => new { x.RetornablesPrecioGeneral, x.RetornablesMedioPago })
+                .FirstAsync(cancellationToken);
             var materialsEnabled = await _context.SegModulos.AsNoTracking().AnyAsync(module =>
                 module.Codigo == "recetas" && module.Activo
                 && (module.EsNucleo || (module.ConfiguracionOrganizacion != null && module.ConfiguracionOrganizacion.Habilitado)),
@@ -213,6 +233,11 @@ namespace SgalApp.Api.Services
                 .Where(configuration => configuration.IdConfiguracion == 1)
                 .Select(configuration => (bool?)configuration.BitacoraIncluyeCalibracion)
                 .FirstOrDefaultAsync(cancellationToken) ?? true;
+            // Si está permitido vender sin stock, la venta procede aunque el producto quede en negativo.
+            var permitirVentaSinStock = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(configuration => configuration.IdConfiguracion == 1)
+                .Select(configuration => (bool?)configuration.PosPermitirVentaSinStock)
+                .FirstOrDefaultAsync(cancellationToken) ?? false;
 
             // Cupos de cortesía del usuario para hoy (solo para consumos de empleado). La política es
             // configurable: modo PRODUCTOS (cupo por cantidad de productos específicos, línea completa)
@@ -302,6 +327,8 @@ namespace SgalApp.Api.Services
                 {
                     return new SaleLinesResult { Error = "La cantidad de cada producto debe ser mayor que cero." };
                 }
+                if (item.EnvasesRecibidos < 0 || item.EnvasesRecibidos > item.Cantidad)
+                    return new SaleLinesResult { Error = "La cantidad de envases recibidos debe estar entre cero y la cantidad vendida." };
 
                 var prod = await _context.InvProductos
                     .FirstOrDefaultAsync(x => x.IdProducto == item.IdProducto, cancellationToken);
@@ -318,6 +345,17 @@ namespace SgalApp.Api.Services
                     PrecioNormal = prod.Precio,
                     IndExento = false
                 };
+                var returnable = await _context.VenProductosRetornables.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.IdProducto == prod.IdProducto && x.Activo, cancellationToken);
+                if (returnable != null)
+                {
+                    detail.EnvasesRecibidos = item.EnvasesRecibidos;
+                    detail.PrecioEnvase = returnable.PrecioEnvase ?? returnableDefaults.RetornablesPrecioGeneral;
+                    detail.RecargoEnvases = (item.Cantidad - item.EnvasesRecibidos) * detail.PrecioEnvase;
+                    recargoEnvasesTotal += detail.RecargoEnvases;
+                    if ((returnable.MedioPago ?? returnableDefaults.RetornablesMedioPago) == "EFECTIVO")
+                        recargoEnvasesEfectivo += detail.RecargoEnvases;
+                }
 
                 int recargoUnitario = 0;
                 var materialesAConsumir = new List<(InvMaterialesReceta Material, InvMaterialesReceta Medida, bool EsEleccionAlternativa)>();
@@ -426,14 +464,14 @@ namespace SgalApp.Api.Services
                     // El pack no tiene stock propio: descuenta N unidades del producto base.
                     var baseProd = await _context.InvProductos.FindAsync([prod.IdProductoBase.Value], cancellationToken);
                     int requerido = prod.CantidadPack.Value * item.Cantidad;
-                    if (baseProd?.Stock == null || baseProd.Stock.Value < requerido)
+                    if (baseProd?.Stock == null || (baseProd.Stock.Value < requerido && !permitirVentaSinStock))
                         return new SaleLinesResult { Error = $"Stock insuficiente del producto base para el pack {prod.NombreProducto}. Se requieren {requerido} unidades." };
                     baseProd.Stock -= requerido;
                     _context.Entry(baseProd).State = EntityState.Modified;
                 }
                 else if (prod.Stock.HasValue)
                 {
-                    if (prod.Stock.Value < item.Cantidad)
+                    if (prod.Stock.Value < item.Cantidad && !permitirVentaSinStock)
                     {
                         return new SaleLinesResult { Error = $"Stock insuficiente para el producto: {prod.NombreProducto}. Stock disponible: {prod.Stock.Value}." };
                     }
@@ -548,7 +586,7 @@ namespace SgalApp.Api.Services
                 }
 
                 montoCortesia += montoCortesiaLinea;
-                total += subtotal - montoCortesiaLinea;
+                total += subtotal - montoCortesiaLinea + detail.RecargoEnvases;
 
                 detail.EsCortesia = montoCortesiaLinea > 0;
                 detail.MontoCortesia = montoCortesiaLinea;
@@ -559,7 +597,7 @@ namespace SgalApp.Api.Services
                 _context.VenDetalleVenta.Add(detail);
             }
 
-            return new SaleLinesResult { Total = total, MontoCortesia = montoCortesia };
+            return new SaleLinesResult { Total = total, MontoCortesia = montoCortesia, RecargoEnvases = recargoEnvasesTotal, RecargoEnvasesSoloEfectivo = recargoEnvasesEfectivo };
         }
 
         /// <summary>
@@ -602,6 +640,29 @@ namespace SgalApp.Api.Services
             await _context.SaveChangesAsync(cancellationToken);
 
             return await BuildAsync(idVenta, items, promociones, idTurno, cancellationToken);
+        }
+
+        public async Task<SaleLinesResult> ReplaceLinesAsConsumptionAsync(int idVenta, IEnumerable<SaleItemDto> items,
+            int idTurno, int idUsuario, CancellationToken cancellationToken = default)
+        {
+            await RestoreStockAsync(idVenta, cancellationToken);
+
+            var detalles = await _context.VenDetalleVenta
+                .Include(d => d.VenDetalleVentaMateriales)
+                .Include(d => d.VenDetalleVentaIngrediente)
+                .Where(d => d.IdVenta == idVenta)
+                .ToListAsync(cancellationToken);
+            foreach (var detalle in detalles)
+            {
+                _context.VenDetalleVentaMateriales.RemoveRange(detalle.VenDetalleVentaMateriales);
+                _context.VenDetalleVentaIngrediente.RemoveRange(detalle.VenDetalleVentaIngrediente);
+            }
+            _context.VenDetalleVenta.RemoveRange(detalles);
+            var promociones = await _context.VenVentaPromociones.Where(p => p.IdVenta == idVenta).ToListAsync(cancellationToken);
+            _context.VenVentaPromociones.RemoveRange(promociones);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return await BuildAsync(idVenta, items, idTurno, true, idUsuario, cancellationToken);
         }
 
         public async Task RestoreStockAsync(int idVenta, CancellationToken cancellationToken = default)

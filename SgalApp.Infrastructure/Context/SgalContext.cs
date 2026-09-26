@@ -32,6 +32,8 @@ public partial class SgalContext : DbContext
 
     public virtual DbSet<OrgModulo> OrgModulos { get; set; }
 
+    public virtual DbSet<OrgPermiso> OrgPermisos { get; set; }
+
     public virtual DbSet<OrgLogo> OrgLogos { get; set; }
 
     public virtual DbSet<OrgLogoUbicacion> OrgLogosUbicaciones { get; set; }
@@ -125,6 +127,9 @@ public partial class SgalContext : DbContext
     public virtual DbSet<VenOrdenesPoint> VenOrdenesPoint { get; set; }
 
     public virtual DbSet<VenVentas> VenVentas { get; set; }
+    public virtual DbSet<VenProductoRetornable> VenProductosRetornables { get; set; }
+    public virtual DbSet<VenValeEnvase> VenValesEnvases { get; set; }
+    public virtual DbSet<VenValeEnvaseDetalle> VenValesEnvasesDetalle { get; set; }
 
     public virtual DbSet<IntMaquinaPos> IntMaquinasPos { get; set; }
 
@@ -193,6 +198,17 @@ public partial class SgalContext : DbContext
                 .HasForeignKey<OrgModulo>(x => x.IdModulo)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_Org_Modulos_Seg_Modulos");
+        });
+
+        modelBuilder.Entity<OrgPermiso>(entity =>
+        {
+            entity.HasKey(x => x.IdPermiso);
+            entity.Property(x => x.FechaActualizacion).HasDefaultValueSql("GETDATE()");
+            entity.HasOne(x => x.Permiso)
+                .WithOne(x => x.ConfiguracionOrganizacion)
+                .HasForeignKey<OrgPermiso>(x => x.IdPermiso)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Org_Permisos_Seg_Permisos");
         });
 
         modelBuilder.Entity<OrgLogo>(entity =>

@@ -48,6 +48,13 @@ namespace SgalApp.Api.Controllers
                 .ToListAsync();
             var recetaPorProducto = recetas.ToDictionary(r => r.IdProducto);
 
+            // Unidades vendidas por producto (para ordenar el catálogo del POS por "más vendido").
+            // Un GROUP BY único evita una subconsulta correlacionada por cada producto.
+            var ventasPorProducto = await _context.VenDetalleVenta.AsNoTracking()
+                .GroupBy(d => d.IdProducto)
+                .Select(g => new { IdProducto = g.Key, Total = g.Sum(d => d.Cantidad) })
+                .ToDictionaryAsync(g => g.IdProducto, g => g.Total);
+
             var products = await _context.InvProductos
                 .Include(p => p.IdCategoriaProductoNavigation)
                 .OrderByDescending(p => p.FechaIngreso)
@@ -72,7 +79,10 @@ namespace SgalApp.Api.Controllers
                     p.FechaIngreso,
                     p.Activo,
                     p.FechaModificacion,
-                    ImagenBase64 = p.Imagen != null ? Convert.ToBase64String(p.Imagen) : null
+                    // No se serializa la imagen aquí: con miles de productos, incrustar los blobs
+                    // en base64 infla el JSON y dispara el tiempo de carga. El listado solo indica
+                    // si hay imagen; cada una se sirve bajo demanda por GET api/product/{id}/image.
+                    TieneImagen = p.Imagen != null
                 })
                 .ToListAsync();
 
@@ -127,12 +137,46 @@ namespace SgalApp.Api.Controllers
                     p.FechaIngreso,
                     p.Activo,
                     p.FechaModificacion,
-                    p.ImagenBase64
+                    p.TieneImagen,
+                    VecesVendido = ventasPorProducto.TryGetValue(p.IdProducto, out var vendido) ? vendido : 0
                 };
             }).ToList();
 
             return Ok(result);
         }
+
+        // Sirve la imagen de un producto bajo demanda. Se consulta solo el blob del producto
+        // pedido (no todos), y se cachea en el navegador para no re-descargarla en cada carga.
+        [HttpGet("{id}/image")]
+        [Permission(Permissions.ProductsView + "|" + Permissions.SalesOperate + "|" + Permissions.SalesCreate + "|" + Permissions.LogbookConsumptionsCreate + "|" + Permissions.CajaCollect)]
+        [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
+        public async Task<IActionResult> GetProductImage(int id)
+        {
+            var producto = await _context.InvProductos.AsNoTracking()
+                .Where(p => p.IdProducto == id && p.Imagen != null)
+                .Select(p => new { p.Imagen, p.FechaModificacion, p.FechaIngreso })
+                .FirstOrDefaultAsync();
+
+            if (producto?.Imagen == null || producto.Imagen.Length == 0)
+                return NotFound();
+
+            // ETag basado en la última modificación: si el navegador ya tiene la versión
+            // vigente responde 304 sin reenviar los bytes.
+            var version = producto.FechaModificacion ?? producto.FechaIngreso;
+            var etag = $"\"{id}-{version.Ticks}\"";
+            if (Request.Headers.IfNoneMatch == etag)
+                return StatusCode(StatusCodes.Status304NotModified);
+
+            Response.Headers.ETag = etag;
+            return File(producto.Imagen, DetectImageContentType(producto.Imagen));
+        }
+
+        // Las imágenes se guardan como bytes sin tipo MIME; se infiere de la firma del archivo.
+        private static string DetectImageContentType(byte[] bytes) =>
+            bytes.Length >= 8
+                && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+                ? "image/png"
+                : "image/jpeg";
 
         [HttpPost]
         [Permission(Permissions.ProductsCreate)]
@@ -222,7 +266,7 @@ namespace SgalApp.Api.Controllers
                 TieneRecetaConfigurada = false,
                 product.FechaIngreso,
                 product.Activo,
-                ImagenBase64 = product.Imagen != null ? Convert.ToBase64String(product.Imagen) : null
+                TieneImagen = product.Imagen != null
             });
         }
 
@@ -332,7 +376,7 @@ namespace SgalApp.Api.Controllers
                 product.FechaIngreso,
                 product.Activo,
                 product.FechaModificacion,
-                ImagenBase64 = product.Imagen != null ? Convert.ToBase64String(product.Imagen) : null
+                TieneImagen = product.Imagen != null
             });
         }
 
@@ -390,7 +434,7 @@ namespace SgalApp.Api.Controllers
                 product.FechaIngreso,
                 product.Activo,
                 product.FechaModificacion,
-                ImagenBase64 = product.Imagen != null ? Convert.ToBase64String(product.Imagen) : null
+                TieneImagen = product.Imagen != null
             });
         }
     }

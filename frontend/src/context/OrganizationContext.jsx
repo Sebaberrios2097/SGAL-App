@@ -14,7 +14,18 @@ const defaultBranding = {
   boletaMuestraVendedor: true,
   boletaMuestraPago: true,
   boletaColaPersonalizada: null,
-  valeIncluyeCodigoBarra: false
+  valeIncluyeCodigoBarra: false,
+  posAgruparPorCategoria: true,
+  posOrdenProductos: 'nombre',
+  posOrdenDireccion: 'asc',
+  posMostrarBuscador: true,
+  posMostrarCategorias: true,
+  posPermitirVentaSinStock: false,
+  cajaMostrarBotonesEfectivo: true,
+  cajaRequiereCuadratura: true,
+  cajaPropinasHabilitadas: false,
+  jornadaHoraApertura: '06:00:00',
+  jornadaHoraCierre: '02:00:00'
 };
 
 const OrganizationContext = createContext(null);
@@ -98,6 +109,17 @@ export const OrganizationProvider = ({ children }) => {
     receiptShowPayment: branding.boletaMuestraPago ?? true,
     receiptCustomFooter: branding.boletaColaPersonalizada ?? null,
     receiptShowBarcode: branding.valeIncluyeCodigoBarra ?? false,
+    posGroupByCategory: branding.posAgruparPorCategoria ?? true,
+    posSortField: branding.posOrdenProductos ?? 'nombre',
+    posSortDirection: branding.posOrdenDireccion ?? 'asc',
+    posShowSearch: branding.posMostrarBuscador ?? true,
+    posShowCategories: branding.posMostrarCategorias ?? true,
+    posAllowSaleWithoutStock: branding.posPermitirVentaSinStock ?? false,
+    cajaShowCashButtons: branding.cajaMostrarBotonesEfectivo ?? true,
+    cajaRequireReconciliation: branding.cajaRequiereCuadratura ?? true,
+    cajaTipsEnabled: branding.cajaPropinasHabilitadas ?? false,
+    workdayOpening: branding.jornadaHoraApertura ?? '06:00:00',
+    workdayClosing: branding.jornadaHoraCierre ?? '02:00:00',
     getBackgroundStyle,
     refreshConfiguration: loadConfiguration
   }), [branding, displayName, hasConfiguredIdentity, logoVersions, enabledModules, backgrounds, loading, getBackgroundStyle, loadConfiguration]);

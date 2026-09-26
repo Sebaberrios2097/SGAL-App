@@ -7,7 +7,7 @@ import { ted417DataUrl } from './pdf417';
 
 export const tryPrintBoletaDte = async ({
   idVenta, items = [], promotions = [], payments = [], cashReceived = null,
-  barista = null, logoUrl = null, options = {}
+  barista = null, logoUrl = null, containerDeposit = 0, options = {}
 }) => {
   try {
     const res = await fetch(`/api/dte/venta/${idVenta}/impresion`);
@@ -16,7 +16,7 @@ export const tryPrintBoletaDte = async ({
     const timbreDataUrl = await ted417DataUrl(dte.ted);
     const html = buildBoletaDteHtml({
       emisor: dte.emisor, folio: dte.folio, tipoDte: dte.tipoDte, fecha: dte.fecha,
-      montos: dte.montos, timbreDataUrl, logoUrl,
+      montos: dte.montos, timbreDataUrl, logoUrl, containerDeposit,
       data: { items, promotions, payments, cashReceived, barista },
       options
     });

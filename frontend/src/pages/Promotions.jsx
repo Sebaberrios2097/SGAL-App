@@ -3,6 +3,7 @@ import { Tag, Plus, Save, Trash2, X, Power, ArrowLeft, CircleHelp, Search, Packa
 import { notify } from '../components/NotificationCenter';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { productImageUrl } from '../utils/productImage';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('es-CL')}`;
 const toDateInput = (value) => value ? String(value).slice(0, 10) : '';
@@ -403,8 +404,8 @@ const Promotions = ({ embedded = false, createNew = false, onFormOpenChange }) =
                         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') togglePickerProduct(product); }}
                         className={`promotion-product-option${selection ? ' is-selected' : ''}`}>
                         <div className="promotion-product-option__image">
-                          {product.imagenBase64
-                            ? <img src={`data:image/png;base64,${product.imagenBase64}`} alt="" />
+                          {product.tieneImagen
+                            ? <img src={productImageUrl(product)} alt="" loading="lazy" />
                             : <Tag size={20} color="var(--text-muted)" />}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>

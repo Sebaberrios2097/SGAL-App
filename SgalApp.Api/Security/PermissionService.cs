@@ -35,7 +35,10 @@ public sealed class PermissionService(SgalContext context) : IPermissionService
         var permissionBelongsToEnabledModule = await context.SegPermisos.AsNoTracking().AnyAsync(item =>
             item.Activo && item.Codigo == permission && item.Modulo.Activo
             && (item.Modulo.EsNucleo || (item.Modulo.ConfiguracionOrganizacion != null
-                && item.Modulo.ConfiguracionOrganizacion.Habilitado)));
+                && item.Modulo.ConfiguracionOrganizacion.Habilitado))
+            && (item.Modulo.ConfiguracionOrganizacion == null
+                || item.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                || item.ConfiguracionOrganizacion != null));
 
         if (!permissionBelongsToEnabledModule) return false;
         return await IsDeveloperAsync(userId)
@@ -54,6 +57,9 @@ public sealed class PermissionService(SgalContext context) : IPermissionService
                 && grant.Permiso.Modulo.Activo
                 && (grant.Permiso.Modulo.EsNucleo || (grant.Permiso.Modulo.ConfiguracionOrganizacion != null
                     && grant.Permiso.Modulo.ConfiguracionOrganizacion.Habilitado))
+                && (grant.Permiso.Modulo.ConfiguracionOrganizacion == null
+                    || grant.Permiso.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                    || grant.Permiso.ConfiguracionOrganizacion != null)
                 && grant.Permiso.Codigo == "ventas.descuento.aplicar"
                 && grant.Rol.EmpRolesXusuario.Any(userRole =>
                     userRole.IdUsuario == userId && userRole.Activo && userRole.IdUsuarioNavigation.Activo))
@@ -72,7 +78,10 @@ public sealed class PermissionService(SgalContext context) : IPermissionService
             return await context.SegPermisos.AsNoTracking()
                 .Where(p => p.Activo && p.Modulo.Activo
                     && (p.Modulo.EsNucleo || (p.Modulo.ConfiguracionOrganizacion != null
-                        && p.Modulo.ConfiguracionOrganizacion.Habilitado)))
+                        && p.Modulo.ConfiguracionOrganizacion.Habilitado))
+                    && (p.Modulo.ConfiguracionOrganizacion == null
+                        || p.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                        || p.ConfiguracionOrganizacion != null))
                 .Select(p => p.Codigo)
                 .OrderBy(code => code).ToListAsync();
 
@@ -81,6 +90,9 @@ public sealed class PermissionService(SgalContext context) : IPermissionService
                 && grant.Permiso.Modulo.Activo
                 && (grant.Permiso.Modulo.EsNucleo || (grant.Permiso.Modulo.ConfiguracionOrganizacion != null
                     && grant.Permiso.Modulo.ConfiguracionOrganizacion.Habilitado))
+                && (grant.Permiso.Modulo.ConfiguracionOrganizacion == null
+                    || grant.Permiso.Modulo.ConfiguracionOrganizacion.TodasFuncionalidades
+                    || grant.Permiso.ConfiguracionOrganizacion != null)
                 && grant.Rol.EmpRolesXusuario.Any(userRole =>
                     userRole.IdUsuario == userId && userRole.Activo && userRole.IdUsuarioNavigation.Activo))
             .Select(grant => grant.Permiso.Codigo)

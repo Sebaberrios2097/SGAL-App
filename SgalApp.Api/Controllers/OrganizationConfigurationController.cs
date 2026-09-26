@@ -63,7 +63,18 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 x.BoletaColaPersonalizada,
                 x.ValeIncluyeCodigoBarra,
                 x.TurnosRequierenCuadratura,
-                x.BitacoraIncluyeCalibracion
+                x.BitacoraIncluyeCalibracion,
+                x.PosAgruparPorCategoria,
+                x.PosOrdenProductos,
+                x.PosOrdenDireccion,
+                x.PosMostrarBuscador,
+                x.PosMostrarCategorias,
+                x.PosPermitirVentaSinStock,
+                x.CajaMostrarBotonesEfectivo,
+                x.CajaRequiereCuadratura,
+                x.CajaPropinasHabilitadas,
+                x.JornadaHoraApertura,
+                x.JornadaHoraCierre
             })
             .FirstOrDefaultAsync();
 
@@ -520,10 +531,54 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 .Where(x => x.IdConfiguracion == SingletonId)
                 .Select(x => (bool?)x.TurnosRequierenCuadratura)
                 .FirstOrDefaultAsync() ?? true,
+            TurnosPermitirMultiplesActivos = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.TurnosPermitirMultiplesActivos)
+                .FirstOrDefaultAsync() ?? false,
             BitacoraIncluyeCalibracion = await context.OrgConfiguracion.AsNoTracking()
                 .Where(x => x.IdConfiguracion == SingletonId)
                 .Select(x => (bool?)x.BitacoraIncluyeCalibracion)
-                .FirstOrDefaultAsync() ?? true
+                .FirstOrDefaultAsync() ?? true,
+            PosAgruparPorCategoria = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.PosAgruparPorCategoria)
+                .FirstOrDefaultAsync() ?? true,
+            PosOrdenProductos = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => x.PosOrdenProductos)
+                .FirstOrDefaultAsync() ?? "nombre",
+            PosOrdenDireccion = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => x.PosOrdenDireccion)
+                .FirstOrDefaultAsync() ?? "asc",
+            PosMostrarBuscador = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.PosMostrarBuscador)
+                .FirstOrDefaultAsync() ?? true,
+            PosMostrarCategorias = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.PosMostrarCategorias)
+                .FirstOrDefaultAsync() ?? true,
+            PosPermitirVentaSinStock = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.PosPermitirVentaSinStock)
+                .FirstOrDefaultAsync() ?? false,
+            CajaMostrarBotonesEfectivo = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.CajaMostrarBotonesEfectivo)
+                .FirstOrDefaultAsync() ?? true,
+            CajaRequiereCuadratura = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.CajaRequiereCuadratura)
+                .FirstOrDefaultAsync() ?? true,
+            CajaPropinasHabilitadas = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId)
+                .Select(x => (bool?)x.CajaPropinasHabilitadas)
+                .FirstOrDefaultAsync() ?? false,
+            JornadaHoraApertura = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId).Select(x => x.JornadaHoraApertura).FirstOrDefaultAsync(),
+            JornadaHoraCierre = await context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == SingletonId).Select(x => x.JornadaHoraCierre).FirstOrDefaultAsync()
         });
 
     /// <summary>
@@ -549,6 +604,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             .Where(x => x.Activo)
             .Include(x => x.Dependencias).ThenInclude(x => x.ModuloRequerido)
             .Include(x => x.Permisos)
+                .ThenInclude(x => x.ConfiguracionOrganizacion)
             .Include(x => x.ConfiguracionOrganizacion)
             .OrderBy(x => x.Orden)
             .ToListAsync();
@@ -564,7 +620,10 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                     Nombre = p.Nombre,
                     Descripcion = p.Descripcion,
                     Grupo = GetFeatureGroup(x.Codigo, p.Codigo),
-                    EsCritico = p.EsCritico
+                    EsCritico = p.EsCritico,
+                    Habilitada = x.ConfiguracionOrganizacion == null
+                        || x.ConfiguracionOrganizacion.TodasFuncionalidades
+                        || p.ConfiguracionOrganizacion != null
                 }).ToList();
 
             return new ModuleCatalogItemDto
@@ -579,6 +638,7 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                     .OrderBy(c => c)
                     .ToList(),
                 CantidadPermisos = features.Count,
+                TodasFuncionalidadesHabilitadas = x.ConfiguracionOrganizacion?.TodasFuncionalidades ?? true,
                 Funcionalidades = features
             };
         }).ToList();
@@ -669,6 +729,10 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         var unknown = requested.Except(modules.Select(x => x.Codigo)).ToList();
         if (unknown.Count != 0)
             return BadRequest(new { Mensaje = $"Módulos desconocidos: {string.Join(", ", unknown)}" });
+        var unknownAllFeatureModules = dto.CodigosModulosConTodasFuncionalidades
+            .Except(modules.Select(module => module.Codigo), StringComparer.OrdinalIgnoreCase).ToList();
+        if (unknownAllFeatureModules.Count != 0)
+            return BadRequest(new { Mensaje = $"Módulos desconocidos en la configuración de funcionalidades: {string.Join(", ", unknownAllFeatureModules)}" });
 
         var coreCodes = modules.Where(x => x.EsNucleo).Select(x => x.Codigo).ToHashSet();
         var selected = requested.Concat(coreCodes).ToHashSet();
@@ -686,19 +750,58 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         foreach (var module in modules)
         {
             var enabled = module.EsNucleo || requested.Contains(module.Codigo);
+            var allFeatures = dto.CodigosModulosConTodasFuncionalidades.Contains(module.Codigo, StringComparer.OrdinalIgnoreCase);
             if (module.ConfiguracionOrganizacion == null)
                 context.OrgModulos.Add(new OrgModulo
                 {
                     IdModulo = module.IdModulo,
                     Habilitado = enabled,
+                    TodasFuncionalidades = allFeatures,
                     FechaActualizacion = DateTime.UtcNow
                 });
             else
             {
                 module.ConfiguracionOrganizacion.Habilitado = enabled;
+                module.ConfiguracionOrganizacion.TodasFuncionalidades = allFeatures;
                 module.ConfiguracionOrganizacion.FechaActualizacion = DateTime.UtcNow;
             }
         }
+
+        var requestedFeatures = dto.CodigosFuncionalidadesHabilitadas
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var activePermissions = await context.SegPermisos
+            .Where(permission => permission.Activo)
+            .Select(permission => new { permission.IdPermiso, permission.Codigo, Modulo = permission.Modulo.Codigo })
+            .ToListAsync();
+        var unknownFeatures = requestedFeatures.Except(activePermissions.Select(permission => permission.Codigo), StringComparer.OrdinalIgnoreCase).ToList();
+        if (unknownFeatures.Count != 0)
+            return BadRequest(new { Mensaje = $"Funcionalidades desconocidas: {string.Join(", ", unknownFeatures)}" });
+
+        var selectiveModulesWithoutFeatures = activePermissions
+            .Where(permission => selected.Contains(permission.Modulo))
+            .Select(permission => permission.Modulo).Distinct()
+            .Where(moduleCode => !dto.CodigosModulosConTodasFuncionalidades.Contains(moduleCode, StringComparer.OrdinalIgnoreCase)
+                && !activePermissions.Any(permission => permission.Modulo == moduleCode && requestedFeatures.Contains(permission.Codigo)))
+            .ToList();
+        if (selectiveModulesWithoutFeatures.Count != 0)
+            return BadRequest(new { Mensaje = $"Selecciona al menos una funcionalidad para: {string.Join(", ", selectiveModulesWithoutFeatures)}" });
+
+        var enabledFeatureIds = activePermissions
+            .Where(permission => selected.Contains(permission.Modulo)
+                && requestedFeatures.Contains(permission.Codigo)
+                && !dto.CodigosModulosConTodasFuncionalidades.Contains(permission.Modulo, StringComparer.OrdinalIgnoreCase))
+            .Select(permission => permission.IdPermiso)
+            .ToHashSet();
+        var currentFeatureConfiguration = await context.OrgPermisos.ToListAsync();
+        context.OrgPermisos.RemoveRange(currentFeatureConfiguration.Where(item => !enabledFeatureIds.Contains(item.IdPermiso)));
+        var currentFeatureIds = currentFeatureConfiguration.Select(item => item.IdPermiso).ToHashSet();
+        context.OrgPermisos.AddRange(enabledFeatureIds.Where(id => !currentFeatureIds.Contains(id)).Select(id => new OrgPermiso
+        {
+            IdPermiso = id,
+            FechaActualizacion = DateTime.UtcNow
+        }));
 
         if (!selected.Contains("recetas"))
         {
@@ -724,6 +827,15 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
                 configuration.FechaActualizacion = DateTime.UtcNow;
             }
         }
+        if (dto.TurnosPermitirMultiplesActivos.HasValue)
+        {
+            var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
+            if (configuration != null)
+            {
+                configuration.TurnosPermitirMultiplesActivos = dto.TurnosPermitirMultiplesActivos.Value;
+                configuration.FechaActualizacion = DateTime.UtcNow;
+            }
+        }
         if (dto.BitacoraIncluyeCalibracion.HasValue)
         {
             var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
@@ -735,6 +847,62 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
             if (!dto.BitacoraIncluyeCalibracion.Value)
                 await context.InvMateriaPrima.Where(material => material.EsCafeCalibrable)
                     .ExecuteUpdateAsync(update => update.SetProperty(material => material.EsCafeCalibrable, false));
+        }
+
+        // Ajustes de presentación del catálogo en el Punto de venta.
+        if (dto.PosAgruparPorCategoria.HasValue || dto.PosOrdenProductos != null || dto.PosOrdenDireccion != null
+            || dto.PosMostrarBuscador.HasValue || dto.PosMostrarCategorias.HasValue || dto.PosPermitirVentaSinStock.HasValue)
+        {
+            var ordenValido = new[] { "nombre", "precio", "vendidos", "stock" };
+            var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
+            if (configuration != null)
+            {
+                if (dto.PosAgruparPorCategoria.HasValue)
+                    configuration.PosAgruparPorCategoria = dto.PosAgruparPorCategoria.Value;
+                if (dto.PosOrdenProductos != null)
+                {
+                    var orden = dto.PosOrdenProductos.Trim().ToLowerInvariant();
+                    configuration.PosOrdenProductos = ordenValido.Contains(orden) ? orden : "nombre";
+                }
+                if (dto.PosOrdenDireccion != null)
+                    configuration.PosOrdenDireccion = dto.PosOrdenDireccion.Trim().ToLowerInvariant() == "desc" ? "desc" : "asc";
+                if (dto.PosMostrarBuscador.HasValue)
+                    configuration.PosMostrarBuscador = dto.PosMostrarBuscador.Value;
+                if (dto.PosMostrarCategorias.HasValue)
+                    configuration.PosMostrarCategorias = dto.PosMostrarCategorias.Value;
+                if (dto.PosPermitirVentaSinStock.HasValue)
+                    configuration.PosPermitirVentaSinStock = dto.PosPermitirVentaSinStock.Value;
+                configuration.FechaActualizacion = DateTime.UtcNow;
+            }
+        }
+
+        // Ajustes del módulo Caja.
+        if (dto.CajaMostrarBotonesEfectivo.HasValue || dto.CajaRequiereCuadratura.HasValue
+            || dto.CajaPropinasHabilitadas.HasValue || dto.JornadaHoraApertura != null || dto.JornadaHoraCierre != null)
+        {
+            var configuration = await context.OrgConfiguracion.FindAsync(SingletonId);
+            if (configuration != null)
+            {
+                if (dto.CajaMostrarBotonesEfectivo.HasValue)
+                    configuration.CajaMostrarBotonesEfectivo = dto.CajaMostrarBotonesEfectivo.Value;
+                if (dto.CajaRequiereCuadratura.HasValue)
+                    configuration.CajaRequiereCuadratura = dto.CajaRequiereCuadratura.Value;
+                if (dto.CajaPropinasHabilitadas.HasValue)
+                    configuration.CajaPropinasHabilitadas = dto.CajaPropinasHabilitadas.Value;
+                if (dto.JornadaHoraApertura != null)
+                {
+                    if (!TimeSpan.TryParse(dto.JornadaHoraApertura, out var opening))
+                        return BadRequest(new { Mensaje = "La hora de apertura no es válida." });
+                    configuration.JornadaHoraApertura = opening;
+                }
+                if (dto.JornadaHoraCierre != null)
+                {
+                    if (!TimeSpan.TryParse(dto.JornadaHoraCierre, out var closing))
+                        return BadRequest(new { Mensaje = "La hora de cierre no es válida." });
+                    configuration.JornadaHoraCierre = closing;
+                }
+                configuration.FechaActualizacion = DateTime.UtcNow;
+            }
         }
 
         await context.SaveChangesAsync();
@@ -775,7 +943,19 @@ public sealed class OrganizationConfigurationController(SgalContext context) : C
         BoletaColaPersonalizada = (string?)null,
         ValeIncluyeCodigoBarra = false,
         TurnosRequierenCuadratura = true,
-        BitacoraIncluyeCalibracion = true
+        TurnosPermitirMultiplesActivos = false,
+        BitacoraIncluyeCalibracion = true,
+        PosAgruparPorCategoria = true,
+        PosOrdenProductos = "nombre",
+        PosOrdenDireccion = "asc",
+        PosMostrarBuscador = true,
+        PosMostrarCategorias = true,
+        PosPermitirVentaSinStock = false,
+        CajaMostrarBotonesEfectivo = true,
+        CajaRequiereCuadratura = true,
+        CajaPropinasHabilitadas = false,
+        JornadaHoraApertura = new TimeSpan(6, 0, 0),
+        JornadaHoraCierre = new TimeSpan(2, 0, 0)
     };
 
     private sealed record LogoLocationDefinition(string Codigo, string Nombre, string Descripcion);

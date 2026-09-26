@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
+import { useOrganization } from '../context/OrganizationContext';
 
 const money = value => `$${Number(value || 0).toLocaleString('es-CL')}`;
 const shortMoney = value => Math.abs(value) >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
@@ -67,6 +68,7 @@ const tooltipStyle = { fontSize: '0.8rem', borderRadius: '10px', border: '1px so
 
 const TurnsDashboard = () => {
   const { can } = useAuth();
+  const { cajaTipsEnabled } = useOrganization();
   const today = useMemo(() => new Date(), []);
   const [preset, setPreset] = useState('month');
   const [customFrom, setCustomFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), 1)));
@@ -182,7 +184,7 @@ const TurnsDashboard = () => {
         <MetricCard icon={Package} label="Unidades vendidas" value={num(data.unidadesVendidas)} detail="Productos en ventas" color="#2563eb" />
         <MetricCard icon={ReceiptText} label="Ticket promedio" value={money(Math.round(data.ticketPromedio))} detail="Por venta" color="#0d8a4d" />
         <MetricCard icon={TrendingUp} label="Venta/turno" value={money(Math.round(data.ventaPromedioTurno))} detail="Promedio por turno" color="#0d8a4d" />
-        <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />
+        {cajaTipsEnabled && <MetricCard icon={Coins} label="Propinas" value={money(data.totalPropinas)} detail="Point" color="#d97706" />}
       </div>
 
       {/* Movimiento por período */}

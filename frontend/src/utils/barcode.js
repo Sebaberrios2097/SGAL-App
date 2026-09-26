@@ -18,7 +18,7 @@ const CODE39 = {
  * Devuelve el SVG (string) del código de barras Code39 para `data`.
  * @param {string} data  Texto a codificar (se convierte a mayúsculas; solo caracteres soportados).
  */
-export function code39Svg(data, { narrow = 2, height = 46, margin = 10 } = {}) {
+export function code39Svg(data, { narrow = 2, height = 46, margin = 10, fit = false } = {}) {
   const wide = narrow * 3;
   const text = `*${String(data).toUpperCase()}*`;
   const rects = [];
@@ -36,5 +36,11 @@ export function code39Svg(data, { narrow = 2, height = 46, margin = 10 } = {}) {
   }
 
   const totalWidth = x - narrow + margin;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="xMidYMid meet">${rects.join('')}</svg>`;
+  // `fit`: el barcode ocupa el 100% del ancho del contenedor (para códigos largos en 80mm).
+  // preserveAspectRatio="none" estira solo en vertical; el escalado horizontal es uniforme
+  // en todas las barras, así que las proporciones ancho/angosto se mantienen legibles.
+  const widthAttr = fit ? '100%' : totalWidth;
+  const par = fit ? 'none' : 'xMidYMid meet';
+  const style = fit ? ' style="display:block;width:100%"' : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${widthAttr}" height="${height}" viewBox="0 0 ${totalWidth} ${height}" preserveAspectRatio="${par}"${style}>${rects.join('')}</svg>`;
 }

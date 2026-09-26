@@ -12,7 +12,8 @@ import {
   AlertCircle,
   CheckCircle2,
   HelpCircle,
-  Wallet
+  Wallet,
+  Receipt
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import TurnOpeningModal from '../components/TurnOpeningModal';
@@ -59,10 +60,15 @@ const TurnAction = ({ icon: Icon, label, tone = 'secondary', enabled, to, onClic
 
 const Turn = () => {
   const { user, can } = useAuth();
-  const { isModuleEnabled, turnsRequireReconciliation } = useOrganization();
+  const { isModuleEnabled, turnsRequireReconciliation, cajaRequireReconciliation } = useOrganization();
   const salesEnabled = isModuleEnabled('ventas');
-  // Con Caja habilitado, el efectivo lo maneja el cajero: el turno de vendedor no cuadra.
-  const vendorReconciliation = turnsRequireReconciliation && !isModuleEnabled('caja');
+  const cajaEnabled = isModuleEnabled('caja');
+  const canOperateCaja = cajaEnabled && can('caja.operar');
+  // El turno es transversal. Si el usuario opera Caja, aplica la configuración de
+  // cuadratura de Caja; un vendedor sin acceso a Caja conserva la regla del POS.
+  const turnRequiresReconciliation = canOperateCaja
+    ? cajaRequireReconciliation
+    : turnsRequireReconciliation && !cajaEnabled;
   const logbookEnabled = salesEnabled;
   const [lastTurn, setLastTurn] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -77,7 +83,10 @@ const Turn = () => {
     : user?.nombreUsuario || 'Usuario';
 
   const canOperateTurns = user?.permissions?.some(p =>
-    p.startsWith('turnos.') || (logbookEnabled && p.startsWith('bitacora.')) || (salesEnabled && p.startsWith('ventas.')));
+    p.startsWith('turnos.') || p.startsWith('caja.')
+      || (logbookEnabled && p.startsWith('bitacora.')) || (salesEnabled && p.startsWith('ventas.')));
+  const canOpenTurn = can('turnos.abrir') || can('caja.turno.abrir');
+  const canCloseTurn = can('turnos.cerrar') || can('caja.turno.cerrar');
 
   useEffect(() => {
     document.title = `Turno - ${window.__SGAL_CONFIGURATION__?.branding?.nombreComercial || 'Sistema de gestión'}`;
@@ -173,13 +182,17 @@ const Turn = () => {
 
         {canOperateTurns && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', borderTop: '1px solid var(--panel-border)', paddingTop: '18px' }}>
-            {can('turnos.abrir') && (
+            {canOpenTurn && (
               <TurnAction icon={PlayCircle} label="Iniciar turno" tone="primary"
-                enabled={sinTurno && !directAction} onClick={() => vendorReconciliation ? setShowOpening(true) : runTurnActionWithoutReconciliation('open')} reason={startReason} />
+                enabled={sinTurno && !directAction} onClick={() => turnRequiresReconciliation ? setShowOpening(true) : runTurnActionWithoutReconciliation('open')} reason={startReason} />
             )}
             {salesEnabled && can('ventas.operar') && (
               <TurnAction icon={ShoppingBag} label="Ir a Ventas" tone={belongsToUser ? 'primary' : 'secondary'}
                 enabled={belongsToUser} to="/sales" reason={openReason} />
+            )}
+            {canOperateCaja && (
+              <TurnAction icon={Receipt} label="Ir a Caja" tone={belongsToUser ? 'primary' : 'secondary'}
+                enabled={belongsToUser} to="/cash-register" reason={openReason} />
             )}
             {logbookEnabled && can('bitacora.propia.ver') && (
               <TurnAction icon={BookOpen} label="Bitácora" tone="secondary"
@@ -189,9 +202,9 @@ const Turn = () => {
               <TurnAction icon={Wallet} label="Mis consumos" tone="secondary"
                 enabled to="/turn/consumptions" />
             )}
-            {can('turnos.cerrar') && (
+            {canCloseTurn && (
               <TurnAction icon={StopCircle} label="Cerrar turno" tone="danger"
-                enabled={belongsToUser && !directAction} onClick={() => vendorReconciliation ? setShowClosing(true) : runTurnActionWithoutReconciliation('close')} reason="No tienes un turno abierto para cerrar." />
+                enabled={belongsToUser && !directAction} onClick={() => turnRequiresReconciliation ? setShowClosing(true) : runTurnActionWithoutReconciliation('close')} reason="No tienes un turno abierto para cerrar." />
             )}
           </div>
         )}

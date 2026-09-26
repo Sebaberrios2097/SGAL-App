@@ -63,6 +63,12 @@ public partial class VenVentas
     [Column("Monto_Descuento")]
     public int MontoDescuento { get; set; }
 
+    [Column("Motivo_Anulacion"), StringLength(300)]
+    public string? MotivoAnulacion { get; set; }
+
+    [Column("Fecha_Anulacion", TypeName = "datetime")]
+    public DateTime? FechaAnulacion { get; set; }
+
     [Column("Correlativo_Diario")]
     public int? CorrelativoDiario { get; set; }
 

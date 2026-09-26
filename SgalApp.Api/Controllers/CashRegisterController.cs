@@ -12,7 +12,7 @@ namespace SgalApp.Api.Controllers
 {
     /// <summary>
     /// Módulo Caja: el cajero cobra los vales (ventas PendienteDePago) generados por los
-    /// vendedores. El cobro atribuye el dinero al turno de caja del cajero (Id_Turno_Caja)
+    /// vendedores. El cobro atribuye el dinero al turno transversal del cajero (Id_Turno_Caja)
     /// y transiciona la venta a Terminada. Requiere el módulo Caja habilitado, lo que se
     /// garantiza porque los permisos caja.* pertenecen a ese módulo.
     /// </summary>
@@ -91,6 +91,9 @@ namespace SgalApp.Api.Controllers
                         d.PrecioNormal,
                         d.PrecioUnitario,
                         d.Subtotal,
+                        d.EnvasesRecibidos,
+                        d.PrecioEnvase,
+                        d.RecargoEnvases,
                         Selecciones = d.VenDetalleVentaMateriales
                             .Where(m => m.EsEleccionAlternativa)
                             .Select(m => new
@@ -136,12 +139,27 @@ namespace SgalApp.Api.Controllers
                 .GroupBy(x => (x.Producto, x.Alternativa))
                 .ToDictionary(g => g.Key, g => g.First().Base);
 
+            // Porción del depósito de envases que el cobro exigirá pagar en efectivo. Se resuelve aquí
+            // (misma regla que Collect: medio del producto ?? medio por defecto) para que la caja pueda
+            // anticiparlo en pantalla sin re-resolver los defaults en el cliente.
+            var returnableMethodDefault = await _context.OrgConfiguracion.AsNoTracking()
+                .Where(x => x.IdConfiguracion == 1).Select(x => x.RetornablesMedioPago).FirstAsync();
+            var returnableMethods = productIds.Count == 0
+                ? new Dictionary<int, string?>()
+                : await _context.VenProductosRetornables.AsNoTracking()
+                    .Where(x => productIds.Contains(x.IdProducto))
+                    .ToDictionaryAsync(x => x.IdProducto, x => x.MedioPago);
+            int RequiredCashFor(int idProducto, int recargoEnvases) =>
+                recargoEnvases > 0 && (returnableMethods.GetValueOrDefault(idProducto) ?? returnableMethodDefault) == "EFECTIVO"
+                    ? recargoEnvases : 0;
+
             var result = pending.Select(p => new
             {
                 p.IdVenta,
                 p.FechaVenta,
                 p.MontoTotal,
                 p.Vendedor,
+                EfectivoEnvasesObligatorio = p.Items.Sum(i => RequiredCashFor(i.IdProducto, i.RecargoEnvases)),
                 Items = p.Items.Where(i => i.IdVentaPromocion == null).Select(i => new
                 {
                     i.IdProducto,
@@ -150,6 +168,9 @@ namespace SgalApp.Api.Controllers
                     i.PrecioNormal,
                     i.PrecioUnitario,
                     i.Subtotal,
+                    i.EnvasesRecibidos,
+                    i.PrecioEnvase,
+                    i.RecargoEnvases,
                     SeleccionesMateriales = i.Selecciones.Select(s => new
                     {
                         s.IdMateriaPrima,
@@ -185,6 +206,8 @@ namespace SgalApp.Api.Controllers
                     v.FechaVenta,
                     v.MontoTotal,
                     v.IdEstadoVenta,
+                    v.MotivoAnulacion,
+                    v.FechaAnulacion,
                     v.IdTipoDte,
                     v.FolioDte,
                     Vendedor = v.IdUsuarioNavigation.EmpEmpleados.Where(e => e.Activo)
@@ -203,6 +226,9 @@ namespace SgalApp.Api.Controllers
                         d.PrecioNormal,
                         d.PrecioUnitario,
                         d.Subtotal,
+                        d.EnvasesRecibidos,
+                        d.PrecioEnvase,
+                        d.RecargoEnvases,
                         SeleccionesMateriales = d.VenDetalleVentaMateriales.Where(m => m.EsEleccionAlternativa)
                             .Select(m => new { NombreMateriaPrima = m.IdMateriaPrimaNavigation.NombreMaterial, m.Recargo }),
                         IngredientesExtra = d.VenDetalleVentaIngrediente
@@ -234,7 +260,7 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = "El vale debe contener al menos un producto o promoción." });
 
             var cajaTurn = await _context.TurTurno.AnyAsync(t =>
-                t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
+                t.IdEstadoTurno == 1 && t.IdUsuario == User.GetUserId());
             if (!cajaTurn)
                 return BadRequest(new { mensaje = "Debe abrir un turno de caja antes de modificar un vale." });
 
@@ -282,7 +308,7 @@ namespace SgalApp.Api.Controllers
             dto ??= new SaleItemsUpdateDto();
 
             var cajaTurn = await _context.TurTurno.FirstOrDefaultAsync(t =>
-                t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
+                t.IdEstadoTurno == 1 && t.IdUsuario == User.GetUserId());
             if (cajaTurn == null)
                 return BadRequest(new { mensaje = "Debe abrir un turno de caja antes de crear una venta." });
 
@@ -299,6 +325,7 @@ namespace SgalApp.Api.Controllers
                     MontoNeto = 0,
                     MontoIva = 0
                 };
+                sale.CorrelativoDiario = await OperationalDayService.NextSaleSequenceAsync(_context, sale.FechaVenta);
                 _context.VenVentas.Add(sale);
                 await _context.SaveChangesAsync();
 
@@ -331,6 +358,112 @@ namespace SgalApp.Api.Controllers
             }
         }
 
+        /// <summary>Convierte un vale pendiente en consumo personal del cajero y lo asocia a su bitácora.</summary>
+        [HttpPost("{idVenta:int}/consumption")]
+        [Permission(Permissions.LogbookConsumptionsCreate)]
+        public async Task<IActionResult> RegisterConsumption(int idVenta, [FromBody] SaleItemsUpdateDto dto)
+        {
+            if (dto == null || (dto.Items?.Count ?? 0) == 0)
+                return BadRequest(new { mensaje = "El consumo debe contener al menos un producto." });
+            if ((dto.Promociones?.Count ?? 0) > 0)
+                return BadRequest(new { mensaje = "Las promociones no se aplican a consumos de personal." });
+
+            var userId = User.GetUserId();
+            var turn = await _context.TurTurno.FirstOrDefaultAsync(item =>
+                item.IdEstadoTurno == 1 && item.IdUsuario == userId);
+            if (turn == null)
+                return BadRequest(new { mensaje = "Debe tener un turno abierto para registrar un consumo." });
+
+            var sale = await _context.VenVentas.FirstOrDefaultAsync(item => item.IdVenta == idVenta);
+            if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
+            if (sale.IdEstadoVenta != EstadosVenta.PendienteDePago || sale.IdBitacora != null || sale.IdTurnoCaja != null)
+                return BadRequest(new { mensaje = "Solo se pueden registrar como consumo los vales pendientes." });
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var logbook = await _context.TurBitacora.FirstOrDefaultAsync(item => item.IdTurno == turn.IdTurno);
+                if (logbook == null)
+                {
+                    logbook = new TurBitacora { IdTurno = turn.IdTurno, FechaCreacion = DateTime.Now };
+                    _context.TurBitacora.Add(logbook);
+                    await _context.SaveChangesAsync();
+                }
+
+                var lines = await _saleLines.ReplaceLinesAsConsumptionAsync(
+                    sale.IdVenta, dto.Items ?? [], turn.IdTurno, userId);
+                if (!lines.EsValido)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { mensaje = lines.Error });
+                }
+
+                sale.IdTurno = turn.IdTurno;
+                sale.IdUsuario = userId;
+                sale.IdBitacora = logbook.IdBitacora;
+                sale.IdEstadoVenta = EstadosVenta.Terminada;
+                sale.IdTurnoCaja = null;
+                sale.PorcentajeDescuento = 0;
+                sale.MontoDescuento = 0;
+                sale.MontoTotal = lines.Total;
+                sale.MontoNeto = (int)Math.Round(lines.Total / 1.19);
+                sale.MontoIva = lines.Total - sale.MontoNeto;
+                _context.Entry(sale).State = EntityState.Modified;
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return Ok(new
+                {
+                    mensaje = "Consumo de personal registrado.",
+                    sale.IdVenta,
+                    MontoAdeudado = lines.Total,
+                    lines.MontoCortesia
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { mensaje = "No fue posible registrar el consumo.", detalle = ex.Message });
+            }
+        }
+
+        /// <summary>Anula un vale pendiente, conserva su historial y repone el stock.</summary>
+        [HttpPost("{idVenta:int}/void")]
+        [Permission(Permissions.CajaSaleVoid)]
+        public async Task<IActionResult> VoidPendingSale(int idVenta, [FromBody] CashSaleVoidDto? dto,
+            CancellationToken cancellationToken)
+        {
+            var userId = User.GetUserId();
+            var turn = await _context.TurTurno.FirstOrDefaultAsync(item =>
+                item.IdEstadoTurno == 1 && item.IdUsuario == userId, cancellationToken);
+            if (turn == null)
+                return BadRequest(new { mensaje = "Debe tener un turno abierto para anular una venta." });
+
+            var sale = await _context.VenVentas.FirstOrDefaultAsync(item => item.IdVenta == idVenta, cancellationToken);
+            if (sale == null) return NotFound(new { mensaje = "Venta no encontrada." });
+            if (sale.IdEstadoVenta != EstadosVenta.PendienteDePago || sale.IdBitacora != null || sale.IdTurnoCaja != null)
+                return BadRequest(new { mensaje = "Solo se pueden anular desde Caja los vales pendientes." });
+
+            await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                await _saleLines.RestoreStockAsync(sale.IdVenta, cancellationToken);
+                sale.IdEstadoVenta = EstadosVenta.Anulada;
+                sale.IdTurnoCaja = turn.IdTurno;
+                sale.MotivoAnulacion = string.IsNullOrWhiteSpace(dto?.Motivo) ? null : dto.Motivo.Trim();
+                sale.FechaAnulacion = DateTime.Now;
+                _context.Entry(sale).State = EntityState.Modified;
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return Ok(new { mensaje = "Venta anulada.", sale.IdVenta, sale.MotivoAnulacion, sale.FechaAnulacion });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StatusCode(500, new { mensaje = "No fue posible anular la venta.", detalle = ex.Message });
+            }
+        }
+
         /// <summary>Cobra un vale pendiente y lo transiciona a Terminada.</summary>
         [HttpPost("{idVenta:int}/collect")]
         [Permission(Permissions.CajaCollect)]
@@ -345,7 +478,7 @@ namespace SgalApp.Api.Controllers
 
             // El cajero debe tener un turno de caja abierto propio.
             var cajaTurn = await _context.TurTurno.FirstOrDefaultAsync(t =>
-                t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId());
+                t.IdEstadoTurno == 1 && t.IdUsuario == User.GetUserId());
             if (cajaTurn == null)
                 return BadRequest(new { mensaje = "Debe abrir un turno de caja antes de cobrar." });
 
@@ -385,6 +518,16 @@ namespace SgalApp.Api.Controllers
             int sumPayments = metodos.Sum(m => m.Monto);
             if (sumPayments != total)
                 return BadRequest(new { mensaje = $"La suma de los métodos de pago (${sumPayments:N0}) debe ser igual al total a cobrar (${total:N0})." });
+
+            var returnableDefaults = await _context.OrgConfiguracion.AsNoTracking().FirstAsync(x => x.IdConfiguracion == 1);
+            var returnableMethods = await _context.VenProductosRetornables.AsNoTracking()
+                .Where(x => sale.VenDetalleVenta.Select(d => d.IdProducto).Contains(x.IdProducto))
+                .ToDictionaryAsync(x => x.IdProducto, x => x.MedioPago);
+            var requiredContainerCash = sale.VenDetalleVenta.Where(d => d.RecargoEnvases > 0
+                && (returnableMethods.GetValueOrDefault(d.IdProducto) ?? returnableDefaults.RetornablesMedioPago) == "EFECTIVO")
+                .Sum(d => d.RecargoEnvases);
+            if ((metodos.FirstOrDefault(x => x.IdMetodoPago == MetodosPago.Efectivo)?.Monto ?? 0) < requiredContainerCash)
+                return BadRequest(new { mensaje = $"Los envases requieren al menos ${requiredContainerCash:N0} pagados en efectivo." });
 
             // Una asignación de débito/crédito solo es válida si proviene de la última
             // orden Point de este vale, ya aprobada por Mercado Pago y por el mismo monto.
@@ -440,14 +583,36 @@ namespace SgalApp.Api.Controllers
                         Monto = p.Monto
                     });
 
+                // El depósito de envases es un canje reembolsable, no una venta: se excluye de la base
+                // tributaria. La venta se cobra por el total (incluye envases), pero Neto/IVA se calculan
+                // sobre la base sin envases. El DTE se emite igual desde las líneas (que no llevan depósito).
+                int montoEnvases = sale.VenDetalleVenta.Sum(d => d.RecargoEnvases);
+                int baseTributable = Math.Max(0, total - montoEnvases);
                 sale.IdTurnoCaja = cajaTurn.IdTurno;
                 sale.PorcentajeDescuento = porcentajeDescuento;
                 sale.MontoDescuento = montoDescuento;
                 sale.MontoTotal = total;
-                sale.MontoNeto = esExento ? 0 : (int)Math.Round(total / 1.19);
-                sale.MontoIva = esExento ? 0 : total - sale.MontoNeto;
+                sale.MontoNeto = esExento ? 0 : (int)Math.Round(baseTributable / 1.19);
+                sale.MontoIva = esExento ? 0 : baseTributable - sale.MontoNeto;
                 sale.IdEstadoVenta = EstadosVenta.Terminada;
                 _context.Entry(sale).State = EntityState.Modified;
+
+                VenValeEnvase? containerVoucher = null;
+                var containerLines = sale.VenDetalleVenta.Where(d => d.RecargoEnvases > 0).ToList();
+                if (containerLines.Count > 0)
+                {
+                    var issuedAt = DateTime.Now;
+                    containerVoucher = new VenValeEnvase
+                    {
+                        Codigo = await ReturnableVoucherCode.NextAsync(_context), IdVenta = sale.IdVenta,
+                        FechaEmision = issuedAt,
+                        FechaVencimiento = returnableDefaults.RetornablesVigenciaDias.HasValue ? issuedAt.AddDays(returnableDefaults.RetornablesVigenciaDias.Value) : null,
+                        MontoOriginal = containerLines.Sum(d => d.RecargoEnvases), Estado = "VIGENTE",
+                        Detalles = containerLines.Select(d => new VenValeEnvaseDetalle { IdProducto = d.IdProducto,
+                            Cantidad = d.Cantidad - d.EnvasesRecibidos, PrecioUnitario = d.PrecioEnvase }).ToList()
+                    };
+                    _context.VenValesEnvases.Add(containerVoucher);
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -461,7 +626,10 @@ namespace SgalApp.Api.Controllers
                     mensaje = "Venta cobrada con éxito.",
                     idVenta = sale.IdVenta,
                     montoTotal = total,
-                    montoDescuento
+                    montoDescuento,
+                    valeEnvases = containerVoucher == null ? null : new { containerVoucher.Codigo, containerVoucher.FechaEmision,
+                        containerVoucher.FechaVencimiento, containerVoucher.MontoOriginal,
+                        productos = containerVoucher.Detalles.Select(d => new { d.IdProducto, d.Cantidad, d.PrecioUnitario }) }
                 });
             }
             catch (Exception ex)
@@ -492,7 +660,7 @@ namespace SgalApp.Api.Controllers
                 return BadRequest(new { mensaje = schemaError });
 
             var cajaAbierta = await _context.TurTurno.AnyAsync(t =>
-                t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId(), cancellationToken);
+                t.IdEstadoTurno == 1 && t.IdUsuario == User.GetUserId(), cancellationToken);
             if (!cajaAbierta)
                 return BadRequest(new { mensaje = "Debe abrir un turno de caja antes de cobrar." });
 
@@ -529,6 +697,15 @@ namespace SgalApp.Api.Controllers
             int total = totalBruto - montoDescuento;
             if (dto.MontoTarjeta > total)
                 return BadRequest(new { mensaje = "El monto con tarjeta no puede superar el total a cobrar." });
+            var containerDefaults = await _context.OrgConfiguracion.AsNoTracking().FirstAsync(x => x.IdConfiguracion == 1, cancellationToken);
+            var containerMethods = await _context.VenProductosRetornables.AsNoTracking()
+                .Where(x => sale.VenDetalleVenta.Select(d => d.IdProducto).Contains(x.IdProducto))
+                .ToDictionaryAsync(x => x.IdProducto, x => x.MedioPago, cancellationToken);
+            var mandatoryCash = sale.VenDetalleVenta.Where(d => d.RecargoEnvases > 0
+                && (containerMethods.GetValueOrDefault(d.IdProducto) ?? containerDefaults.RetornablesMedioPago) == "EFECTIVO")
+                .Sum(d => d.RecargoEnvases);
+            if (dto.MontoTarjeta > total - mandatoryCash)
+                return BadRequest(new { mensaje = $"Debe reservar ${mandatoryCash:N0} en efectivo para los envases retornables." });
 
             if (DteDocumentSelection.IsInvoice(dto.TipoDocumento))
             {
@@ -619,7 +796,7 @@ namespace SgalApp.Api.Controllers
         public async Task<IActionResult> CancelPoint(int idVenta, CancellationToken cancellationToken)
         {
             var cajaAbierta = await _context.TurTurno.AnyAsync(t =>
-                t.IdEstadoTurno == 1 && t.TipoTurno == TiposTurno.Caja && t.IdUsuario == User.GetUserId(), cancellationToken);
+                t.IdEstadoTurno == 1 && t.IdUsuario == User.GetUserId(), cancellationToken);
             if (!cajaAbierta)
                 return BadRequest(new { mensaje = "Debe tener un turno de caja abierto para cancelar el cobro." });
 

@@ -34,6 +34,8 @@ import InventoryDashboard from './pages/InventoryDashboard';
 import PurchaseOrderReceptions from './pages/PurchaseOrderReceptions';
 import Menu from './pages/Menu';
 import Welcome from './pages/Welcome';
+import DailyOperations from './pages/DailyOperations';
+import ReturnablesSettings from './pages/ReturnablesSettings';
 import { useOrganization } from './context/OrganizationContext';
 
 // Protected Route Wrapper
@@ -183,7 +185,10 @@ const SetupRoute = ({ children }) => {
 };
 
 // Permisos que dan acceso operativo al turno. Coincide con la sección "Turno" del menú.
-const TURN_PERMISSIONS = ['turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver'];
+const TURN_PERMISSIONS = [
+  'turnos.propios.ver', 'turnos.abrir', 'turnos.cerrar', 'ventas.operar', 'bitacora.propia.ver',
+  'caja.operar', 'caja.turno.abrir', 'caja.turno.cerrar'
+];
 
 // Destino inicial según las capacidades efectivamente habilitadas.
 const LandingRoute = () => {
@@ -259,6 +264,7 @@ function App() {
             <Route path="providers" element={<PermissionRoute permission="proveedores.ver"><ProviderManagement /></PermissionRoute>} />
             <Route path="admin/turn-records" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.ver"><AdminTurnRecords /></PermissionRoute></ModuleRoute>} />
             <Route path="admin/turns-dashboard" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="registros_turnos.dashboard.ver"><TurnsDashboard /></PermissionRoute></ModuleRoute>} />
+            <Route path="admin/daily-operations" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="operacion_diaria.ver"><DailyOperations /></PermissionRoute></ModuleRoute>} />
             <Route path="turn/courtesy" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="configuracion_inventario.cortesia.ver"><InventorySettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/courtesy" element={<Navigate to="/turn/courtesy" replace />} />
             <Route path="settings/raw-materials" element={<ModuleRoute required={['recetas']}><PermissionRoute anyOf={['configuracion_inventario.materias_primas.ver','configuracion_inventario.presentaciones.ver']}><InventorySettings /></PermissionRoute></ModuleRoute>} />
@@ -269,6 +275,7 @@ function App() {
             <Route path="settings/modules" element={<PermissionRoute permission="configuracion_sistema.modulos.administrar"><ModuleSettings /></PermissionRoute>} />
             <Route path="settings/boletas" element={<ModuleRoute required={['boletas']}><PermissionRoute permission="configuracion_sistema.boletas.configurar"><BoletasSettings /></PermissionRoute></ModuleRoute>} />
             <Route path="settings/pos-machines" element={<PosMachines />} />
+            <Route path="settings/returnables" element={<ModuleRoute required={['caja']}><PermissionRoute permission="caja.retornables.configurar"><ReturnablesSettings /></PermissionRoute></ModuleRoute>} />
             <Route path="turn-history" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="turnos.propios.ver"><TurnHistory /></PermissionRoute></ModuleRoute>} />
             <Route path="turn/consumptions" element={<ModuleRoute required={['ventas']}><PermissionRoute anyOf={['turnos.propios.ver','bitacora.propia.ver']}><MyConsumptions /></PermissionRoute></ModuleRoute>} />
             <Route path="logbook/:idTurno" element={<ModuleRoute required={['ventas']}><PermissionRoute permission="bitacora.propia.ver"><LogbookView /></PermissionRoute></ModuleRoute>} />
@@ -295,7 +302,7 @@ function App() {
               <ProtectedRoute>
                 <ModuleRoute required={['ventas', 'caja']}>
                   <PermissionRoute permission="caja.operar">
-                    <CashRegister />
+                    <ActiveTurnRoute><CashRegister /></ActiveTurnRoute>
                   </PermissionRoute>
                 </ModuleRoute>
               </ProtectedRoute>

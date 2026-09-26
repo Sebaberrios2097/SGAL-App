@@ -409,10 +409,42 @@ namespace SgalApp.Api.Controllers
                     NombreUnidad = x.IdUnidadMedidaNavigation.NombreUnidadMedida,
                     AbreviacionUnidad = x.IdUnidadMedidaNavigation.Abreviacion,
                     TipoMagnitud = x.IdUnidadMedidaNavigation.TipoMagnitud,
-                    ImagenBase64 = x.Imagen == null ? null : Convert.ToBase64String(x.Imagen),
+                    // La imagen no se serializa aquí (inflaría el listado); se indica solo si existe
+                    // y se sirve bajo demanda por GET raw-materials/{id}/image.
+                    TieneImagen = x.Imagen != null,
                     x.FechaCreacion
                 }).ToListAsync());
         }
+
+        // Sirve la imagen de una materia prima bajo demanda, cacheada en el navegador.
+        // El ETag se deriva del contenido, así la caché se invalida al cambiar la imagen
+        // (la entidad no tiene fecha de modificación en la que basarse).
+        [HttpGet("raw-materials/{id:int}/image")]
+        [Permission(Permissions.RawMaterialsView + "|" + Permissions.PresentationsView + "|" + Permissions.RecipesView + "|" + Permissions.RecipesEdit + "|" + Permissions.StockEntry)]
+        public async Task<IActionResult> GetRawMaterialImage(int id)
+        {
+            var imagen = await _context.InvMateriaPrima.AsNoTracking()
+                .Where(x => x.IdMateriaPrima == id && x.Imagen != null)
+                .Select(x => x.Imagen)
+                .FirstOrDefaultAsync();
+
+            if (imagen == null || imagen.Length == 0) return NotFound();
+
+            var etag = $"\"{Convert.ToHexString(System.Security.Cryptography.MD5.HashData(imagen))}\"";
+            if (Request.Headers.IfNoneMatch == etag)
+                return StatusCode(StatusCodes.Status304NotModified);
+
+            Response.Headers.CacheControl = "private, no-cache";
+            Response.Headers.ETag = etag;
+            return File(imagen, DetectImageContentType(imagen));
+        }
+
+        // Las imágenes se guardan como bytes sin tipo MIME; se infiere de la firma del archivo.
+        private static string DetectImageContentType(byte[] bytes) =>
+            bytes.Length >= 8
+                && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+                ? "image/png"
+                : "image/jpeg";
 
         [HttpPost("raw-materials")]
         [Permission(Permissions.RawMaterialsCreate)]

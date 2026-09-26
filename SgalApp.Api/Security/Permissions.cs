@@ -10,6 +10,7 @@ public static class Permissions
     public const string DashboardView = "inicio.dashboard.ver";
     public const string TurnRecordsView = "registros_turnos.ver";
     public const string TurnRecordsDashboardView = "registros_turnos.dashboard.ver";
+    public const string DailyOperationsView = "operacion_diaria.ver";
     public const string TurnRecordsLogbookView = "registros_turnos.bitacora.ver";
     public const string TurnRecordsSalesView = "registros_turnos.ventas.ver";
     public const string ConsumptionsMarkPaid = "registros_turnos.consumos.pagar";
@@ -116,7 +117,10 @@ public static class Permissions
     public const string CajaTurnClose = "caja.turno.cerrar";
     public const string CajaCollect = "caja.cobrar";
     public const string CajaSaleModify = "caja.venta.modificar";
+    public const string CajaSaleVoid = "caja.venta.anular";
     public const string CajaCashReceivedRequired = "caja.pago.efectivo.ingresar";
+    public const string ReturnablesConfigure = "caja.retornables.configurar";
+    public const string ReturnablesRedeem = "caja.retornables.canjear";
 
     public const string OwnLogbookView = "bitacora.propia.ver";
     public const string LogbookConsumptionsCreate = "bitacora.consumos.crear";

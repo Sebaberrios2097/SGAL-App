@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import PageHeader from '../components/PageHeader';
 import { confirmDialog, notify, useNotificationMessage } from '../components/NotificationCenter';
+import { rawMaterialImageUrl } from '../utils/productImage';
 
 const API = '/api/inventory-configuration';
 
@@ -321,7 +322,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, cal
   const openNewMaterial = () => { setEditing(null); setForm(emptyMaterial); setPreview(null); setError(''); setShowMaterialModal(true); };
   const openEditMaterial = material => {
     setEditing(material);
-    setPreview(material.imagenBase64 ? `data:image/png;base64,${material.imagenBase64}` : null);
+    setPreview(rawMaterialImageUrl(material));
     setForm({ idMarca: material.idMarca, idCategoriaMateria: material.idCategoriaMateria, idUnidadMedida: material.idUnidadMedida, nombreMaterial: material.nombreMaterial, descripcion: material.descripcion || '', cantidad: material.cantidad, imagenBase64: null, esCafeCalibrable: material.esCafeCalibrable || false, noDescuentaInventario: material.noDescuentaInventario || false, tieneRecargo: (material.recargoBase || 0) > 0, recargoBase: material.recargoBase || '', recargoModificable: material.recargoModificable || false });
     setError('');
     setShowMaterialModal(true);
@@ -407,7 +408,7 @@ const RawMaterialsManager = ({ materials, catalogs, presentations, onReload, cal
           emptyMessage="Sin coincidencias para los filtros aplicados."
           columns={[
             { key: 'materia', header: 'Materia prima', sortValue: m => m.nombreMaterial, cell: material => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{material.imagenBase64 ? <img src={`data:image/png;base64,${material.imagenBase64}`} alt="" style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '7px' }} /> : <ImageIcon size={22} color="var(--text-muted)" />}<div><strong>{material.nombreMaterial}</strong><div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{material.descripcion}</div></div></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{material.tieneImagen ? <img src={rawMaterialImageUrl(material)} alt="" loading="lazy" style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '7px' }} /> : <ImageIcon size={22} color="var(--text-muted)" />}<div><strong>{material.nombreMaterial}</strong><div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{material.descripcion}</div></div></div>
             ) },
             { key: 'marca', header: 'Marca', sortValue: m => m.nombreMarca, cell: m => m.nombreMarca },
             { key: 'categoria', header: 'Categoría', sortValue: m => m.nombreCategoria, cell: m => m.nombreCategoria },
