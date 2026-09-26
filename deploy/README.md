@@ -583,6 +583,11 @@ docker compose logs --tail=100 traefik
 bash /opt/sgal/deploy/deploy-all.sh
 ```
 
+El despliegue masivo aplica además `tenant-template/compose.licensing.yaml` a
+todos los tenants. Esto incorpora el volumen persistente de identidad de
+licencia incluso en instalaciones antiguas y normaliza automáticamente sus
+permisos antes de reiniciar la API.
+
 ### Rollback
 
 Cambia `IMAGE_TAG=latest` por el SHA estable en el `.env` y ejecuta:

@@ -1,0 +1,11 @@
+# Overlay común aplicado por deploy-all.sh a todas las instalaciones, incluidas
+# las creadas antes de incorporar el licenciamiento central.
+services:
+  api:
+    environment:
+      Licensing__StoragePath: /app/license-data
+    volumes:
+      - api-license-data:/app/license-data
+
+volumes:
+  api-license-data:
